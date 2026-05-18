@@ -80,6 +80,37 @@ def test_denoise_keeps_customer_concentration_class() -> None:
     assert diagnostics[0]["action"] == "keep"
 
 
+def test_denoise_keeps_generic_supplier_for_recall_when_supported() -> None:
+    kept, diagnostics = denoise_relation_evidence(
+        [
+            evidence(
+                "single-source or limited-source suppliers",
+                "supplier_dependency",
+                "We rely on single-source or limited-source suppliers for key components.",
+            )
+        ]
+    )
+    assert len(kept) == 1
+    assert kept[0].object == "single-source or limited-source suppliers"
+    assert diagnostics[0]["action"] == "keep"
+
+
+def test_denoise_keeps_generic_cloud_provider_when_third_party_supported() -> None:
+    kept, diagnostics = denoise_relation_evidence(
+        [
+            evidence(
+                "cloud computing platform providers",
+                "cloud_or_hosting_dependency",
+                "Interruptions or delays in services from third parties, including cloud computing platform providers, could harm us.",
+                modality="risk_hypothetical",
+            )
+        ]
+    )
+    assert len(kept) == 1
+    assert kept[0].object == "cloud computing platform providers"
+    assert diagnostics[0]["action"] == "keep"
+
+
 def test_quality_penalizes_self_product_without_dependency_signal() -> None:
     decision = evaluate_relation_evidence(
         evidence(

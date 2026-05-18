@@ -26,7 +26,7 @@ def test_records_from_payload_rejects_relation_type_as_object() -> None:
     assert records == []
 
 
-def test_records_from_payload_rejects_generic_customer_object() -> None:
+def test_records_from_payload_accepts_generic_customer_object_for_recall() -> None:
     records = records_from_payload(
         sample_passage(),
         "test-model",
@@ -39,7 +39,8 @@ def test_records_from_payload_rejects_generic_customer_object() -> None:
             }
         ],
     )
-    assert records == []
+    assert len(records) == 1
+    assert records[0].object == "Customer"
 
 
 def test_records_from_payload_accepts_specific_named_relation_and_clamps_confidence() -> None:

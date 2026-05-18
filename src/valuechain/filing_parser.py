@@ -9,7 +9,8 @@ from valuechain.models import FilingRecord, Passage, Section
 
 
 PARSER_NAME = "valuechain.sec_html_parser"
-PARSER_VERSION = "0.1.0"
+PARSER_VERSION = "0.2.0"
+MAX_SECTION_START_RATIO = 0.99
 
 
 SECTION_PATTERNS: dict[str, list[tuple[str, str]]] = {
@@ -84,7 +85,9 @@ def split_sections(text: str, patterns: list[tuple[str, str]]) -> list[tuple[str
         found = list(re.finditer(pattern, lowered, flags=re.IGNORECASE))
         if not found:
             continue
-        match = found[1] if len(found) > 1 and found[0].start() < 10_000 else found[0]
+        match = choose_section_match(found, len(text))
+        if match is None:
+            continue
         matches.append((section_name, match.start()))
     matches.sort(key=lambda item: item[1])
     sections: list[tuple[str, str]] = []
@@ -94,6 +97,17 @@ def split_sections(text: str, patterns: list[tuple[str, str]]) -> list[tuple[str
         if len(body) >= 200:
             sections.append((section_name, body[:180_000]))
     return sections
+
+
+def choose_section_match(matches: list[re.Match], text_length: int) -> re.Match | None:
+    if not matches:
+        return None
+    latest_reasonable_start = int(text_length * MAX_SECTION_START_RATIO)
+    viable = [match for match in matches if match.start() < latest_reasonable_start]
+    if not viable:
+        return None
+    post_toc = [match for match in viable if match.start() > 10_000]
+    return post_toc[0] if post_toc else viable[0]
 
 
 def segment_passages(section: Section, max_chars: int = 1800) -> list[Passage]:
@@ -148,4 +162,3 @@ def chunk_text(text: str, max_chars: int) -> list[str]:
     if current:
         chunks.append(current.strip())
     return chunks
-

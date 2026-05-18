@@ -7,7 +7,7 @@ from valuechain.entity_resolution import EntityResolver
 from valuechain.models import Passage, RelationEvidence
 
 
-EXTRACTOR_VERSION = "rules-0.2.0"
+EXTRACTOR_VERSION = "rules-0.3.0-recall"
 
 
 RELATION_PATTERNS: list[tuple[str, str, str, float]] = [
@@ -16,12 +16,30 @@ RELATION_PATTERNS: list[tuple[str, str, str, float]] = [
     ("manufacturing_dependency", r"\b(contract manufacturer|manufacturing partner|outsourced manufacturing|fabrication)\b", "manufacturing provider", 0.68),
     ("cloud_or_hosting_dependency", r"\b(cloud|hosting|aws|azure|google cloud|gcp)\b", "cloud or hosting provider", 0.68),
     ("data_center_dependency", r"\b(data centers?|colocation|compute capacity|server capacity|gpu capacity)\b", "data center or compute capacity", 0.68),
-    ("power_or_utility_dependency", r"\b(power|electricity|utility|energy supply|cooling)\b", "power, utility, or cooling supply", 0.65),
+    (
+        "power_or_utility_dependency",
+        r"\b(power|electricity|utility|energy supply|cooling|natural gas|uranium|fuel|"
+        r"power purchase agreements?|ppas?|transportation suppliers?)\b",
+        "power, utility, or cooling supply",
+        0.65,
+    ),
     ("network_or_interconnection_dependency", r"\b(network|interconnection|peering|carrier|bandwidth|ethernet)\b", "network or interconnection provider", 0.62),
-    ("customer_dependency", r"\b(customer concentration|major customers?|significant customers?|customers? accounted for)\b", "major customer(s)", 0.70),
+    (
+        "customer_dependency",
+        r"\b(customer concentration|major customers?|large customers?|significant customers?|"
+        r"customers? accounted for|customer accounts?)\b",
+        "major customer(s)",
+        0.70,
+    ),
     ("supplier_dependency", r"\b(suppliers?|vendors?|third[- ]party|sole source|limited number)\b", "supplier(s)", 0.66),
     ("distribution_or_channel_dependency", r"\b(distributors?|resellers?|channel partners?|app store)\b", "distribution channel partner", 0.62),
-    ("strategic_partner", r"\b(strategic partnership|strategic partner|collaboration|alliance|joint development)\b", "strategic partner", 0.70),
+    (
+        "strategic_partner",
+        r"\b(strategic partnership|strategic partner|strategic collaboration|collaboration agreement|"
+        r"alliance|joint development)\b",
+        "strategic partner",
+        0.70,
+    ),
     ("co_investment", r"\b(joint investment|co-investment|joint venture|jointly invest)\b", "co-investment partner", 0.70),
     ("licensing_dependency", r"\b(license|licensed technology|intellectual property|ip rights)\b", "licensor or licensed technology", 0.62),
     ("facility_or_geographic_exposure", r"\b(taiwan|china|export controls?|facility|geographic|earthquake|logistics)\b", "facility or geography", 0.58),

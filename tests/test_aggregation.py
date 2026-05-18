@@ -53,14 +53,16 @@ def test_bottleneck_candidates_detects_shared_object() -> None:
     assert bottlenecks[0]["dependent_company_count"] == 2
 
 
-def test_aggregate_edges_filters_generic_supplier_noise() -> None:
+def test_aggregate_edges_keeps_generic_supplier_exposure_for_recall() -> None:
     edges = aggregate_edges(
         [
             evidence("A", "supplier(s)", "supplier_dependency", "a1"),
             evidence("B", "supplier(s)", "supplier_dependency", "b1"),
         ]
     )
-    assert edges == []
+    assert len(edges) == 2
+    assert all(edge.object == "Supplier dependency class" for edge in edges)
+    assert bottleneck_candidates(edges) == []
 
 
 def test_bottleneck_candidates_skip_dependency_classes() -> None:

@@ -96,12 +96,14 @@ COUNTERPARTY_RELATIONS = {
 
 DEPENDENCY_MARKERS = (
     "rely on",
+    "reliance on",
     "relies on",
     "relied on",
     "depend on",
     "depends on",
     "dependent on",
     "dependency on",
+    "dependence on",
     "third-party",
     "third party",
     "sole source",
@@ -116,6 +118,8 @@ DEPENDENCY_MARKERS = (
     "obtains from",
     "contract with",
     "contracts with",
+    "contract for",
+    "contracts for",
     "engage with",
     "engages with",
     "outsourced",
@@ -123,6 +127,44 @@ DEPENDENCY_MARKERS = (
     "suppliers",
     "vendors",
     "providers",
+    "transportation suppliers",
+    "power purchase agreement",
+    "power purchase agreements",
+    "ppas",
+)
+
+STRONG_DEPENDENCY_MARKERS = (
+    "rely on",
+    "reliance on",
+    "relies on",
+    "relied on",
+    "depend on",
+    "depends on",
+    "dependent on",
+    "dependency on",
+    "dependence on",
+    "third-party",
+    "third party",
+    "sole source",
+    "single source",
+    "limited number",
+    "small number",
+    "source from",
+    "sources from",
+    "purchase from",
+    "purchases from",
+    "obtain from",
+    "obtains from",
+    "contract with",
+    "contracts with",
+    "contract for",
+    "contracts for",
+    "outsourced",
+    "subcontractors",
+    "transportation suppliers",
+    "power purchase agreement",
+    "power purchase agreements",
+    "ppas",
 )
 
 CONCENTRATION_MARKERS = (
@@ -135,6 +177,8 @@ CONCENTRATION_MARKERS = (
     "limited number",
     "small number",
     "major customer",
+    "large customer",
+    "large customers",
     "accounted for",
     "accounts for",
 )
@@ -142,7 +186,8 @@ CONCENTRATION_MARKERS = (
 STRATEGIC_MARKERS = (
     "strategic partnership",
     "strategic partner",
-    "collaboration",
+    "strategic collaboration",
+    "collaboration agreement",
     "alliance",
     "joint development",
     "joint investment",
@@ -395,8 +440,10 @@ def keep_or_drop_reason(
         return "strategic_language_required"
     if record.relation_type in NAMED_ONLY_RELATIONS and info.is_generic:
         return "named_counterparty_required"
+    if record.relation_type == "facility_or_geographic_exposure" and not object_supported_for_facility_or_geography(info, text):
+        return "object_not_supported_for_relation"
     if record.relation_type in CLASS_RESTRICTED_RELATIONS and info.is_generic:
-        if record.relation_type == "supplier_dependency" and has_concentration_signal(text):
+        if class_object_supported_by_text(record.relation_type, text):
             return "kept"
         if record.relation_type == "cloud_or_hosting_dependency" and has_named_cloud_vendor(text):
             if cloud_vendor_is_subject(record.subject, text):
@@ -417,7 +464,7 @@ def keep_or_drop_reason(
         return "regulatory_or_fragment_object"
     if record.relation_type in COUNTERPARTY_RELATIONS and not object_supported_for_counterparty_relation(record, info, text):
         return "object_not_supported_for_relation"
-    if is_competition_context(text) and record.relation_type in COUNTERPARTY_RELATIONS and not has_dependency_signal(text):
+    if is_competition_context(text) and record.relation_type in COUNTERPARTY_RELATIONS and not has_strong_dependency_signal(text):
         return "competition_context_without_dependency"
     if score < 0.4:
         return "low_quality_score"
@@ -439,7 +486,7 @@ def evidence_quality_score(record: RelationEvidence, info: ObjectNormalization) 
         score += 0.04
     if "risk" in record.source_section:
         score += 0.02
-    if has_dependency_signal(text):
+    if has_strong_dependency_signal(text):
         score += 0.07
     if has_concentration_signal(text):
         score += 0.05
@@ -451,20 +498,80 @@ def evidence_quality_score(record: RelationEvidence, info: ObjectNormalization) 
 
 
 def class_object_supported_by_text(relation_type: str, text: str) -> bool:
+    if relation_type == "supplier_dependency":
+        return has_strong_dependency_signal(text) or has_concentration_signal(text)
+    if relation_type == "cloud_or_hosting_dependency":
+        return any(
+            marker in text
+            for marker in [
+                "third-party cloud",
+                "third party cloud",
+                "cloud computing platform provider",
+                "cloud computing platform providers",
+                "hosting provider",
+                "hosting providers",
+                "hosted by",
+                "hosting facilities",
+                "single vendor dependence",
+            ]
+        ) or has_strong_dependency_signal(text)
     if relation_type in {"customer_dependency", "concentration_risk"}:
         return has_concentration_signal(text)
     if relation_type in {"manufacturing_dependency", "foundry_dependency", "packaging_or_assembly_dependency"}:
-        return has_dependency_signal(text) or any(
+        return has_strong_dependency_signal(text) or any(
             marker in text for marker in ["outsourced", "subcontractors", "contract manufacturers", "foundries"]
         )
     if relation_type == "data_center_dependency":
-        return any(marker in text for marker in ["third-party", "third party", "leased", "lease", "colocation", "providers"])
+        return any(
+            marker in text
+            for marker in [
+                "third-party",
+                "third party",
+                "leased",
+                "lease",
+                "colocation",
+                "co-location",
+                "providers",
+                "hosting facilities",
+                "data center providers",
+            ]
+        )
     if relation_type == "power_or_utility_dependency":
-        return any(marker in text for marker in ["power supply", "electricity", "utility", "energy supply", "grid", "cooling"])
+        return any(
+            marker in text
+            for marker in [
+                "power supply",
+                "electricity",
+                "utility",
+                "energy supply",
+                "grid",
+                "cooling",
+                "fuel",
+                "natural gas",
+                "uranium",
+                "transportation contracts",
+                "transportation suppliers",
+                "power purchase agreement",
+                "power purchase agreements",
+                "ppas",
+            ]
+        )
     if relation_type == "network_or_interconnection_dependency":
-        return any(marker in text for marker in ["interconnection", "peering", "carrier", "bandwidth", "third-party network"])
+        return any(
+            marker in text
+            for marker in [
+                "interconnection",
+                "peering",
+                "carrier",
+                "bandwidth",
+                "third-party network",
+                "isp",
+                "internet infrastructure",
+                "co-location relationships",
+            ]
+        )
     if relation_type == "distribution_or_channel_dependency":
-        return has_dependency_signal(text) or any(marker in text for marker in ["distributor", "reseller", "channel partner"])
+        return has_strong_dependency_signal(text) or any(marker in text for marker in ["distributor", "reseller", "channel partner"])
     if relation_type == "licensing_dependency":
         return any(marker in text for marker in ["licensed from", "license from", "third-party licenses", "open source"])
     if relation_type == "facility_or_geographic_exposure":
@@ -513,16 +620,23 @@ def is_generic_dependency_phrase(name: str) -> bool:
     key = object_key(name)
     generic_terms = (
         "provider",
+        "providers",
         "supplier",
+        "suppliers",
         "vendor",
+        "vendors",
         "customer",
+        "customers",
         "capacity",
         "facility",
+        "facilities",
         "geography",
         "channel",
         "partner",
+        "partners",
         "utility",
         "manufacturer",
+        "manufacturers",
         "dependency",
         "class",
         "concentration",
@@ -533,6 +647,10 @@ def is_generic_dependency_phrase(name: str) -> bool:
 
 def has_dependency_signal(text: str) -> bool:
     return any(marker in text for marker in DEPENDENCY_MARKERS)
+
+
+def has_strong_dependency_signal(text: str) -> bool:
+    return any(marker in text for marker in STRONG_DEPENDENCY_MARKERS)
 
 
 def has_concentration_signal(text: str) -> bool:
@@ -550,7 +668,7 @@ def has_named_cloud_vendor(text: str) -> bool:
 def looks_like_self_product_statement(text: str, info: ObjectNormalization) -> bool:
     if info.object_kind in {"company", "organization"}:
         return False
-    if has_dependency_signal(text):
+    if has_strong_dependency_signal(text):
         return False
     return any(marker in text for marker in SELF_PRODUCT_MARKERS)
 
@@ -581,6 +699,16 @@ def object_supported_for_counterparty_relation(
     if info.object_kind == "unknown":
         return False
     return True
+
+
+def object_supported_for_facility_or_geography(info: ObjectNormalization, text: str) -> bool:
+    if info.object_kind == "geography" or info.is_generic:
+        return True
+    if info.object_kind == "organization" and looks_like_legal_entity(info.display_name):
+        return True
+    if "," in info.display_name and any(marker in text for marker in ["facility", "plant", "data center", "office"]):
+        return True
+    return False
 
 
 def looks_like_legal_entity(name: str) -> bool:

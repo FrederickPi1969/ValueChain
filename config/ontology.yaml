@@ -110,8 +110,8 @@ merge_policy:
       - facility_or_geographic_exposure
       - concentration_risk
     restricted_generic_objects:
-      supplier_dependency: "Drop generic supplier(s) unless concentration, sole-source, or limited-number language is present."
-      cloud_or_hosting_dependency: "Drop generic cloud/hosting objects unless a named provider or explicit third-party hosting reliance is present."
+      supplier_dependency: "Recall-first: keep descriptive supplier classes when reliance, third-party, sole-source, limited-number, or concentration language is present."
+      cloud_or_hosting_dependency: "Recall-first: keep descriptive cloud/hosting classes when third-party hosting, platform-provider, vendor-dependence, or interruption-risk language is present."
   bottleneck_policy:
     - "Do not rank generic dependency classes as shared bottlenecks."
     - "Rank named companies, organizations, facilities, or geographies by distinct dependent subjects and supporting evidence."
@@ -120,8 +120,8 @@ merge_policy:
     default_threshold: 0.92
     usage: "Use for alias discovery after deterministic filtering; do not replace provenance or manual validation."
 llm_extraction_policy:
-  version: "0.2"
-  role: "High-precision named-object extractor. Rules may create generic dependency-class candidates; LLM output should not."
+  version: "0.3-recall"
+  role: "Recall-first extractor. Prefer named objects, but output descriptive class-level exposure when no named counterparty is disclosed."
   object_policy:
     preferred:
       - named_company
@@ -130,13 +130,8 @@ llm_extraction_policy:
       - facility
       - anonymous_counterparty
       - subsidiary_or_affiliate
-    disallowed_generic_objects:
-      - supplier
-      - suppliers
-      - customer
-      - customers
-      - cloud provider
-      - data center provider
+      - dependency_class
+    disallowed_schema_label_objects:
       - manufacturing_dependency
       - concentration_risk
   precision_rules:
@@ -146,4 +141,5 @@ llm_extraction_policy:
     - "Require explicit strategic partnership, alliance, joint development, joint venture, or co-investment language for strategic_partner and co_investment."
     - "Drop strategic_partner and co_investment outputs unless modality is strategic."
     - "Customer concentration requires named customers, anonymous customer labels supported by percentages, or explicit limited-customer concentration language."
-    - "Limit LLM output to the strongest five relations per passage; malformed single-passage output must not crash batch extraction."
+    - "When a dependency is directly disclosed but unnamed, output a descriptive class object rather than returning an empty array."
+    - "Limit LLM output to the strongest eight relations per passage; malformed single-passage output must not crash batch extraction."

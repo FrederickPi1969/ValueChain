@@ -75,3 +75,26 @@ def test_rules_extract_multiple_named_subcontractors_from_list() -> None:
     assert "Hon Hai Precision Industry Co" in packaging_objects or "Hon Hai Precision Industry Co., Ltd" in packaging_objects
     assert "Wistron Corporation" in packaging_objects
     assert "Fabrinet" in packaging_objects
+
+
+def test_rules_extract_power_fuel_transportation_dependency_class() -> None:
+    extractor = RuleBasedRelationExtractor(EntityResolver([]))
+    records = extractor.extract(
+        make_passage(
+            "FPL had firm transportation contracts with ten different transportation suppliers "
+            "for natural gas pipeline capacity and several contracts for uranium fuel supply."
+        )
+    )
+    assert any(record.relation_type == "power_or_utility_dependency" for record in records)
+
+
+def test_resolver_does_not_match_common_word_ticker_in_lowercase_text() -> None:
+    companies = [Company("NET", "Cloudflare Inc.", cik="0001477333")]
+    extractor = RuleBasedRelationExtractor(EntityResolver(companies))
+    records = extractor.extract(
+        make_passage(
+            "FPL had 35,963 MW of net generating capacity and serves millions of customer accounts.",
+            section="item_1_business",
+        )
+    )
+    assert all(record.object != "Cloudflare Inc." for record in records)

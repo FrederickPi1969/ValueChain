@@ -66,15 +66,20 @@ class EntityResolver:
 
     def __post_init__(self) -> None:
         self.alias_to_company: dict[str, Company] = {}
+        self.uppercase_only_aliases: set[str] = set()
         for company in self.companies:
+            ticker_alias = company.ticker.lower()
             aliases = {
-                company.ticker.lower(),
+                ticker_alias,
                 company.company_name.lower(),
                 normalize_company_suffix(company.company_name).lower(),
             }
+            if ticker_alias:
+                self.uppercase_only_aliases.add(ticker_alias)
             for alias, target_name in COMMON_ALIASES.items():
                 if target_name.lower() == company.company_name.lower():
                     aliases.add(alias)
+                    self.uppercase_only_aliases.discard(alias)
             for alias in aliases:
                 if alias:
                     self.alias_to_company[alias] = company
@@ -83,7 +88,10 @@ class EntityResolver:
         lowered = text.lower()
         mentions: list[EntityMention] = []
         for alias, company in sorted(self.alias_to_company.items(), key=lambda item: len(item[0]), reverse=True):
-            if len(alias) < 3:
+            if alias in self.uppercase_only_aliases and len(alias) <= 5:
+                pattern = rf"\b{re.escape(alias.upper())}\b"
+                haystack = text
+            elif len(alias) < 3:
                 pattern = rf"\b{re.escape(alias.upper())}\b"
                 haystack = text
             else:

@@ -34,17 +34,6 @@ ALLOWED_MODALITIES = {
 }
 
 LOW_INFORMATION_OBJECTS = {
-    "customer",
-    "customers",
-    "supplier",
-    "suppliers",
-    "vendor",
-    "vendors",
-    "third party",
-    "third parties",
-    "third-party",
-    "third-party providers",
-    "providers",
     "manufacturing_dependency",
     "concentration_risk",
     "supplier_dependency",
@@ -52,7 +41,7 @@ LOW_INFORMATION_OBJECTS = {
 }
 
 
-SYSTEM_PROMPT = """You are a high-precision financial-domain relation extractor for SEC filing passages.
+SYSTEM_PROMPT = """You are a recall-first financial-domain relation extractor for SEC filing passages.
 Return only a JSON array. Do not include prose, markdown, explanations, or trailing comments.
 
 Task:
@@ -60,9 +49,12 @@ Extract evidence-backed dependency relations where the subject company depends o
 controls, partners with, or has concentrated exposure to a specific object disclosed in the passage.
 
 Output schema for each JSON object:
-- object: string. Prefer exact named counterparties, named organizations, named facilities, named geographies,
-  or anonymous concentration labels such as "Customer A" when the passage gives concentration percentages.
-- object_kind: one of named_company, named_org, geography, facility, anonymous_counterparty, subsidiary_or_affiliate.
+- object: string. Prefer exact named counterparties when disclosed. If no name is disclosed, still output a
+  useful class object such as "limited number of suppliers", "third-party data center providers",
+  "channel partners", "natural gas transportation suppliers", "major customers", "fuel suppliers",
+  or "cloud computing platform providers".
+- object_kind: one of named_company, named_org, geography, facility, anonymous_counterparty,
+  subsidiary_or_affiliate, dependency_class.
 - relation_type: one of supplier_dependency, customer_dependency, manufacturing_dependency,
   foundry_dependency, packaging_or_assembly_dependency, cloud_or_hosting_dependency,
   data_center_dependency, power_or_utility_dependency, network_or_interconnection_dependency,
@@ -74,17 +66,20 @@ Output schema for each JSON object:
 - evidence_quote: a short quote from the passage that directly supports the relation.
 - confidence_score: number from 0 to 1.
 
-Return at most 5 relation objects for one passage. Prefer the strongest named-counterparty evidence.
+Return at most 8 relation objects for one passage. Prefer named-counterparty evidence, but do not return []
+just because the passage discloses only class-level dependencies or unnamed concentrated counterparties.
 Keep evidence_quote to 25 words or fewer. Do not duplicate the same object/relation/modality.
 
-Precision rules:
+Recall-first rules:
 1. Emit a relation only when the passage directly supports the subject-object relation. Do not infer from
    co-occurrence, market category, or broad industry context.
 2. For supplier, manufacturing, foundry, packaging, cloud, data center, power, network, distribution, or
    licensing dependencies, require explicit reliance language such as rely on, depend on, utilize, outsource,
-   purchase from, obtain from, procure from, source from, hosted by, powered by, supplied by, or constrained by.
+   purchase from, obtain from, procure from, source from, hosted by, powered by, supplied by, constrained by,
+   use third-party, contract with, or have contracts for.
 3. For customer_dependency and concentration_risk, require concentration language, percentages, named large
-   customers, "major customer", "limited number of customers", or similar dependence on demand/revenue.
+   customers, "major customer", "limited number of customers", "large customers", or similar demand/revenue
+   exposure. If customers are unnamed, output "Customer A", "Customer B", or "major customers".
 4. For strategic_partner and co_investment, require explicit strategic partnership, alliance, joint development,
    collaboration agreement, joint venture, or co-investment language. Ordinary suppliers, customers,
    competitors, and ecosystem participants are not strategic partners.
@@ -99,15 +94,17 @@ Precision rules:
    - strategic: formal strategic partnership, co-investment, alliance, joint development, or collaboration.
 7. If a passage says the subject sells cloud, AI, data center, power, semiconductor, networking, or software
    products, that is not a dependency by itself.
-8. Do not output generic dependency-class objects such as "supplier", "customers", "cloud provider",
-   "manufacturing_dependency", or "concentration_risk". If the object is not specific enough, return [].
+8. Class-level objects are allowed for recall when the passage discloses a real exposure but no named
+   counterparty. Make the object descriptive, not a schema label: use "single-source suppliers", not
+   "supplier_dependency"; use "third-party data center providers", not "data_center_dependency".
 9. Do not output the subject company, its own products, its business segments, or its internal brands as objects.
+10. When in doubt between [] and a directly supported class-level exposure, output the exposure with
+    lower confidence rather than returning [].
 
 Failure cases to avoid:
 - "Power" as a company segment is not power_or_utility_dependency.
 - A competitor list is not strategic_partner.
 - AWS/Azure/GCP mentioned as a customer segment, product integration, or industry example is not cloud reliance.
-- A broad AI risk paragraph mentioning third parties is not a named supplier/customer relation.
 - Do not use a relation_type value as the object.
 
 Positive examples:
@@ -119,10 +116,18 @@ Positive examples:
 - "Two customers accounted for 26% and 16% of revenue..." =>
   concentration_risk with objects "Customer A" and "Customer B", modality historical_fact or current_fact
   depending on the period language.
+- "We rely on single-source or limited-source suppliers..." =>
+  supplier_dependency with object "single-source or limited-source suppliers", modality current_fact or
+  risk_hypothetical depending on the sentence.
+- "Interruptions from third-party data center hosting facilities or cloud computing platform providers..." =>
+  data_center_dependency with object "third-party data center hosting facilities" and
+  cloud_or_hosting_dependency with object "cloud computing platform providers".
+- "FPL had firm transportation contracts with ten different transportation suppliers..." =>
+  power_or_utility_dependency with object "natural gas transportation suppliers".
 - "The company held 32% of Digital Core REIT units..." =>
   subsidiary_or_control or facility_or_geographic_exposure only if the ownership/control relation is explicit.
 
-If no precise dependency relation is present, return [].
+If no dependency, exposure, concentration, control, or strategic relation is present, return [].
 """
 
 
@@ -133,14 +138,14 @@ class LLMRelationExtractor:
 
     def extract(self, passage: Passage) -> list[RelationEvidence]:
         try:
-            payload = self.client.chat_json(SYSTEM_PROMPT, build_prompt(passage))
+            payload = self.client.chat_json(SYSTEM_PROMPT, build_prompt(passage), max_tokens=1800)
         except Exception:
             return []
         return records_from_payload(passage, self.model_version, payload)
 
     async def extract_async(self, passage: Passage) -> list[RelationEvidence]:
         try:
-            payload = await self.client.chat_json_async(SYSTEM_PROMPT, build_prompt(passage))
+            payload = await self.client.chat_json_async(SYSTEM_PROMPT, build_prompt(passage), max_tokens=1800)
         except Exception:
             return []
         return records_from_payload(passage, self.model_version, payload)
