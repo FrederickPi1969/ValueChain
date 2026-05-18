@@ -13,6 +13,7 @@ from valuechain.rate_limit import RateLimiter
 
 SEC_DATA_BASE = "https://data.sec.gov"
 SEC_WWW_BASE = "https://www.sec.gov"
+FORM_PRIORITY = ("10-K", "20-F", "10-Q", "8-K", "6-K")
 
 
 class SECClient:
@@ -93,13 +94,14 @@ class SECClient:
         max_filings: int,
         filing_date_from: str = "",
         filing_date_to: str = "",
+        selection: str = "form_balanced",
     ) -> list[FilingRecord]:
         if not company.cik:
             return []
         payload = self.submissions(company.cik)
         recent = payload.get("filings", {}).get("recent", {})
         accessions = recent.get("accessionNumber", [])
-        discovered: list[FilingRecord] = []
+        candidates: list[FilingRecord] = []
         for idx, accession in enumerate(accessions):
             form = _get_recent_value(recent, "form", idx)
             if form not in forms:
@@ -114,7 +116,7 @@ class SECClient:
             primary_doc = _get_recent_value(recent, "primaryDocument", idx)
             archive_url = f"{SEC_WWW_BASE}/Archives/edgar/data/{cik_no_leading}/{accession_no_dashes}/"
             primary_url = f"{archive_url}{primary_doc}" if primary_doc else archive_url
-            discovered.append(
+            candidates.append(
                 FilingRecord(
                     ticker=company.ticker,
                     cik=company.cik,
@@ -129,9 +131,11 @@ class SECClient:
                     primary_document_url=primary_url,
                 )
             )
-            if len(discovered) >= max_filings:
+            if selection == "latest" and len(candidates) >= max_filings:
                 break
-        return discovered
+        if selection == "latest":
+            return candidates
+        return select_form_balanced_filings(candidates, forms=forms, max_per_form=max_filings)
 
     def download_primary_document(self, filing: FilingRecord, raw_dir: Path) -> FilingRecord:
         if not filing.primary_document_url:
@@ -157,3 +161,26 @@ def _get_recent_value(recent: dict[str, list[Any]], key: str, idx: int) -> str:
         return ""
     value = values[idx]
     return "" if value is None else str(value)
+
+
+def select_form_balanced_filings(
+    candidates: list[FilingRecord],
+    forms: set[str],
+    max_per_form: int,
+) -> list[FilingRecord]:
+    grouped: dict[str, list[FilingRecord]] = {form: [] for form in forms}
+    for filing in candidates:
+        grouped.setdefault(filing.form, []).append(filing)
+
+    ordered_forms = [form for form in FORM_PRIORITY if form in forms]
+    ordered_forms.extend(sorted(forms - set(ordered_forms)))
+
+    selected: list[FilingRecord] = []
+    seen: set[str] = set()
+    for form in ordered_forms:
+        for filing in grouped.get(form, [])[:max_per_form]:
+            if filing.accession_number in seen:
+                continue
+            selected.append(filing)
+            seen.add(filing.accession_number)
+    return selected

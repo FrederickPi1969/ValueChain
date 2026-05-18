@@ -41,6 +41,7 @@ class PipelineOptions:
     limit_companies: int | None = None
     forms: tuple[str, ...] = ("10-K", "10-Q", "8-K", "20-F", "6-K")
     max_filings_per_company: int = 2
+    filing_selection: str = "form_balanced"
     filing_date_from: str = ""
     filing_date_to: str = ""
     extractor: str = "rules"
@@ -89,6 +90,7 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
             companies,
             forms=options.forms,
             max_filings_per_company=options.max_filings_per_company,
+            filing_selection=options.filing_selection,
             filing_date_from=options.filing_date_from,
             filing_date_to=options.filing_date_to,
         ).to_dict(),
@@ -219,6 +221,7 @@ def discover_and_download_filings(
             max_filings=options.max_filings_per_company,
             filing_date_from=options.filing_date_from,
             filing_date_to=options.filing_date_to,
+            selection=options.filing_selection,
         )
         for filing in company_filings:
             filings.append(sec_client.download_primary_document(filing, settings.raw_dir))
@@ -370,6 +373,7 @@ def build_run_summary(
             "limit_companies": options.limit_companies,
             "forms": list(options.forms),
             "max_filings_per_company": options.max_filings_per_company,
+            "filing_selection": options.filing_selection,
             "filing_date_from": options.filing_date_from,
             "filing_date_to": options.filing_date_to,
             "extractor": options.extractor,

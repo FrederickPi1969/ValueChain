@@ -54,6 +54,12 @@ def add_input_args(parser: argparse.ArgumentParser) -> None:
 def add_run_shape_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--forms", default="10-K,10-Q,8-K,20-F,6-K")
     parser.add_argument("--max-filings-per-company", type=int, default=2)
+    parser.add_argument(
+        "--filing-selection",
+        choices=["form-balanced", "latest"],
+        default="form-balanced",
+        help="form-balanced takes up to max filings per selected form; latest preserves the old total latest-filings cap.",
+    )
     parser.add_argument("--filing-date-from", default="", help="Inclusive YYYY-MM-DD filing date lower bound.")
     parser.add_argument("--filing-date-to", default="", help="Inclusive YYYY-MM-DD filing date upper bound.")
 
@@ -78,6 +84,7 @@ def main(argv: list[str] | None = None) -> None:
             companies=companies,
             forms=parse_forms(args.forms),
             max_filings_per_company=args.max_filings_per_company,
+            filing_selection=args.filing_selection.replace("-", "_"),
             filing_date_from=args.filing_date_from,
             filing_date_to=args.filing_date_to,
         )
@@ -98,6 +105,7 @@ def main(argv: list[str] | None = None) -> None:
             limit_companies=args.limit_companies,
             forms=parse_forms(args.forms),
             max_filings_per_company=args.max_filings_per_company,
+            filing_selection=args.filing_selection.replace("-", "_"),
             filing_date_from=args.filing_date_from,
             filing_date_to=args.filing_date_to,
             extractor=args.extractor,
