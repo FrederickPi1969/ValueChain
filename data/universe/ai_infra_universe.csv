@@ -39,3 +39,42 @@ DDOG,Datadog Inc.,cloud_observability,3,cloud observability AI operations
 PLTR,Palantir Technologies Inc.,ai_software,2,AI software government enterprise
 NOW,ServiceNow Inc.,enterprise_ai_software,3,workflow automation AI platform
 MDB,MongoDB Inc.,database_platform,3,developer database platform AI apps
+ALAB,Astera Labs Inc.,ai_connectivity,2,AI server connectivity CXL PCIe retimers
+CRDO,Credo Technology Group Holding Ltd,ai_connectivity,2,high-speed connectivity optical DSP active electrical cables
+CIEN,Ciena Corporation,optical_networking,2,optical transport routing data center interconnect
+APH,Amphenol Corporation,interconnect_components,3,connectors cables interconnect systems
+TEL,TE Connectivity plc,interconnect_components,3,connectors sensors datacenter and power interconnect
+GLW,Corning Inc.,optical_fiber,3,optical fiber glass cable data center connectivity
+KEYS,Keysight Technologies Inc.,electronic_test_measurement,3,network semiconductor test measurement
+TER,Teradyne Inc.,semiconductor_test,3,semiconductor automated test equipment
+ON,ON Semiconductor Corporation,power_semiconductors,3,power semiconductors silicon carbide industrial automotive
+MPWR,Monolithic Power Systems Inc.,power_management,3,power management chips for data center and AI systems
+ADI,Analog Devices Inc.,analog_semiconductors,3,analog mixed-signal power and sensing chips
+TXN,Texas Instruments Inc.,analog_semiconductors,3,analog embedded processing power management chips
+NXPI,NXP Semiconductors N.V.,edge_semiconductors,3,edge compute connectivity embedded semiconductors ADR
+MCHP,Microchip Technology Inc.,embedded_semiconductors,3,microcontrollers embedded control analog chips
+CLS,Celestica Inc.,server_supply_chain,2,AI server networking manufacturing and supply chain
+FLEX,Flex Ltd.,contract_manufacturing,3,electronics manufacturing services cloud and data center hardware
+JBL,Jabil Inc.,contract_manufacturing,3,electronics manufacturing services data center supply chain
+SANM,Sanmina Corp.,contract_manufacturing,3,electronics manufacturing services communications infrastructure
+FN,Fabrinet,optical_manufacturing,3,optical components manufacturing and advanced packaging services
+AAOI,Applied Optoelectronics Inc.,optical_components,4,optical transceivers datacenter telecom components
+LITE,Lumentum Holdings Inc.,optical_components,3,optical components lasers datacenter connectivity
+NTAP,NetApp Inc.,enterprise_storage,3,enterprise storage hybrid cloud data infrastructure
+STX,Seagate Technology Holdings plc,storage,3,hard disk storage cloud and data center capacity
+WDC,Western Digital Corporation,storage,3,NAND hard disk storage data center capacity
+PWR,Quanta Services Inc.,grid_construction,2,electric grid transmission construction power infrastructure
+EME,EMCOR Group Inc.,data_center_construction,2,electrical mechanical construction data center buildout
+FIX,Comfort Systems USA Inc.,data_center_mechanical,3,mechanical electrical HVAC construction services
+TT,Trane Technologies plc,data_center_cooling,3,cooling HVAC thermal systems for data centers
+CARR,Carrier Global Corporation,data_center_cooling,3,cooling HVAC thermal building systems for data centers
+JCI,Johnson Controls International plc,data_center_building_systems,3,building systems controls cooling infrastructure
+DUK,Duke Energy Corporation,power_generation,3,utility power generation transmission datacenter demand
+SO,Southern Company,power_generation,3,utility power generation transmission datacenter demand
+AEP,American Electric Power Company Inc.,power_generation_grid,3,utility grid transmission datacenter demand
+PPL,PPL Corporation,power_generation_grid,3,regulated utility grid power infrastructure
+BE,Bloom Energy Corporation,power_generation_fuel_cells,4,fuel cells onsite power data center backup power
+FLNC,Fluence Energy Inc.,grid_storage,4,grid storage battery systems renewables integration
+IREN,IREN Ltd,ai_data_center_power,4,AI cloud data centers renewable power bitcoin mining pivot
+CORZ,Core Scientific Inc.,ai_data_center_power,4,AI data center hosting high-performance compute power capacity
+APLD,Applied Digital Corporation,ai_data_center_power,4,AI cloud data centers high-performance compute hosting
