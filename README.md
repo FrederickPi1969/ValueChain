@@ -211,10 +211,10 @@ The source registry is in `config/source_registry.yaml`.
 ## Async LLM Extraction
 
 LLM and hybrid extraction use an async OpenAI-compatible client with connection
-pooling and a semaphore-controlled request limit. The default extraction model
-is the available 4B route `Qwen3.5-4B-OptiQ-4bit`; the larger 35B model remains
-configured separately for later complex steps. The default concurrency is
-conservative:
+pooling and a semaphore-controlled request limit. The default extraction route
+uses Endeavor's LAN backend directly, `http://192.168.50.5:18003/v1`, with the
+currently exposed 4B model `Qwen3.5-4B-OptiQ-4bit`; the larger 35B model remains
+configured separately for later complex steps. The default concurrency is conservative:
 
 ```bash
 VALUECHAIN_LLM_CONCURRENCY=4
