@@ -13,6 +13,7 @@ class LLMConfig:
     api_key: str
     model: str
     report_url: str = ""
+    proxy_url: str = ""
     timeout_s: int = 120
 
 
@@ -36,11 +37,16 @@ class OpenAICompatibleClient:
             "max_tokens": max_tokens,
             "chat_template_kwargs": {"enable_thinking": False},
         }
+        request_kwargs: dict[str, Any] = {
+            "headers": {"Authorization": f"Bearer {self.config.api_key}"},
+            "json": payload,
+            "timeout": self.config.timeout_s,
+        }
+        if self.config.proxy_url:
+            request_kwargs["proxy"] = self.config.proxy_url
         response = httpx.post(
             f"{self.config.base_url.rstrip('/')}/chat/completions",
-            headers={"Authorization": f"Bearer {self.config.api_key}"},
-            json=payload,
-            timeout=self.config.timeout_s,
+            **request_kwargs,
         )
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
@@ -63,4 +69,3 @@ def parse_json_content(content: str) -> Any:
         if start >= 0 and end > start:
             return json.loads(content[start : end + 1])
         raise
-

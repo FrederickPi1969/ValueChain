@@ -63,6 +63,9 @@ falling back to rules if an LLM call fails:
 valuechain run --tickers NVDA,AMD,MSFT --extractor hybrid --max-filings-per-company 1
 ```
 
+`VALUECHAIN_HTTP_PROXY` / `VALUECHAIN_HTTPS_PROXY` can be used for SEC and LLM
+HTTP calls when the network path requires `proxy.frederickpi.com`.
+
 Outputs are written to:
 
 - `data/processed/company_universe_resolved.csv`

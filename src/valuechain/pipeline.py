@@ -133,6 +133,7 @@ def build_extractor(settings: Settings, options: PipelineOptions, companies: lis
             api_key=settings.llm_api_key,
             model=settings.extraction_model,
             report_url=settings.llm_report_url,
+            proxy_url=settings.https_proxy or settings.http_proxy,
         )
     )
     llm = LLMRelationExtractor(llm_client, model_version=settings.extraction_model)
@@ -148,4 +149,3 @@ def extract_relations(candidate_passages: list[Passage], extractor) -> list[Rela
     for passage in candidate_passages:
         records.extend(extractor.extract(passage))
     return records
-
