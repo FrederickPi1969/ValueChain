@@ -11,11 +11,12 @@ from valuechain.filing_parser import parse_sections, segment_passages
 from valuechain.io_utils import write_csv, write_jsonl, write_json
 from valuechain.llm_client import LLMConfig, OpenAICompatibleClient
 from valuechain.models import Company, FilingRecord, GraphEdge, Passage, RelationEvidence
+from valuechain.planning import build_execution_plan
 from valuechain.relation_llm import HybridRelationExtractor, LLMRelationExtractor
 from valuechain.relation_rules import RuleBasedRelationExtractor
 from valuechain.relevance import filter_candidates
 from valuechain.sec_client import SECClient
-from valuechain.universe import read_universe
+from valuechain.universe import read_universe, summarize_universe
 from valuechain.yahoo_enrichment import fetch_yahoo_snapshot
 
 
@@ -23,8 +24,13 @@ from valuechain.yahoo_enrichment import fetch_yahoo_snapshot
 class PipelineOptions:
     universe_path: Path
     tickers: list[str] | None = None
+    roles: list[str] | None = None
+    max_priority: int | None = None
+    limit_companies: int | None = None
     forms: tuple[str, ...] = ("10-K", "10-Q", "8-K", "20-F", "6-K")
     max_filings_per_company: int = 2
+    filing_date_from: str = ""
+    filing_date_to: str = ""
     extractor: str = "rules"
     min_relevance_score: float = 2.0
     skip_yahoo: bool = False
@@ -44,7 +50,23 @@ class PipelineResult:
 
 def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult:
     ensure_dirs(settings)
-    companies = read_universe(options.universe_path, options.tickers)
+    companies = read_universe(
+        options.universe_path,
+        tickers=options.tickers,
+        roles=options.roles,
+        max_priority=options.max_priority,
+        limit=options.limit_companies,
+    )
+    write_json(
+        settings.processed_dir / "input_plan.json",
+        build_execution_plan(
+            companies,
+            forms=options.forms,
+            max_filings_per_company=options.max_filings_per_company,
+            filing_date_from=options.filing_date_from,
+            filing_date_to=options.filing_date_to,
+        ).to_dict(),
+    )
     sec_client = SECClient(
         user_agent=settings.sec_user_agent,
         requests_per_second=settings.sec_rps,
@@ -110,6 +132,8 @@ def discover_and_download_filings(
             company,
             forms=forms,
             max_filings=options.max_filings_per_company,
+            filing_date_from=options.filing_date_from,
+            filing_date_to=options.filing_date_to,
         )
         for filing in company_filings:
             filings.append(sec_client.download_primary_document(filing, settings.raw_dir))
@@ -193,8 +217,13 @@ def write_run_summary(
         {
             "options": {
                 "tickers": options.tickers,
+                "roles": options.roles,
+                "max_priority": options.max_priority,
+                "limit_companies": options.limit_companies,
                 "forms": list(options.forms),
                 "max_filings_per_company": options.max_filings_per_company,
+                "filing_date_from": options.filing_date_from,
+                "filing_date_to": options.filing_date_to,
                 "extractor": options.extractor,
                 "min_relevance_score": options.min_relevance_score,
                 "skip_yahoo": options.skip_yahoo,
@@ -203,6 +232,7 @@ def write_run_summary(
             },
             "counts": {
                 "companies": len(companies),
+                "roles": summarize_universe(companies)["role_counts"],
                 "filings": len(filings),
                 "passages": len(passages),
                 "candidate_passages": len(candidate_passages),
@@ -211,6 +241,7 @@ def write_run_summary(
             },
             "outputs": {
                 "company_universe": str(settings.processed_dir / "company_universe_resolved.csv"),
+                "input_plan": str(settings.processed_dir / "input_plan.json"),
                 "filing_manifest": str(settings.processed_dir / "filing_manifest.csv"),
                 "relation_evidence": str(settings.processed_dir / "relation_evidence.jsonl"),
                 "graph_edges": str(settings.processed_dir / "graph_edges.csv"),

@@ -43,3 +43,19 @@ def test_risk_language_is_not_current_fact_by_default() -> None:
         "our suppliers may be unable to provide capacity, which could adversely affect us",
     )
     assert modality == "risk_hypothetical"
+
+
+def test_rules_do_not_emit_subject_as_dependency_object() -> None:
+    companies = [
+        Company("MSFT", "Microsoft Corporation", cik="0000789019"),
+        Company("AMZN", "Amazon.com Inc.", cik="0001018724"),
+    ]
+    extractor = RuleBasedRelationExtractor(EntityResolver(companies))
+    records = extractor.extract(
+        make_passage(
+            "Microsoft Corporation relies on cloud infrastructure and data center capacity.",
+            section="item_1_business",
+        )
+    )
+    assert records
+    assert all(record.object != "Microsoft Corporation" for record in records)

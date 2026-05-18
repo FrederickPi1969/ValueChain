@@ -66,12 +66,15 @@ class EntityResolver:
                 )
         return dedupe_mentions(mentions)
 
-    def resolve_object(self, object_hint: str, text: str) -> EntityMention:
+    def resolve_object(self, object_hint: str, text: str, subject_name: str = "") -> EntityMention:
         mentions = self.extract_mentions(text)
+        subject_key = subject_name.strip().lower()
         subject_mentions = [
             mention for mention in mentions if mention.normalized_name.lower() in text[:150].lower()
         ]
         for mention in mentions:
+            if subject_key and mention.normalized_name.lower() == subject_key:
+                continue
             if mention not in subject_mentions:
                 return mention
         normalized = object_hint.strip() or "unnamed counterparty"
@@ -104,4 +107,3 @@ def dedupe_mentions(mentions: list[EntityMention]) -> list[EntityMention]:
         seen.add(key)
         deduped.append(mention)
     return deduped
-

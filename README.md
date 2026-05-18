@@ -2,8 +2,8 @@
 
 This repository is a compact prototype for turning SEC filings into typed,
 evidence-backed dependency records for AI infrastructure companies. The first
-goal is to get the whole workflow running on a small company universe, not to
-produce a perfect industry graph.
+goal is to run an industry-level value-chain workflow over a controlled universe,
+not to produce a perfect global industry graph on day one.
 
 ## What It Builds
 
@@ -41,6 +41,31 @@ cp .env.example .env
 Edit `.env` and set `VALUECHAIN_SEC_USER_AGENT` to a real project/contact
 string before larger SEC runs.
 
+## Input Surface
+
+The default input is the AI infrastructure universe in
+`data/universe/ai_infra_universe.csv`, not a single company. Use `plan` before a
+large run:
+
+```bash
+valuechain universe --priority 1
+valuechain plan --priority 1 --forms 10-K,10-Q,8-K --max-filings-per-company 3 --write
+```
+
+Useful input controls:
+
+- `--priority 1` keeps the highest-priority value-chain names first.
+- `--roles cloud_hyperscaler,foundry,data_centers` runs specific chain layers.
+- `--tickers NVDA,AMD,MSFT` is for debugging or focused review.
+- `--limit-companies 10` caps a batch while keeping deterministic ordering.
+- `--filing-date-from YYYY-MM-DD` and `--filing-date-to YYYY-MM-DD` bound the SEC filing window.
+- `--forms 10-K,10-Q,8-K,20-F,6-K` controls disclosure types.
+- `--max-filings-per-company` controls depth per issuer.
+
+The plan output includes company count, role coverage, forms, filing upper
+bound, and a conservative SEC request estimate. Archive downloads are cached
+under `data/raw/`, so reruns skip already-downloaded primary filing documents.
+
 ## Quick Run
 
 Small SEC-only smoke run:
@@ -50,10 +75,16 @@ source .env
 valuechain run --tickers NVDA,AMD,MSFT --forms 10-K,10-Q,8-K --max-filings-per-company 2 --skip-yahoo
 ```
 
+Industry-layer run over priority 1 names:
+
+```bash
+valuechain run --priority 1 --forms 10-K,10-Q,8-K,20-F --max-filings-per-company 3 --skip-yahoo
+```
+
 With Yahoo Finance enrichment:
 
 ```bash
-valuechain run --tickers NVDA,AMD,TSM,ASML,MSFT,AMZN,GOOGL,META,ORCL,ANET,SMCI,VRT,EQIX --max-filings-per-company 2
+valuechain run --priority 1 --max-filings-per-company 2
 ```
 
 Hybrid extraction, using the configured Qwen endpoint when available and
@@ -77,6 +108,7 @@ Outputs are written to:
 - `data/processed/yahoo_snapshot.csv`
 - `data/processed/validation_sample.csv`
 - `data/processed/run_summary.json`
+- `data/processed/input_plan.json`
 - `reports/dashboard.html`
 
 Open `reports/dashboard.html` in a browser to inspect company exposures,

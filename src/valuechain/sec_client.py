@@ -91,6 +91,8 @@ class SECClient:
         company: Company,
         forms: set[str],
         max_filings: int,
+        filing_date_from: str = "",
+        filing_date_to: str = "",
     ) -> list[FilingRecord]:
         if not company.cik:
             return []
@@ -101,6 +103,11 @@ class SECClient:
         for idx, accession in enumerate(accessions):
             form = _get_recent_value(recent, "form", idx)
             if form not in forms:
+                continue
+            filing_date = _get_recent_value(recent, "filingDate", idx)
+            if filing_date_from and filing_date < filing_date_from:
+                continue
+            if filing_date_to and filing_date > filing_date_to:
                 continue
             cik_no_leading = str(int(company.cik))
             accession_no_dashes = accession.replace("-", "")
@@ -114,7 +121,7 @@ class SECClient:
                     company_name=company.company_name,
                     form=form,
                     accession_number=accession,
-                    filing_date=_get_recent_value(recent, "filingDate", idx),
+                    filing_date=filing_date,
                     report_date=_get_recent_value(recent, "reportDate", idx),
                     accepted_timestamp=_get_recent_value(recent, "acceptanceDateTime", idx),
                     primary_document=primary_doc,

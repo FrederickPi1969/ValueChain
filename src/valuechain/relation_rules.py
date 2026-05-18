@@ -73,7 +73,11 @@ class RuleBasedRelationExtractor:
                 certainty = "high"
             elif modality == "risk_hypothetical":
                 confidence -= 0.05
-            object_mention = self.resolver.resolve_object(object_hint, text)
+            object_mention = self.resolver.resolve_object(
+                object_hint,
+                text,
+                subject_name=passage.company_name,
+            )
             records.append(
                 RelationEvidence(
                     subject=passage.company_name,
@@ -139,4 +143,3 @@ def dedupe_records(records: list[RelationEvidence]) -> list[RelationEvidence]:
         seen.add(key)
         deduped.append(record)
     return deduped
-
