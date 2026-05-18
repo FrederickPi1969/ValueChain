@@ -6,24 +6,123 @@ from valuechain.llm_client import OpenAICompatibleClient
 from valuechain.models import Passage, RelationEvidence
 
 
-SYSTEM_PROMPT = """You extract financial-domain dependency relations from SEC filing passages.
-Return only a JSON array. Do not include prose.
-Each object must have: object, relation_type, modality, certainty, temporal_scope, confidence_score.
-Prefer named counterparties when the passage discloses them. Use generic class objects only when the
-passage clearly states a dependency, concentration, or exposure without naming the counterparty.
-Do not emit a dependency just because the subject sells cloud, data center, networking, AI, or
-semiconductor products. Product-market, competition, and customer-benefit statements are not
-dependency relations unless they disclose reliance on another entity or constrained resource.
-Use only these relation_type values:
-supplier_dependency, customer_dependency, manufacturing_dependency, foundry_dependency,
-packaging_or_assembly_dependency, cloud_or_hosting_dependency, data_center_dependency,
-power_or_utility_dependency, network_or_interconnection_dependency,
-distribution_or_channel_dependency, strategic_partner, co_investment,
-licensing_dependency, facility_or_geographic_exposure, subsidiary_or_control,
-concentration_risk.
-Use modality values: current_fact, historical_fact, risk_hypothetical, forward_looking, strategic.
-Do not convert hypothetical risk language into current_fact.
-If no dependency relation is present, return [].
+ALLOWED_RELATION_TYPES = {
+    "supplier_dependency",
+    "customer_dependency",
+    "manufacturing_dependency",
+    "foundry_dependency",
+    "packaging_or_assembly_dependency",
+    "cloud_or_hosting_dependency",
+    "data_center_dependency",
+    "power_or_utility_dependency",
+    "network_or_interconnection_dependency",
+    "distribution_or_channel_dependency",
+    "strategic_partner",
+    "co_investment",
+    "licensing_dependency",
+    "facility_or_geographic_exposure",
+    "subsidiary_or_control",
+    "concentration_risk",
+}
+
+ALLOWED_MODALITIES = {
+    "current_fact",
+    "historical_fact",
+    "risk_hypothetical",
+    "forward_looking",
+    "strategic",
+}
+
+LOW_INFORMATION_OBJECTS = {
+    "customer",
+    "customers",
+    "supplier",
+    "suppliers",
+    "vendor",
+    "vendors",
+    "third party",
+    "third parties",
+    "third-party",
+    "third-party providers",
+    "providers",
+    "manufacturing_dependency",
+    "concentration_risk",
+    "supplier_dependency",
+    "cloud_or_hosting_dependency",
+}
+
+
+SYSTEM_PROMPT = """You are a high-precision financial-domain relation extractor for SEC filing passages.
+Return only a JSON array. Do not include prose, markdown, explanations, or trailing comments.
+
+Task:
+Extract evidence-backed dependency relations where the subject company depends on, is exposed to,
+controls, partners with, or has concentrated exposure to a specific object disclosed in the passage.
+
+Output schema for each JSON object:
+- object: string. Prefer exact named counterparties, named organizations, named facilities, named geographies,
+  or anonymous concentration labels such as "Customer A" when the passage gives concentration percentages.
+- object_kind: one of named_company, named_org, geography, facility, anonymous_counterparty, subsidiary_or_affiliate.
+- relation_type: one of supplier_dependency, customer_dependency, manufacturing_dependency,
+  foundry_dependency, packaging_or_assembly_dependency, cloud_or_hosting_dependency,
+  data_center_dependency, power_or_utility_dependency, network_or_interconnection_dependency,
+  distribution_or_channel_dependency, strategic_partner, co_investment, licensing_dependency,
+  facility_or_geographic_exposure, subsidiary_or_control, concentration_risk.
+- modality: one of current_fact, historical_fact, risk_hypothetical, forward_looking, strategic.
+- certainty: high, medium, or low.
+- temporal_scope: short string such as as_disclosed, FY2025, Q1 2026, multi-year, historical.
+- evidence_quote: a short quote from the passage that directly supports the relation.
+- confidence_score: number from 0 to 1.
+
+Return at most 5 relation objects for one passage. Prefer the strongest named-counterparty evidence.
+Keep evidence_quote to 25 words or fewer. Do not duplicate the same object/relation/modality.
+
+Precision rules:
+1. Emit a relation only when the passage directly supports the subject-object relation. Do not infer from
+   co-occurrence, market category, or broad industry context.
+2. For supplier, manufacturing, foundry, packaging, cloud, data center, power, network, distribution, or
+   licensing dependencies, require explicit reliance language such as rely on, depend on, utilize, outsource,
+   purchase from, obtain from, procure from, source from, hosted by, powered by, supplied by, or constrained by.
+3. For customer_dependency and concentration_risk, require concentration language, percentages, named large
+   customers, "major customer", "limited number of customers", or similar dependence on demand/revenue.
+4. For strategic_partner and co_investment, require explicit strategic partnership, alliance, joint development,
+   collaboration agreement, joint venture, or co-investment language. Ordinary suppliers, customers,
+   competitors, and ecosystem participants are not strategic partners.
+5. For facility_or_geographic_exposure, emit only when the geography/facility is tied to operations, supply,
+   manufacturing, data centers, revenue concentration, export controls, or disruption risk. Do not emit ordinary
+   market names, segment names, headquarters locations, or sales regions without exposure.
+6. Modality must follow the disclosure language:
+   - current_fact: present operating dependency or relationship is directly stated.
+   - historical_fact: past relationship or historical concentration.
+   - risk_hypothetical: conditional risk-factor language, "may", "could", "if", possible disruption.
+   - forward_looking: planned, expected, intended, future-oriented relation.
+   - strategic: formal strategic partnership, co-investment, alliance, joint development, or collaboration.
+7. If a passage says the subject sells cloud, AI, data center, power, semiconductor, networking, or software
+   products, that is not a dependency by itself.
+8. Do not output generic dependency-class objects such as "supplier", "customers", "cloud provider",
+   "manufacturing_dependency", or "concentration_risk". If the object is not specific enough, return [].
+9. Do not output the subject company, its own products, its business segments, or its internal brands as objects.
+
+Failure cases to avoid:
+- "Power" as a company segment is not power_or_utility_dependency.
+- A competitor list is not strategic_partner.
+- AWS/Azure/GCP mentioned as a customer segment, product integration, or industry example is not cloud reliance.
+- A broad AI risk paragraph mentioning third parties is not a named supplier/customer relation.
+- Do not use a relation_type value as the object.
+
+Positive examples:
+- "We rely on Taiwan Semiconductor Manufacturing Company Limited (TSMC) for wafers..." =>
+  [{"object":"Taiwan Semiconductor Manufacturing Company Limited","object_kind":"named_company",
+    "relation_type":"foundry_dependency","modality":"current_fact","certainty":"high",
+    "temporal_scope":"as_disclosed","evidence_quote":"We rely on Taiwan Semiconductor Manufacturing Company Limited (TSMC) for... wafers",
+    "confidence_score":0.95}]
+- "Two customers accounted for 26% and 16% of revenue..." =>
+  concentration_risk with objects "Customer A" and "Customer B", modality historical_fact or current_fact
+  depending on the period language.
+- "The company held 32% of Digital Core REIT units..." =>
+  subsidiary_or_control or facility_or_geographic_exposure only if the ownership/control relation is explicit.
+
+If no precise dependency relation is present, return [].
 """
 
 
@@ -33,18 +132,18 @@ class LLMRelationExtractor:
     model_version: str
 
     def extract(self, passage: Passage) -> list[RelationEvidence]:
-        return records_from_payload(
-            passage,
-            self.model_version,
-            self.client.chat_json(SYSTEM_PROMPT, build_prompt(passage)),
-        )
+        try:
+            payload = self.client.chat_json(SYSTEM_PROMPT, build_prompt(passage))
+        except Exception:
+            return []
+        return records_from_payload(passage, self.model_version, payload)
 
     async def extract_async(self, passage: Passage) -> list[RelationEvidence]:
-        return records_from_payload(
-            passage,
-            self.model_version,
-            await self.client.chat_json_async(SYSTEM_PROMPT, build_prompt(passage)),
-        )
+        try:
+            payload = await self.client.chat_json_async(SYSTEM_PROMPT, build_prompt(passage))
+        except Exception:
+            return []
+        return records_from_payload(passage, self.model_version, payload)
 
     async def aclose(self) -> None:
         await self.client.aclose()
@@ -71,20 +170,28 @@ def records_from_payload(
         if not isinstance(item, dict):
             continue
         relation_type = str(item.get("relation_type", "")).strip()
-        obj = normalize_object_payload(item.get("object", ""))
-        if not relation_type or not obj:
+        if relation_type not in ALLOWED_RELATION_TYPES:
             continue
+        obj = normalize_object_payload(item.get("object", ""))
+        if not obj or is_low_information_llm_object(obj, relation_type):
+            continue
+        modality = str(item.get("modality", "current_fact")).strip()
+        if modality not in ALLOWED_MODALITIES:
+            continue
+        if relation_type in {"strategic_partner", "co_investment"} and modality != "strategic":
+            continue
+        confidence_score = normalize_confidence(item.get("confidence_score", 0.6))
         records.append(
             RelationEvidence(
                 subject=passage.company_name,
                 object=obj,
                 relation_type=relation_type,
                 direction="subject_depends_on_object",
-                modality=str(item.get("modality", "current_fact")),
+                modality=modality,
                 certainty=str(item.get("certainty", "medium")),
                 temporal_scope=str(item.get("temporal_scope", "as_disclosed")),
                 evidence_text=passage.text[:1800],
-                confidence_score=float(item.get("confidence_score", 0.6)),
+                confidence_score=confidence_score,
                 extractor_model_version=model_version,
                 ticker=passage.ticker,
                 cik=passage.cik,
@@ -113,6 +220,26 @@ def normalize_object_payload(value) -> str:
     if isinstance(value, list):
         return "; ".join(str(item).strip() for item in value if str(item).strip())
     return str(value).strip()
+
+
+def is_low_information_llm_object(obj: str, relation_type: str) -> bool:
+    normalized = obj.strip().lower()
+    relation_like = relation_type.lower().replace("_", " ")
+    if normalized in LOW_INFORMATION_OBJECTS:
+        return True
+    if normalized == relation_type.lower() or normalized == relation_like:
+        return True
+    if normalized.endswith(" dependency") or normalized.endswith(" dependency class"):
+        return True
+    return False
+
+
+def normalize_confidence(value) -> float:
+    try:
+        score = float(value)
+    except (TypeError, ValueError):
+        score = 0.6
+    return round(max(0.0, min(score, 1.0)), 3)
 
 
 @dataclass

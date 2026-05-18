@@ -119,3 +119,31 @@ merge_policy:
     model: "qwen3-embed-0.6b"
     default_threshold: 0.92
     usage: "Use for alias discovery after deterministic filtering; do not replace provenance or manual validation."
+llm_extraction_policy:
+  version: "0.2"
+  role: "High-precision named-object extractor. Rules may create generic dependency-class candidates; LLM output should not."
+  object_policy:
+    preferred:
+      - named_company
+      - named_org
+      - geography
+      - facility
+      - anonymous_counterparty
+      - subsidiary_or_affiliate
+    disallowed_generic_objects:
+      - supplier
+      - suppliers
+      - customer
+      - customers
+      - cloud provider
+      - data center provider
+      - manufacturing_dependency
+      - concentration_risk
+  precision_rules:
+    - "Do not infer dependency from co-occurrence, market category, product description, competitor list, or broad industry context."
+    - "Use current_fact only when present operating reliance is directly stated."
+    - "Use risk_hypothetical for conditional risk-factor language unless the same sentence directly states present reliance."
+    - "Require explicit strategic partnership, alliance, joint development, joint venture, or co-investment language for strategic_partner and co_investment."
+    - "Drop strategic_partner and co_investment outputs unless modality is strategic."
+    - "Customer concentration requires named customers, anonymous customer labels supported by percentages, or explicit limited-customer concentration language."
+    - "Limit LLM output to the strongest five relations per passage; malformed single-passage output must not crash batch extraction."
