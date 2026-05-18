@@ -114,6 +114,21 @@ Outputs are written to:
 Open `reports/dashboard.html` in a browser to inspect company exposures,
 bottleneck candidates, typed edges, and original filing evidence.
 
+## Frontend
+
+The generated dashboard is a static portfolio review console, so it can be
+opened directly from `reports/dashboard.html` or served by any simple static
+server. It includes:
+
+- global search across companies, dependencies, relation types, and evidence;
+- company / relation / modality filters;
+- filtered metrics for companies, edges, current evidence, risk evidence, and bottleneck candidates;
+- relation and modality mix bars;
+- company x relation heatmap;
+- portfolio exposure, bottleneck, edge, and evidence tabs;
+- evidence drawer with SEC provenance and source filing link;
+- CSV export for the filtered edge table.
+
 ## Design Notes
 
 This is aimed at ETF portfolio managers, so the first dashboard is not a pure

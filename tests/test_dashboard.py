@@ -45,6 +45,7 @@ def test_render_dashboard_writes_html(tmp_path: Path) -> None:
     output = tmp_path / "dashboard.html"
     render_dashboard(output, [edge], [record], [{"symbol": "A", "sector": "Tech"}])
     html = output.read_text(encoding="utf-8")
-    assert "Disclosure-Derived AI Value Chain Graph" in html
+    assert "AI Value Chain Disclosure Console" in html
+    assert "dashboardData" in html
+    assert "Company x Relation Heatmap" in html
     assert "TSMC" in html
-

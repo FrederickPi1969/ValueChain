@@ -7,217 +7,1100 @@
   <style>
     :root {
       color-scheme: light;
-      --ink: #16202a;
-      --muted: #617181;
-      --line: #d7dee6;
-      --bg: #f6f8fb;
-      --panel: #ffffff;
-      --accent: #0f766e;
-      --warn: #9a3412;
+      --bg: #f4f6f8;
+      --surface: #ffffff;
+      --surface-2: #f9fbfc;
+      --ink: #15212c;
+      --muted: #61717f;
+      --line: #d8e0e7;
+      --line-strong: #bac7d2;
+      --teal: #0f766e;
+      --blue: #1d4ed8;
+      --amber: #b45309;
+      --red: #b42318;
+      --green: #15803d;
+      --shadow: 0 1px 2px rgba(20, 32, 44, 0.06);
     }
+
+    * { box-sizing: border-box; }
+
     body {
       margin: 0;
       font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       color: var(--ink);
       background: var(--bg);
     }
-    header {
-      padding: 24px 32px 16px;
-      background: #fff;
-      border-bottom: 1px solid var(--line);
+
+    button, input, select {
+      font: inherit;
     }
-    h1 {
-      margin: 0 0 8px;
-      font-size: 26px;
-      letter-spacing: 0;
+
+    button {
+      cursor: pointer;
     }
-    h2 {
-      margin: 0 0 12px;
-      font-size: 17px;
-      letter-spacing: 0;
+
+    a {
+      color: #075985;
+      text-decoration: none;
     }
-    main {
-      padding: 20px 32px 36px;
+
+    a:hover {
+      text-decoration: underline;
     }
-    .metrics {
+
+    .app-shell {
+      min-height: 100vh;
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-      gap: 12px;
-      margin-bottom: 20px;
+      grid-template-rows: auto auto 1fr;
     }
-    .metric, section {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-    }
-    .metric {
-      padding: 14px 16px;
-    }
-    .metric strong {
-      display: block;
-      font-size: 24px;
-    }
-    .metric span {
-      color: var(--muted);
-    }
-    section {
-      margin: 16px 0;
-      padding: 16px;
-      overflow: auto;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      min-width: 900px;
-    }
-    th, td {
+
+    .topbar {
+      background: var(--surface);
       border-bottom: 1px solid var(--line);
-      padding: 8px 10px;
-      text-align: left;
-      vertical-align: top;
+      padding: 18px 24px 14px;
     }
-    th {
+
+    .title-row {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin-top: 5px;
       color: var(--muted);
-      font-size: 12px;
-      text-transform: uppercase;
-      background: #fbfcfe;
-      position: sticky;
-      top: 0;
     }
-    .pill {
-      display: inline-block;
-      padding: 2px 7px;
+
+    .run-meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      min-width: 240px;
+    }
+
+    .chip, .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-height: 24px;
+      padding: 2px 8px;
       border-radius: 999px;
-      background: #e6f3f1;
-      color: var(--accent);
+      border: 1px solid var(--line);
+      background: #fff;
+      color: #314454;
       font-size: 12px;
       white-space: nowrap;
     }
-    .risk {
-      background: #fff2e8;
-      color: var(--warn);
+
+    .pill.current { color: var(--green); background: #ecfdf3; border-color: #b7e4c7; }
+    .pill.risk { color: var(--red); background: #fff1f0; border-color: #f4b8b2; }
+    .pill.forward { color: var(--amber); background: #fff7ed; border-color: #fed7aa; }
+    .pill.strategic { color: var(--blue); background: #eff6ff; border-color: #bfdbfe; }
+
+    .filters {
+      position: sticky;
+      top: 0;
+      z-index: 8;
+      display: grid;
+      grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(160px, 1fr)) auto;
+      gap: 10px;
+      padding: 12px 24px;
+      background: rgba(244, 246, 248, 0.96);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--line);
     }
-    .evidence {
-      max-width: 560px;
+
+    .control {
+      display: grid;
+      gap: 4px;
     }
-    input {
-      width: min(420px, 100%);
-      padding: 8px 10px;
-      border: 1px solid var(--line);
+
+    .control label {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .control input, .control select {
+      width: 100%;
+      min-height: 36px;
+      border: 1px solid var(--line-strong);
       border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      padding: 7px 9px;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: end;
+      justify-content: flex-end;
+    }
+
+    .btn {
+      min-height: 36px;
+      padding: 7px 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      box-shadow: var(--shadow);
+      white-space: nowrap;
+    }
+
+    .btn.primary {
+      border-color: #0f766e;
+      background: #0f766e;
+      color: #fff;
+    }
+
+    .btn.icon {
+      width: 36px;
+      padding: 0;
+      font-weight: 700;
+    }
+
+    main {
+      padding: 18px 24px 32px;
+      display: grid;
+      gap: 16px;
+      min-width: 0;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(140px, 1fr));
+      gap: 10px;
+    }
+
+    .metric, .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      min-width: 0;
+    }
+
+    .metric {
+      padding: 12px 14px;
+      min-height: 82px;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 5px;
+      font-size: 25px;
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .metric .delta {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 6px;
+      border-bottom: 1px solid var(--line);
+      padding: 10px 10px 0;
+      background: var(--surface);
+      border-radius: 8px 8px 0 0;
+    }
+
+    .tab {
+      min-height: 34px;
+      padding: 7px 12px;
+      border: 1px solid transparent;
+      border-bottom: 0;
+      border-radius: 6px 6px 0 0;
+      background: transparent;
+      color: var(--muted);
+    }
+
+    .tab.active {
+      background: var(--surface-2);
+      border-color: var(--line);
+      color: var(--ink);
+      font-weight: 600;
+    }
+
+    .view {
+      display: none;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-top: 0;
+      border-radius: 0 0 8px 8px;
+      padding: 16px;
+      min-width: 0;
+    }
+
+    .view.active {
+      display: grid;
+      gap: 16px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: minmax(300px, 1fr) minmax(300px, 1fr);
+      gap: 16px;
+      min-width: 0;
+    }
+
+    .grid-2 > section {
+      min-width: 0;
+    }
+
+    .section-head {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
       margin-bottom: 10px;
     }
-    a { color: #075985; }
+
+    h2, h3 {
+      margin: 0;
+      letter-spacing: 0;
+    }
+
+    h2 { font-size: 17px; }
+    h3 { font-size: 15px; }
+
+    .subtle {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .bar-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .bar-row {
+      display: grid;
+      grid-template-columns: minmax(140px, 220px) 1fr 52px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .bar-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .bar-track {
+      height: 10px;
+      background: #edf2f6;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      min-width: 3px;
+      background: linear-gradient(90deg, #0f766e, #1d4ed8);
+      border-radius: inherit;
+    }
+
+    .matrix {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .matrix table {
+      min-width: 760px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--muted);
+      background: #fbfcfe;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    tbody tr:hover {
+      background: #f8fbfc;
+    }
+
+    .table-wrap {
+      max-height: 620px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      width: 100%;
+      max-width: 100%;
+    }
+
+    .text-tight {
+      max-width: 520px;
+      overflow-wrap: anywhere;
+    }
+
+    .score-cell {
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .heat {
+      display: inline-flex;
+      min-width: 36px;
+      justify-content: center;
+      padding: 3px 7px;
+      border-radius: 6px;
+      color: #0f172a;
+      background: #edf2f6;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .heat.hot-1 { background: #e0f2fe; }
+    .heat.hot-2 { background: #ccfbf1; }
+    .heat.hot-3 { background: #fef3c7; }
+    .heat.hot-4 { background: #fed7aa; }
+    .heat.hot-5 { background: #fecaca; }
+
+    .drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      z-index: 20;
+      width: min(640px, 100vw);
+      height: 100vh;
+      background: #fff;
+      border-left: 1px solid var(--line-strong);
+      box-shadow: -8px 0 24px rgba(15, 23, 42, 0.16);
+      transform: translateX(102%);
+      transition: transform 160ms ease;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .drawer.open {
+      transform: translateX(0);
+    }
+
+    .drawer-head {
+      padding: 16px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+
+    .drawer-body {
+      padding: 16px;
+      overflow: auto;
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+
+    .evidence-box {
+      white-space: pre-wrap;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfe;
+      padding: 12px;
+      line-height: 1.55;
+    }
+
+    .kv {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 7px 12px;
+    }
+
+    .kv dt {
+      color: var(--muted);
+    }
+
+    .kv dd {
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .empty {
+      padding: 28px;
+      text-align: center;
+      color: var(--muted);
+      border: 1px dashed var(--line-strong);
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+
+    @media (max-width: 1080px) {
+      .filters {
+        grid-template-columns: 1fr 1fr;
+      }
+      .toolbar {
+        justify-content: flex-start;
+      }
+      .metrics {
+        grid-template-columns: repeat(2, minmax(140px, 1fr));
+      }
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .topbar, .filters, main {
+        padding-left: 14px;
+        padding-right: 14px;
+      }
+      .title-row {
+        display: grid;
+      }
+      .run-meta {
+        justify-content: flex-start;
+      }
+      .filters {
+        position: static;
+        grid-template-columns: 1fr;
+      }
+      .metrics {
+        grid-template-columns: 1fr;
+      }
+      .tabs {
+        overflow-x: auto;
+      }
+      .view {
+        padding: 12px;
+      }
+      .bar-row {
+        grid-template-columns: minmax(96px, 1fr) 1fr 44px;
+      }
+      .matrix table, .table-wrap table {
+        min-width: 680px;
+      }
+      th, td {
+        padding: 8px;
+      }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Disclosure-Derived AI Value Chain Graph</h1>
-    <div>Evidence-backed dependency records for portfolio review, bottleneck triage, and validation.</div>
-  </header>
-  <main>
-    <div class="metrics">
-      <div class="metric"><strong>{{ company_count }}</strong><span>Companies with edges</span></div>
-      <div class="metric"><strong>{{ evidence_count }}</strong><span>Evidence records</span></div>
-      <div class="metric"><strong>{{ edge_count }}</strong><span>Aggregated edges</span></div>
-      <div class="metric"><strong>{{ bottlenecks|length }}</strong><span>Bottleneck candidates</span></div>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="title-row">
+        <div>
+          <h1>AI Value Chain Disclosure Console</h1>
+          <div class="subtitle">Typed dependency evidence, bottleneck candidates, and filing provenance.</div>
+        </div>
+        <div class="run-meta">
+          <span class="chip">Companies <strong id="metaCompanies">{{ company_count }}</strong></span>
+          <span class="chip">Edges <strong id="metaEdges">{{ edge_count }}</strong></span>
+          <span class="chip">Evidence <strong id="metaEvidence">{{ evidence_count }}</strong></span>
+        </div>
+      </div>
+    </header>
+
+    <section class="filters" aria-label="Dashboard filters">
+      <div class="control">
+        <label for="globalSearch">Search</label>
+        <input id="globalSearch" type="search" placeholder="Company, dependency, relation, evidence text">
+      </div>
+      <div class="control">
+        <label for="companyFilter">Company</label>
+        <select id="companyFilter"></select>
+      </div>
+      <div class="control">
+        <label for="relationFilter">Relation</label>
+        <select id="relationFilter"></select>
+      </div>
+      <div class="control">
+        <label for="modalityFilter">Modality</label>
+        <select id="modalityFilter"></select>
+      </div>
+      <div class="toolbar">
+        <button class="btn icon" id="resetFilters" title="Reset filters" aria-label="Reset filters">×</button>
+        <button class="btn" id="exportEdges">CSV</button>
+        <button class="btn primary" id="showCurrentFacts">Current</button>
+      </div>
+    </section>
+
+    <main>
+      <section class="metrics" aria-label="Filtered metrics">
+        <div class="metric">
+          <span class="label">Filtered Companies</span>
+          <strong id="metricCompanies">0</strong>
+          <div class="delta" id="metricCompaniesDelta"></div>
+        </div>
+        <div class="metric">
+          <span class="label">Filtered Edges</span>
+          <strong id="metricEdges">0</strong>
+          <div class="delta" id="metricEdgesDelta"></div>
+        </div>
+        <div class="metric">
+          <span class="label">Current Evidence</span>
+          <strong id="metricCurrent">0</strong>
+          <div class="delta">operating dependency signal</div>
+        </div>
+        <div class="metric">
+          <span class="label">Risk Evidence</span>
+          <strong id="metricRisk">0</strong>
+          <div class="delta">hypothetical or risk-factor signal</div>
+        </div>
+        <div class="metric">
+          <span class="label">Shared Bottlenecks</span>
+          <strong id="metricBottlenecks">0</strong>
+          <div class="delta">objects with repeated dependent companies</div>
+        </div>
+      </section>
+
+      <section class="panel" aria-label="Dashboard views">
+        <nav class="tabs">
+          <button class="tab active" data-view="overview">Overview</button>
+          <button class="tab" data-view="companies">Companies</button>
+          <button class="tab" data-view="bottlenecks">Bottlenecks</button>
+          <button class="tab" data-view="edges">Edges</button>
+          <button class="tab" data-view="evidence">Evidence</button>
+        </nav>
+
+        <div class="view active" id="view-overview">
+          <div class="grid-2">
+            <section>
+              <div class="section-head">
+                <h2>Relation Mix</h2>
+                <span class="subtle" id="relationMixCount"></span>
+              </div>
+              <div class="bar-list" id="relationBars"></div>
+            </section>
+            <section>
+              <div class="section-head">
+                <h2>Modality Mix</h2>
+                <span class="subtle" id="modalityMixCount"></span>
+              </div>
+              <div class="bar-list" id="modalityBars"></div>
+            </section>
+          </div>
+
+          <section>
+            <div class="section-head">
+              <h2>Company x Relation Heatmap</h2>
+              <span class="subtle">evidence counts</span>
+            </div>
+            <div class="matrix" id="heatmap"></div>
+          </section>
+        </div>
+
+        <div class="view" id="view-companies">
+          <div class="section-head">
+            <h2>Portfolio Exposure</h2>
+            <span class="subtle" id="companyTableCount"></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Company</th>
+                  <th>Ticker</th>
+                  <th>Edges</th>
+                  <th>Evidence</th>
+                  <th>Current</th>
+                  <th>Risk</th>
+                  <th>Relation Breadth</th>
+                  <th>Avg Confidence</th>
+                </tr>
+              </thead>
+              <tbody id="companyRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="view" id="view-bottlenecks">
+          <div class="section-head">
+            <h2>Bottleneck Candidates</h2>
+            <span class="subtle" id="bottleneckTableCount"></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Dependency Object</th>
+                  <th>Dependent Companies</th>
+                  <th>Evidence</th>
+                  <th>Relation Types</th>
+                  <th>Subjects</th>
+                </tr>
+              </thead>
+              <tbody id="bottleneckRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="view" id="view-edges">
+          <div class="section-head">
+            <h2>Aggregated Edges</h2>
+            <span class="subtle" id="edgeTableCount"></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Subject</th>
+                  <th>Object</th>
+                  <th>Relation</th>
+                  <th>Modality</th>
+                  <th>Evidence</th>
+                  <th>Confidence</th>
+                  <th>Window</th>
+                  <th>Source</th>
+                </tr>
+              </thead>
+              <tbody id="edgeRows"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="view" id="view-evidence">
+          <div class="section-head">
+            <h2>Evidence Inspector</h2>
+            <span class="subtle" id="evidenceTableCount"></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Company</th>
+                  <th>Relation</th>
+                  <th>Object</th>
+                  <th>Modality</th>
+                  <th>Filing</th>
+                  <th>Section</th>
+                  <th>Evidence</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="evidenceRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <aside class="drawer" id="evidenceDrawer" aria-label="Evidence details">
+    <div class="drawer-head">
+      <div>
+        <h2 id="drawerTitle">Evidence</h2>
+        <div class="subtle" id="drawerSubtitle"></div>
+      </div>
+      <button class="btn icon" id="closeDrawer" title="Close" aria-label="Close">×</button>
     </div>
+    <div class="drawer-body" id="drawerBody"></div>
+  </aside>
 
-    <section>
-      <h2>Portfolio Exposure Table</h2>
-      <table>
-        <thead><tr><th>Company</th><th>Evidence</th><th>Relation Types</th><th>Sector</th><th>Industry</th><th>Market Cap</th></tr></thead>
-        <tbody>
-        {% for row in company_context %}
-          <tr>
-            <td>{{ row.company }}</td>
-            <td>{{ row.evidence_count }}</td>
-            <td>{{ row.relation_types }}</td>
-            <td>{{ row.sector }}</td>
-            <td>{{ row.industry }}</td>
-            <td>{{ row.marketCap }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </section>
-
-    <section>
-      <h2>Bottleneck Candidates</h2>
-      <table>
-        <thead><tr><th>Dependency Object</th><th>Dependent Companies</th><th>Evidence</th><th>Relation Types</th><th>Subjects</th></tr></thead>
-        <tbody>
-        {% for row in bottlenecks %}
-          <tr>
-            <td>{{ row.object }}</td>
-            <td>{{ row.dependent_company_count }}</td>
-            <td>{{ row.evidence_count }}</td>
-            <td>{{ row.relation_types }}</td>
-            <td>{{ row.subjects }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </section>
-
-    <section>
-      <h2>Aggregated Edges</h2>
-      <input id="edgeFilter" placeholder="Filter edges by company, object, relation, modality">
-      <table id="edgeTable">
-        <thead><tr><th>Subject</th><th>Object</th><th>Relation</th><th>Modality</th><th>Evidence</th><th>Confidence</th><th>Window</th><th>Forms</th></tr></thead>
-        <tbody>
-        {% for edge in edges %}
-          <tr>
-            <td>{{ edge.subject }}</td>
-            <td>{{ edge.object }}</td>
-            <td>{{ edge.relation_type }}</td>
-            <td><span class="pill {% if edge.modality == 'risk_hypothetical' %}risk{% endif %}">{{ edge.modality }}</span></td>
-            <td>{{ edge.evidence_count }}</td>
-            <td>{{ edge.avg_confidence }}</td>
-            <td>{{ edge.first_seen }} to {{ edge.last_seen }}</td>
-            <td>{{ edge.forms }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </section>
-
-    <section>
-      <h2>Evidence Inspector</h2>
-      <input id="evidenceFilter" placeholder="Filter evidence by company, section, relation, text">
-      <table id="evidenceTable">
-        <thead><tr><th>Company</th><th>Relation</th><th>Object</th><th>Modality</th><th>Form</th><th>Date</th><th>Section</th><th>Evidence</th><th>Source</th></tr></thead>
-        <tbody>
-        {% for row in evidence %}
-          <tr>
-            <td>{{ row.subject }}</td>
-            <td>{{ row.relation_type }}</td>
-            <td>{{ row.object }}</td>
-            <td><span class="pill {% if row.modality == 'risk_hypothetical' %}risk{% endif %}">{{ row.modality }}</span></td>
-            <td>{{ row.form }}</td>
-            <td>{{ row.filing_date }}</td>
-            <td>{{ row.source_section }}</td>
-            <td class="evidence">{{ row.evidence_text }}</td>
-            <td><a href="{{ row.source_document_url }}">filing</a></td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </section>
-  </main>
+  <script id="dashboardData" type="application/json">{{ dashboard_data_json | safe }}</script>
   <script>
-    function bindFilter(inputId, tableId) {
-      const input = document.getElementById(inputId);
-      const rows = Array.from(document.querySelectorAll(`#${tableId} tbody tr`));
-      input.addEventListener('input', () => {
-        const q = input.value.toLowerCase();
-        rows.forEach(row => {
-          row.style.display = row.innerText.toLowerCase().includes(q) ? '' : 'none';
+    const DATA = JSON.parse(document.getElementById('dashboardData').textContent);
+    const state = {
+      search: '',
+      company: '',
+      relation: '',
+      modality: '',
+      activeView: 'overview',
+      filteredEdges: [],
+      filteredEvidence: []
+    };
+
+    const els = {
+      search: document.getElementById('globalSearch'),
+      company: document.getElementById('companyFilter'),
+      relation: document.getElementById('relationFilter'),
+      modality: document.getElementById('modalityFilter'),
+      metricCompanies: document.getElementById('metricCompanies'),
+      metricEdges: document.getElementById('metricEdges'),
+      metricCurrent: document.getElementById('metricCurrent'),
+      metricRisk: document.getElementById('metricRisk'),
+      metricBottlenecks: document.getElementById('metricBottlenecks')
+    };
+
+    function uniqueSorted(values) {
+      return Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    }
+
+    function optionList(select, values, allLabel) {
+      select.innerHTML = '';
+      const all = document.createElement('option');
+      all.value = '';
+      all.textContent = allLabel;
+      select.appendChild(all);
+      values.forEach(value => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+      });
+    }
+
+    function initFilters() {
+      optionList(els.company, uniqueSorted(DATA.edges.map(edge => edge.subject)), 'All companies');
+      optionList(els.relation, uniqueSorted(DATA.edges.map(edge => edge.relation_type)), 'All relations');
+      optionList(els.modality, uniqueSorted(DATA.edges.map(edge => edge.modality)), 'All modalities');
+    }
+
+    function modalityClass(modality) {
+      if (modality === 'risk_hypothetical') return 'risk';
+      if (modality === 'current_fact') return 'current';
+      if (modality === 'forward_looking') return 'forward';
+      if (modality === 'strategic') return 'strategic';
+      return '';
+    }
+
+    function matchesSearch(row) {
+      if (!state.search) return true;
+      return Object.values(row).join(' ').toLowerCase().includes(state.search);
+    }
+
+    function edgeMatches(edge) {
+      if (state.company && edge.subject !== state.company) return false;
+      if (state.relation && edge.relation_type !== state.relation) return false;
+      if (state.modality && edge.modality !== state.modality) return false;
+      return matchesSearch(edge);
+    }
+
+    function evidenceMatches(row) {
+      if (state.company && row.subject !== state.company) return false;
+      if (state.relation && row.relation_type !== state.relation) return false;
+      if (state.modality && row.modality !== state.modality) return false;
+      return matchesSearch(row);
+    }
+
+    function countBy(rows, key) {
+      const counts = new Map();
+      rows.forEach(row => counts.set(row[key], (counts.get(row[key]) || 0) + Number(row.evidence_count || 1)));
+      return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]);
+    }
+
+    function renderBars(containerId, rows, key, maxRows = 10) {
+      const container = document.getElementById(containerId);
+      const counts = countBy(rows, key).slice(0, maxRows);
+      const max = Math.max(...counts.map(([, count]) => count), 1);
+      container.innerHTML = counts.map(([label, count]) => `
+        <div class="bar-row">
+          <div class="bar-label" title="${escapeHtml(label)}">${escapeHtml(label)}</div>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.max(4, count / max * 100)}%"></div></div>
+          <div class="score-cell">${count}</div>
+        </div>
+      `).join('') || emptyBlock('No matching records');
+    }
+
+    function heatClass(value, max) {
+      if (!value) return '';
+      const ratio = value / Math.max(max, 1);
+      if (ratio > 0.8) return 'hot-5';
+      if (ratio > 0.6) return 'hot-4';
+      if (ratio > 0.4) return 'hot-3';
+      if (ratio > 0.2) return 'hot-2';
+      return 'hot-1';
+    }
+
+    function renderHeatmap() {
+      const relations = uniqueSorted(state.filteredEdges.map(edge => edge.relation_type)).slice(0, 10);
+      const companies = uniqueSorted(state.filteredEdges.map(edge => edge.subject)).slice(0, 18);
+      const matrix = new Map();
+      let max = 0;
+      state.filteredEdges.forEach(edge => {
+        const key = `${edge.subject}||${edge.relation_type}`;
+        const count = (matrix.get(key) || 0) + Number(edge.evidence_count || 0);
+        matrix.set(key, count);
+        max = Math.max(max, count);
+      });
+      if (!relations.length || !companies.length) {
+        document.getElementById('heatmap').innerHTML = emptyBlock('No matching matrix records');
+        return;
+      }
+      const head = `<tr><th>Company</th>${relations.map(relation => `<th>${escapeHtml(shortLabel(relation))}</th>`).join('')}</tr>`;
+      const body = companies.map(company => {
+        const cells = relations.map(relation => {
+          const value = matrix.get(`${company}||${relation}`) || 0;
+          return `<td><span class="heat ${heatClass(value, max)}">${value || ''}</span></td>`;
+        }).join('');
+        return `<tr><td class="text-tight">${escapeHtml(company)}</td>${cells}</tr>`;
+      }).join('');
+      document.getElementById('heatmap').innerHTML = `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;
+    }
+
+    function renderCompanies() {
+      const companyRows = DATA.companies
+        .filter(row => !state.company || row.company === state.company)
+        .filter(matchesSearch)
+        .sort((a, b) => Number(b.evidence_count) - Number(a.evidence_count));
+      document.getElementById('companyTableCount').textContent = `${companyRows.length} rows`;
+      document.getElementById('companyRows').innerHTML = companyRows.map(row => `
+        <tr>
+          <td><button class="btn" data-company="${escapeAttr(row.company)}">${escapeHtml(row.company)}</button></td>
+          <td>${escapeHtml(row.ticker || '')}</td>
+          <td class="score-cell">${row.edge_count || 0}</td>
+          <td class="score-cell">${row.evidence_count || 0}</td>
+          <td class="score-cell">${row.current_evidence_count || 0}</td>
+          <td class="score-cell">${row.risk_evidence_count || 0}</td>
+          <td class="score-cell">${row.relation_type_count || 0}</td>
+          <td class="score-cell">${row.avg_confidence || ''}</td>
+        </tr>
+      `).join('') || `<tr><td colspan="8">${emptyBlock('No matching companies')}</td></tr>`;
+      document.querySelectorAll('[data-company]').forEach(button => {
+        button.addEventListener('click', () => {
+          state.company = button.dataset.company || '';
+          els.company.value = state.company;
+          renderAll();
         });
       });
     }
-    bindFilter('edgeFilter', 'edgeTable');
-    bindFilter('evidenceFilter', 'evidenceTable');
+
+    function renderBottlenecks() {
+      const rows = DATA.bottlenecks.filter(row => {
+        if (state.search && !Object.values(row).join(' ').toLowerCase().includes(state.search)) return false;
+        if (state.company && !String(row.subjects || '').includes(state.company)) return false;
+        if (state.relation && !String(row.relation_types || '').includes(state.relation)) return false;
+        return true;
+      });
+      document.getElementById('bottleneckTableCount').textContent = `${rows.length} rows`;
+      document.getElementById('bottleneckRows').innerHTML = rows.slice(0, 300).map(row => `
+        <tr>
+          <td class="text-tight">${escapeHtml(row.object)}</td>
+          <td class="score-cell">${row.dependent_company_count}</td>
+          <td class="score-cell">${row.evidence_count}</td>
+          <td class="text-tight">${escapeHtml(row.relation_types)}</td>
+          <td class="text-tight">${escapeHtml(row.subjects)}</td>
+        </tr>
+      `).join('') || `<tr><td colspan="5">${emptyBlock('No matching bottleneck candidates')}</td></tr>`;
+    }
+
+    function renderEdges() {
+      document.getElementById('edgeTableCount').textContent = `${state.filteredEdges.length} rows`;
+      document.getElementById('edgeRows').innerHTML = state.filteredEdges.slice(0, 500).map(edge => `
+        <tr>
+          <td class="text-tight">${escapeHtml(edge.subject)}</td>
+          <td class="text-tight">${escapeHtml(edge.object)}</td>
+          <td>${escapeHtml(edge.relation_type)}</td>
+          <td><span class="pill ${modalityClass(edge.modality)}">${escapeHtml(edge.modality)}</span></td>
+          <td class="score-cell">${edge.evidence_count}</td>
+          <td class="score-cell">${edge.avg_confidence}</td>
+          <td>${escapeHtml(edge.first_seen || '')} to ${escapeHtml(edge.last_seen || '')}</td>
+          <td>${sourceLinks(edge.source_urls)}</td>
+        </tr>
+      `).join('') || `<tr><td colspan="8">${emptyBlock('No matching edges')}</td></tr>`;
+    }
+
+    function renderEvidence() {
+      document.getElementById('evidenceTableCount').textContent = `${state.filteredEvidence.length} rows`;
+      document.getElementById('evidenceRows').innerHTML = state.filteredEvidence.slice(0, 700).map((row, idx) => `
+        <tr>
+          <td class="text-tight">${escapeHtml(row.subject)}</td>
+          <td>${escapeHtml(row.relation_type)}</td>
+          <td class="text-tight">${escapeHtml(row.object)}</td>
+          <td><span class="pill ${modalityClass(row.modality)}">${escapeHtml(row.modality)}</span></td>
+          <td>${escapeHtml(row.form)} ${escapeHtml(row.filing_date || '')}</td>
+          <td>${escapeHtml(row.source_section || '')}</td>
+          <td class="text-tight">${escapeHtml(truncate(row.evidence_text || '', 220))}</td>
+          <td><button class="btn" data-evidence="${idx}">Inspect</button></td>
+        </tr>
+      `).join('') || `<tr><td colspan="8">${emptyBlock('No matching evidence')}</td></tr>`;
+      document.querySelectorAll('[data-evidence]').forEach(button => {
+        button.addEventListener('click', () => openEvidence(Number(button.dataset.evidence)));
+      });
+    }
+
+    function renderMetrics() {
+      const companies = uniqueSorted(state.filteredEdges.map(edge => edge.subject));
+      const currentEvidence = state.filteredEvidence.filter(row => row.modality === 'current_fact').length;
+      const riskEvidence = state.filteredEvidence.filter(row => row.modality === 'risk_hypothetical').length;
+      const filteredBottlenecks = DATA.bottlenecks.filter(row => {
+        if (state.company && !String(row.subjects || '').includes(state.company)) return false;
+        if (state.relation && !String(row.relation_types || '').includes(state.relation)) return false;
+        return !state.search || Object.values(row).join(' ').toLowerCase().includes(state.search);
+      });
+      els.metricCompanies.textContent = companies.length;
+      els.metricEdges.textContent = state.filteredEdges.length;
+      els.metricCurrent.textContent = currentEvidence;
+      els.metricRisk.textContent = riskEvidence;
+      els.metricBottlenecks.textContent = filteredBottlenecks.length;
+      document.getElementById('metricCompaniesDelta').textContent = `of ${DATA.summary.company_count} total`;
+      document.getElementById('metricEdgesDelta').textContent = `of ${DATA.summary.edge_count} total`;
+    }
+
+    function renderAll() {
+      state.filteredEdges = DATA.edges.filter(edgeMatches);
+      state.filteredEvidence = DATA.evidence.filter(evidenceMatches);
+      renderMetrics();
+      renderBars('relationBars', state.filteredEvidence, 'relation_type', 12);
+      renderBars('modalityBars', state.filteredEvidence, 'modality', 8);
+      document.getElementById('relationMixCount').textContent = `${uniqueSorted(state.filteredEvidence.map(row => row.relation_type)).length} types`;
+      document.getElementById('modalityMixCount').textContent = `${uniqueSorted(state.filteredEvidence.map(row => row.modality)).length} modalities`;
+      renderHeatmap();
+      renderCompanies();
+      renderBottlenecks();
+      renderEdges();
+      renderEvidence();
+    }
+
+    function sourceLinks(urls) {
+      return String(urls || '').split(';').filter(Boolean).slice(0, 2).map((url, i) =>
+        `<a href="${escapeAttr(url)}" target="_blank" rel="noreferrer">SEC ${i + 1}</a>`
+      ).join('<br>');
+    }
+
+    function openEvidence(index) {
+      const row = state.filteredEvidence[index];
+      if (!row) return;
+      document.getElementById('drawerTitle').textContent = row.subject;
+      document.getElementById('drawerSubtitle').textContent = `${row.relation_type} -> ${row.object}`;
+      document.getElementById('drawerBody').innerHTML = `
+        <dl class="kv">
+          <dt>Object</dt><dd>${escapeHtml(row.object)}</dd>
+          <dt>Relation</dt><dd>${escapeHtml(row.relation_type)}</dd>
+          <dt>Modality</dt><dd><span class="pill ${modalityClass(row.modality)}">${escapeHtml(row.modality)}</span></dd>
+          <dt>Confidence</dt><dd>${escapeHtml(String(row.confidence_score))}</dd>
+          <dt>Filing</dt><dd>${escapeHtml(row.form)} ${escapeHtml(row.filing_date || '')}</dd>
+          <dt>Accession</dt><dd>${escapeHtml(row.accession_number || '')}</dd>
+          <dt>Section</dt><dd>${escapeHtml(row.source_section || '')}</dd>
+          <dt>Parser</dt><dd>${escapeHtml(row.parser_name || '')} ${escapeHtml(row.parser_version || '')}</dd>
+          <dt>Extractor</dt><dd>${escapeHtml(row.extractor_model_version || '')}</dd>
+          <dt>Source</dt><dd><a href="${escapeAttr(row.source_document_url || '')}" target="_blank" rel="noreferrer">SEC filing</a></dd>
+        </dl>
+        <div class="evidence-box">${escapeHtml(row.evidence_text || '')}</div>
+      `;
+      document.getElementById('evidenceDrawer').classList.add('open');
+    }
+
+    function closeDrawer() {
+      document.getElementById('evidenceDrawer').classList.remove('open');
+    }
+
+    function bindEvents() {
+      els.search.addEventListener('input', () => {
+        state.search = els.search.value.trim().toLowerCase();
+        renderAll();
+      });
+      els.company.addEventListener('change', () => {
+        state.company = els.company.value;
+        renderAll();
+      });
+      els.relation.addEventListener('change', () => {
+        state.relation = els.relation.value;
+        renderAll();
+      });
+      els.modality.addEventListener('change', () => {
+        state.modality = els.modality.value;
+        renderAll();
+      });
+      document.getElementById('resetFilters').addEventListener('click', () => {
+        state.search = '';
+        state.company = '';
+        state.relation = '';
+        state.modality = '';
+        els.search.value = '';
+        els.company.value = '';
+        els.relation.value = '';
+        els.modality.value = '';
+        renderAll();
+      });
+      document.getElementById('showCurrentFacts').addEventListener('click', () => {
+        state.modality = 'current_fact';
+        els.modality.value = 'current_fact';
+        renderAll();
+      });
+      document.getElementById('exportEdges').addEventListener('click', () => {
+        downloadCsv('filtered_edges.csv', state.filteredEdges);
+      });
+      document.getElementById('closeDrawer').addEventListener('click', closeDrawer);
+      document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeDrawer();
+      });
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.tab').forEach(item => item.classList.remove('active'));
+          document.querySelectorAll('.view').forEach(item => item.classList.remove('active'));
+          tab.classList.add('active');
+          document.getElementById(`view-${tab.dataset.view}`).classList.add('active');
+        });
+      });
+    }
+
+    function downloadCsv(filename, rows) {
+      if (!rows.length) return;
+      const columns = Object.keys(rows[0]);
+      const body = [columns.join(',')].concat(rows.map(row =>
+        columns.map(col => `"${String(row[col] ?? '').replaceAll('"', '""')}"`).join(',')
+      )).join('\n');
+      const blob = new Blob([body], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function shortLabel(value) {
+      return String(value).replaceAll('_dependency', '').replaceAll('_', ' ');
+    }
+
+    function truncate(value, max) {
+      return value.length > max ? value.slice(0, max - 1) + '...' : value;
+    }
+
+    function emptyBlock(text) {
+      return `<div class="empty">${escapeHtml(text)}</div>`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[ch]));
+    }
+
+    function escapeAttr(value) {
+      return escapeHtml(value).replaceAll('`', '&#96;');
+    }
+
+    initFilters();
+    bindEvents();
+    renderAll();
   </script>
 </body>
 </html>
