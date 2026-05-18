@@ -112,10 +112,23 @@ DEPENDENCY_MARKERS = (
     "small number",
     "source from",
     "sources from",
+    "sourced from",
     "purchase from",
     "purchases from",
     "obtain from",
     "obtains from",
+    "procure from",
+    "procures from",
+    "we use",
+    "we utilize",
+    "utilize third-party",
+    "uses third-party",
+    "hosted on",
+    "hosted by",
+    "powered by",
+    "provided by",
+    "supplied by",
+    "entered into",
     "contract with",
     "contracts with",
     "contract for",
@@ -131,6 +144,19 @@ DEPENDENCY_MARKERS = (
     "power purchase agreement",
     "power purchase agreements",
     "ppas",
+    "master services agreement",
+    "services agreement",
+    "supply agreement",
+    "purchase agreement",
+    "reseller agreement",
+    "distribution agreement",
+    "cloud services agreement",
+    "colocation agreement",
+    "capacity agreement",
+    "data center lease",
+    "lease agreement",
+    "license agreement",
+    "interconnection agreement",
 )
 
 STRONG_DEPENDENCY_MARKERS = (
@@ -151,10 +177,21 @@ STRONG_DEPENDENCY_MARKERS = (
     "small number",
     "source from",
     "sources from",
+    "sourced from",
     "purchase from",
     "purchases from",
     "obtain from",
     "obtains from",
+    "procure from",
+    "procures from",
+    "we use",
+    "we utilize",
+    "hosted on",
+    "hosted by",
+    "powered by",
+    "provided by",
+    "supplied by",
+    "entered into",
     "contract with",
     "contracts with",
     "contract for",
@@ -165,6 +202,14 @@ STRONG_DEPENDENCY_MARKERS = (
     "power purchase agreement",
     "power purchase agreements",
     "ppas",
+    "master services agreement",
+    "supply agreement",
+    "purchase agreement",
+    "cloud services agreement",
+    "colocation agreement",
+    "capacity agreement",
+    "data center lease",
+    "license agreement",
 )
 
 CONCENTRATION_MARKERS = (
@@ -190,6 +235,8 @@ STRATEGIC_MARKERS = (
     "collaboration agreement",
     "alliance",
     "joint development",
+    "lead partner",
+    "co-developer",
     "joint investment",
     "co-investment",
     "joint venture",
@@ -219,6 +266,12 @@ REGULATORY_OBJECT_TERMS = (
     "dsa",
     "online safety",
     "privacy law",
+    "ofac",
+    "sanctioned person",
+    "specially designated nationals",
+    "blocked persons",
+    "worker adjustment",
+    "united nations security",
 )
 
 FRAGMENT_OBJECT_TERMS = (
@@ -236,6 +289,17 @@ FRAGMENT_OBJECT_TERMS = (
     "learning experience more personal computing",
     "operates ascenty",
 )
+
+PRONOUN_OR_PLACEHOLDER_OBJECT_KEYS = {
+    "company",
+    "registrant",
+    "issuer",
+    "group",
+    "we",
+    "us",
+    "our",
+    "subsidiary or affiliate",
+}
 
 PRODUCT_OBJECT_TERMS = (
     "ai chatbots",
@@ -438,6 +502,14 @@ def keep_or_drop_reason(
         return "object_is_subject"
     if record.relation_type in {"strategic_partner", "co_investment"} and not has_strategic_signal(text):
         return "strategic_language_required"
+    if record.relation_type == "strategic_partner" and record.modality != "strategic":
+        return "strategic_modality_required"
+    if record.relation_type == "strategic_partner" and is_competition_context(text):
+        return "competition_context_without_dependency"
+    if record.relation_type == "subsidiary_or_control" and (
+        not object_supported_for_subsidiary_or_control(info) or not has_subsidiary_or_control_signal(record, text)
+    ):
+        return "object_not_supported_for_relation"
     if record.relation_type in NAMED_ONLY_RELATIONS and info.is_generic:
         return "named_counterparty_required"
     if record.relation_type == "facility_or_geographic_exposure" and not object_supported_for_facility_or_geography(info, text):
@@ -482,7 +554,16 @@ def evidence_quality_score(record: RelationEvidence, info: ObjectNormalization) 
         score += 0.02
     elif record.modality == "forward_looking":
         score -= 0.02
-    if any(section in record.source_section for section in ["item_1_business", "item_1_01_material_agreement"]):
+    if any(
+        section in record.source_section
+        for section in [
+            "item_1_business",
+            "item_1_01_material_agreement",
+            "exhibit_10_material_contract",
+            "exhibit_21_subsidiaries",
+            "exhibit_99_1_investor_or_earnings",
+        ]
+    ):
         score += 0.04
     if "risk" in record.source_section:
         score += 0.02
@@ -571,9 +652,13 @@ def class_object_supported_by_text(relation_type: str, text: str) -> bool:
             ]
         )
     if relation_type == "distribution_or_channel_dependency":
-        return has_strong_dependency_signal(text) or any(marker in text for marker in ["distributor", "reseller", "channel partner"])
+        return has_strong_dependency_signal(text) or any(
+            marker in text for marker in ["distributor", "reseller", "channel partner", "distribution agreement", "reseller agreement"]
+        )
     if relation_type == "licensing_dependency":
-        return any(marker in text for marker in ["licensed from", "license from", "third-party licenses", "open source"])
+        return any(marker in text for marker in ["licensed from", "license from", "license agreement", "third-party licenses", "open source"])
+    if relation_type == "subsidiary_or_control":
+        return any(marker in text for marker in ["subsidiary", "subsidiaries", "wholly owned", "controlled by", "ownership interest"])
     if relation_type == "facility_or_geographic_exposure":
         return any(alias in text for alias in GEOGRAPHY_ALIASES) or any(marker in text for marker in ["facility", "facilities"])
     return has_dependency_signal(text)
@@ -637,6 +722,10 @@ def is_generic_dependency_phrase(name: str) -> bool:
         "utility",
         "manufacturer",
         "manufacturers",
+        "subsidiary",
+        "subsidiaries",
+        "affiliate",
+        "affiliates",
         "dependency",
         "class",
         "concentration",
@@ -679,7 +768,11 @@ def object_supported_for_counterparty_relation(
     text: str,
 ) -> bool:
     if info.object_kind == "company":
-        return True
+        if record.relation_type in {"strategic_partner", "co_investment"}:
+            return object_appears_near_markers(text, info.display_name, STRATEGIC_MARKERS)
+        if record.relation_type in {"customer_dependency", "concentration_risk"}:
+            return has_concentration_signal(text) or has_strong_dependency_signal(text)
+        return has_strong_dependency_signal(text) or named_company_supported_by_relation_context(record.relation_type, text)
     if record.relation_type == "facility_or_geographic_exposure":
         return info.object_kind == "geography" or (
             info.object_kind == "organization" and looks_like_legal_entity(info.display_name)
@@ -688,17 +781,76 @@ def object_supported_for_counterparty_relation(
         return False
     if info.object_kind == "organization":
         if looks_like_legal_entity(info.display_name):
-            return True
-        if appears_in_counterparty_list(text, info.display_name) and has_dependency_signal(text):
+            if record.relation_type in {"strategic_partner", "co_investment"}:
+                return object_appears_near_markers(text, info.display_name, STRATEGIC_MARKERS)
+            if record.relation_type in {"customer_dependency", "concentration_risk"}:
+                return has_concentration_signal(text) or has_strong_dependency_signal(text)
+            return (
+                record.relation_type not in COUNTERPARTY_RELATIONS
+                or has_strong_dependency_signal(text)
+                or named_company_supported_by_relation_context(record.relation_type, text)
+            )
+        if appears_in_counterparty_list(text, info.display_name) and has_strong_dependency_signal(text):
             return True
         if record.relation_type in {"strategic_partner", "co_investment"} and any(
             marker in text for marker in ["partnership", "collaboration", "alliance", "joint"]
         ):
-            return True
+            return object_appears_near_markers(text, info.display_name, STRATEGIC_MARKERS)
         return False
     if info.object_kind == "unknown":
         return False
     return True
+
+
+def named_company_supported_by_relation_context(relation_type: str, text: str) -> bool:
+    if relation_type == "cloud_or_hosting_dependency":
+        return any(marker in text for marker in ["hosted by", "hosted on", "cloud provider", "cloud computing platform provider"])
+    if relation_type == "data_center_dependency":
+        return any(marker in text for marker in ["leased data center", "colocation", "co-location", "data center provider", "hosted by"])
+    if relation_type == "power_or_utility_dependency":
+        return any(marker in text for marker in ["power purchase agreement", "utility", "electricity supplied", "energy supply"])
+    if relation_type == "distribution_or_channel_dependency":
+        return any(marker in text for marker in ["reseller agreement", "distribution agreement", "channel partner"])
+    if relation_type == "licensing_dependency":
+        return any(marker in text for marker in ["licensed from", "license agreement", "license from"])
+    return False
+
+
+def object_supported_for_subsidiary_or_control(info: ObjectNormalization) -> bool:
+    if info.is_generic or info.object_kind in {"geography", "unknown", "generic"}:
+        return False
+    return info.object_kind in {"company", "organization"}
+
+
+def object_appears_near_markers(
+    text: str,
+    display_name: str,
+    markers: Iterable[str],
+    window: int = 280,
+) -> bool:
+    lowered = text.lower()
+    aliases = object_aliases(display_name)
+    for marker in markers:
+        start = lowered.find(marker)
+        while start >= 0:
+            fragment = lowered[max(0, start - window) : start + len(marker) + window]
+            fragment_key = object_key(fragment)
+            if any(alias in fragment or object_key(alias) in fragment_key for alias in aliases):
+                return True
+            start = lowered.find(marker, start + len(marker))
+    return False
+
+
+def object_aliases(display_name: str) -> set[str]:
+    aliases = {display_name.lower(), object_key(display_name)}
+    display_key = object_key(display_name)
+    for alias, target in COMMON_ALIASES.items():
+        if object_key(target) == display_key or object_key(alias) == display_key:
+            aliases.add(alias.lower())
+            aliases.add(object_key(alias))
+            aliases.add(target.lower())
+            aliases.add(object_key(target))
+    return {alias for alias in aliases if alias}
 
 
 def object_supported_for_facility_or_geography(info: ObjectNormalization, text: str) -> bool:
@@ -741,7 +893,14 @@ def appears_in_counterparty_list(text: str, name: str) -> bool:
 
 
 def is_regulatory_or_fragment_object(name: str) -> bool:
+    raw_key = re.sub(r"[^a-z0-9]+", " ", name.lower()).strip()
+    if raw_key in PRONOUN_OR_PLACEHOLDER_OBJECT_KEYS or raw_key in {"the company", "the registrant", "the issuer"}:
+        return True
+    if raw_key.endswith(" the company") or " the company " in raw_key:
+        return True
     key = object_key(name)
+    if key in PRONOUN_OR_PLACEHOLDER_OBJECT_KEYS:
+        return True
     key_words = set(key.split())
     if any((term in key_words if len(term.split()) == 1 else term in key) for term in REGULATORY_OBJECT_TERMS):
         return True
@@ -783,6 +942,23 @@ def matching_geography(key: str) -> str:
 
 def is_competition_context(text: str) -> bool:
     return any(marker in text[:700] for marker in ["competition", "competitors", "compete with", "competitive"])
+
+
+def has_subsidiary_or_control_signal(record: RelationEvidence, text: str) -> bool:
+    if record.source_section.startswith("exhibit_21"):
+        return True
+    return any(
+        marker in text
+        for marker in [
+            "subsidiary",
+            "subsidiaries",
+            "wholly owned",
+            "majority owned",
+            "controlled by",
+            "parent company",
+            "ownership interest",
+        ]
+    )
 
 
 def is_placeholder_object(obj: str) -> bool:

@@ -130,11 +130,11 @@ class EntityResolver:
                 continue
             if subject_normalized and normalize_entity_key(mention.normalized_name) == subject_normalized:
                 continue
-            if is_leading_sentence_subject(mention, text):
+            if "|" not in text and is_leading_sentence_subject(mention, text):
                 continue
             resolved.append(mention)
         if resolved:
-            if has_counterparty_list_marker(text):
+            if has_counterparty_list_marker(text) or should_keep_multiple_objects(object_hint, text):
                 return resolved[:max_objects]
             return resolved[:1]
         normalized = object_hint.strip() or "unnamed counterparty"
@@ -166,6 +166,9 @@ def normalize_entity_key(name: str) -> str:
 
 
 def extract_named_organization_mentions(text: str) -> list[EntityMention]:
+    pipe_mentions = extract_pipe_row_organization_mentions(text)
+    if pipe_mentions:
+        return pipe_mentions
     mentions: list[EntityMention] = []
     for match in ORG_SUFFIX_RE.finditer(text):
         name = clean_organization_name(match.group(1))
@@ -194,6 +197,22 @@ def extract_named_organization_mentions(text: str) -> list[EntityMention]:
     return dedupe_mentions(mentions)
 
 
+def extract_pipe_row_organization_mentions(text: str) -> list[EntityMention]:
+    if "|" not in text:
+        return []
+    first_cell = clean_organization_name(text.split("|", 1)[0])
+    if not looks_like_organization_name(first_cell):
+        return []
+    return [
+        EntityMention(
+            text=first_cell,
+            entity_type="organization",
+            normalized_name=first_cell,
+            confidence=0.74,
+        )
+    ]
+
+
 def split_counterparty_list(segment: str) -> list[str]:
     segment = re.split(r"\bto\s+(?:perform|provide|supply|deliver|support)\b", segment, maxsplit=1)[0]
     segment = re.split(r"\bfor\s+(?:assembly|manufacturing|testing|packaging|services)\b", segment, maxsplit=1)[0]
@@ -204,6 +223,7 @@ def split_counterparty_list(segment: str) -> list[str]:
 def clean_organization_name(name: str) -> str:
     cleaned = re.sub(r"\s+", " ", name.strip(" \t\n\r,;:.()"))
     cleaned = re.sub(r"\b(?:among others|etc)$", "", cleaned, flags=re.IGNORECASE).strip(" ,;:.")
+    cleaned = re.sub(r"\b(?:finally|additionally|furthermore)$", "", cleaned, flags=re.IGNORECASE).strip(" ,;:.")
     return cleaned
 
 
@@ -226,6 +246,12 @@ def looks_like_organization_name(name: str) -> bool:
 def has_counterparty_list_marker(text: str) -> bool:
     lowered = text.lower()
     return any(marker in lowered for marker in COUNTERPARTY_LIST_MARKERS)
+
+
+def should_keep_multiple_objects(object_hint: str, text: str) -> bool:
+    lowered_hint = object_hint.lower()
+    lowered_text = text[:1000].lower()
+    return "subsidiary" in lowered_hint or "subsidiaries" in lowered_text
 
 
 def is_leading_sentence_subject(mention: EntityMention, text: str) -> bool:

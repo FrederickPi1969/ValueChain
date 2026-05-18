@@ -42,8 +42,40 @@ class FilingRecord:
 
 
 @dataclass(slots=True)
+class SourceDocument:
+    ticker: str
+    cik: str
+    company_name: str
+    form: str
+    accession_number: str
+    filing_date: str
+    report_date: str = ""
+    accepted_timestamp: str = ""
+    archive_url: str = ""
+    document: str = ""
+    document_type: str = ""
+    description: str = ""
+    sequence: str = ""
+    document_url: str = ""
+    local_path: str = ""
+    sha256: str = ""
+    is_primary: bool = False
+
+    def accession_no_dashes(self) -> str:
+        return self.accession_number.replace("-", "")
+
+    def document_id(self) -> str:
+        return f"{self.accession_no_dashes()}:{self.document or 'document'}"
+
+    def to_dict(self) -> dict[str, Any]:
+        data = asdict(self)
+        data["document_id"] = self.document_id()
+        return data
+
+
+@dataclass(slots=True)
 class Section:
-    filing: FilingRecord
+    filing: FilingRecord | SourceDocument
     section_name: str
     text: str
     parser_name: str
@@ -72,6 +104,8 @@ class Passage:
     text: str
     parser_name: str
     parser_version: str
+    source_document: str = ""
+    source_document_type: str = ""
     relevance_score: float = 0.0
     relevance_terms: list[str] = field(default_factory=list)
 
@@ -116,6 +150,8 @@ class RelationEvidence:
     paragraph_offset: int
     parser_name: str
     parser_version: str
+    source_document: str = ""
+    source_document_type: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -137,4 +173,3 @@ class GraphEdge:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
-

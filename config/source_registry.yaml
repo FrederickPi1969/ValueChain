@@ -19,6 +19,16 @@ sources:
     url_template: "https://www.sec.gov/Archives/edgar/data/{cik}/{accession_without_dashes}/"
     role: "Evidence-bearing primary filings, complete submission text, exhibits, and filing detail pages."
     priority: 1
+  sec_archive_filing_detail:
+    category: official_source
+    url_template: "https://www.sec.gov/Archives/edgar/data/{cik}/{accession_without_dashes}/{accession}-index.html"
+    role: "Archive document table used to discover primary documents and Exhibit 10/21/99.1 files with Type, Description, Sequence, and Size metadata."
+    priority: 1
+  sec_archive_directory_index:
+    category: official_source
+    url_template: "https://www.sec.gov/Archives/edgar/data/{cik}/{accession_without_dashes}/index.json"
+    role: "Fallback archive directory listing when filing detail parsing fails."
+    priority: 1
   sec_company_tickers:
     category: official_source
     url: "https://www.sec.gov/files/company_tickers.json"

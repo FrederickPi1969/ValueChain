@@ -40,6 +40,22 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--llm-concurrency", type=int, default=None, help="Concurrent LLM extraction requests.")
     run.add_argument("--embedding-merge", action="store_true", help="Use local embedding model for object alias merge.")
     run.add_argument("--embedding-threshold", type=float, default=0.92, help="Cosine threshold for embedding object merge.")
+    run.add_argument(
+        "--no-exhibits",
+        action="store_true",
+        help="Disable archive exhibit retrieval and parse only primary filing documents.",
+    )
+    run.add_argument(
+        "--exhibit-types",
+        default="EX-10,EX-21,EX-99,EX-99.1",
+        help="Comma-separated exhibit type prefixes to include from SEC archive detail pages.",
+    )
+    run.add_argument(
+        "--max-exhibits-per-filing",
+        type=int,
+        default=8,
+        help="Maximum selected exhibit source documents per filing.",
+    )
     return parser
 
 
@@ -118,11 +134,16 @@ def main(argv: list[str] | None = None) -> None:
             llm_concurrency=args.llm_concurrency or settings.llm_concurrency,
             embedding_merge=args.embedding_merge,
             embedding_threshold=args.embedding_threshold,
+            include_exhibits=not args.no_exhibits,
+            exhibit_types=parse_forms(args.exhibit_types),
+            max_exhibits_per_filing=args.max_exhibits_per_filing,
         )
         result = run_pipeline(settings, options)
         print(f"run_id={result.run_id}")
         print(f"companies={len(result.companies)}")
         print(f"filings={len(result.filings)}")
+        print(f"source_documents={len(result.source_documents)}")
+        print(f"exhibit_documents={sum(1 for document in result.source_documents if not document.is_primary)}")
         print(f"passages={len(result.passages)}")
         print(f"candidate_passages={len(result.candidate_passages)}")
         print(f"relation_evidence={len(result.evidence)}")

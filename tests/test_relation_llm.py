@@ -1,5 +1,5 @@
 from valuechain.models import Passage
-from valuechain.relation_llm import LLMRelationExtractor, normalize_object_payload, records_from_payload
+from valuechain.relation_llm import LLMRelationExtractor, normalize_object_payload, records_from_payload, should_skip_llm
 
 
 def test_normalize_object_payload_accepts_structured_llm_object() -> None:
@@ -102,6 +102,13 @@ def test_records_from_payload_rejects_strategic_relation_without_strategic_modal
 def test_llm_extractor_returns_empty_records_on_client_failure() -> None:
     extractor = LLMRelationExtractor(FailingClient(), model_version="test-model")
     assert extractor.extract(sample_passage()) == []
+
+
+def test_hybrid_skips_llm_for_exhibit_21_table_rows() -> None:
+    passage = sample_passage()
+    passage.section = "exhibit_21_subsidiaries"
+    passage.source_document_type = "EX-21"
+    assert should_skip_llm(passage) is True
 
 
 def sample_passage() -> Passage:

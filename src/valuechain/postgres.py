@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from valuechain.models import Company, FilingRecord, GraphEdge, Passage, RelationEvidence
+from valuechain.models import Company, FilingRecord, GraphEdge, Passage, RelationEvidence, SourceDocument
 
 
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "db" / "schema.sql"
@@ -15,6 +15,7 @@ def write_run_to_postgres(
     summary: dict[str, Any],
     companies: list[Company],
     filings: list[FilingRecord],
+    source_documents: list[SourceDocument],
     passages: list[Passage],
     candidate_passages: list[Passage],
     evidence: list[RelationEvidence],
@@ -27,6 +28,7 @@ def write_run_to_postgres(
         raise RuntimeError("Postgres export requires psycopg. Run `pip install -e .`.") from exc
 
     candidate_ids = {passage.passage_id for passage in candidate_passages}
+    source_documents = source_documents or []
     with psycopg.connect(database_url) as conn:
         conn.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
         with conn.transaction():
@@ -48,7 +50,7 @@ def write_run_to_postgres(
                     Json(summary),
                 ),
             )
-            for table in ["graph_edges", "relation_evidence", "passages", "filings", "companies"]:
+            for table in ["graph_edges", "relation_evidence", "passages", "source_documents", "filings", "companies"]:
                 conn.execute(f"DELETE FROM {table} WHERE run_id = %s", (run_id,))
 
             conn.cursor().executemany(
@@ -100,11 +102,46 @@ def write_run_to_postgres(
             )
             conn.cursor().executemany(
                 """
+                INSERT INTO source_documents
+                (run_id, document_id, accession_number, ticker, cik, company_name, form, filing_date,
+                 report_date, accepted_timestamp, archive_url, document, document_type, description,
+                 sequence, document_url, local_path, sha256, is_primary)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, NULLIF(%s, '')::date,
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                [
+                    (
+                        run_id,
+                        document.document_id(),
+                        document.accession_number,
+                        document.ticker,
+                        document.cik,
+                        document.company_name,
+                        document.form,
+                        document.filing_date,
+                        document.report_date,
+                        document.accepted_timestamp,
+                        document.archive_url,
+                        document.document,
+                        document.document_type,
+                        document.description,
+                        document.sequence,
+                        document.document_url,
+                        document.local_path,
+                        document.sha256,
+                        document.is_primary,
+                    )
+                    for document in source_documents
+                ],
+            )
+            conn.cursor().executemany(
+                """
                 INSERT INTO passages
                 (run_id, passage_id, accession_number, ticker, cik, company_name, form, filing_date,
-                 section, paragraph_offset, text, parser_name, parser_version, relevance_score,
-                 relevance_terms, is_candidate)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, NULLIF(%s, '')::date, %s, %s, %s, %s, %s, %s, %s, %s)
+                 source_document_url, source_document, source_document_type, section, paragraph_offset,
+                 text, parser_name, parser_version, relevance_score, relevance_terms, is_candidate)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, NULLIF(%s, '')::date, %s, %s, %s,
+                        %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 [
                     (
@@ -116,6 +153,9 @@ def write_run_to_postgres(
                         passage.company_name,
                         passage.form,
                         passage.filing_date,
+                        passage.source_document_url,
+                        passage.source_document,
+                        passage.source_document_type,
                         passage.section,
                         passage.paragraph_offset,
                         passage.text,
@@ -134,9 +174,9 @@ def write_run_to_postgres(
                 (run_id, subject, object, relation_type, direction, modality, certainty, temporal_scope,
                  evidence_text, confidence_score, extractor_model_version, ticker, cik, form, filing_date,
                  accepted_timestamp, accession_number, source_document_url, source_section, passage_id,
-                 paragraph_offset, parser_name, parser_version)
+                 paragraph_offset, parser_name, parser_version, source_document, source_document_type)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULLIF(%s, '')::date,
-                        %s, %s, %s, %s, %s, %s, %s, %s)
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 [
                     (
@@ -163,6 +203,8 @@ def write_run_to_postgres(
                         row.paragraph_offset,
                         row.parser_name,
                         row.parser_version,
+                        row.source_document,
+                        row.source_document_type,
                     )
                     for row in evidence
                 ],

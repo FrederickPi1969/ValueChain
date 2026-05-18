@@ -23,6 +23,8 @@ export function Companies({ companies, onCompany }) {
               <th>Role</th>
               <th>Status</th>
               <th>Filings</th>
+              <th>Docs</th>
+              <th>Exhibits</th>
               <th>Candidates</th>
               <th>Edges</th>
               <th>Evidence</th>
@@ -40,6 +42,8 @@ export function Companies({ companies, onCompany }) {
                 <td>{row.role}</td>
                 <td>{formatStatus(row.coverage_status)}</td>
                 <td>{row.filing_count}</td>
+                <td>{row.source_document_count || 0}</td>
+                <td>{row.exhibit_document_count || 0}</td>
                 <td>{row.candidate_passage_count}</td>
                 <td>{row.edge_count}</td>
                 <td>{row.evidence_count}</td>

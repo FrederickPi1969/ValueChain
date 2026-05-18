@@ -5,11 +5,11 @@ from pathlib import Path
 
 from bs4 import BeautifulSoup
 
-from valuechain.models import FilingRecord, Passage, Section
+from valuechain.models import FilingRecord, Passage, Section, SourceDocument
 
 
 PARSER_NAME = "valuechain.sec_html_parser"
-PARSER_VERSION = "0.2.0"
+PARSER_VERSION = "0.3.0"
 MAX_SECTION_START_RATIO = 0.99
 
 
@@ -47,6 +47,18 @@ def html_file_to_text(path: Path) -> str:
     return normalize_text(text)
 
 
+def html_table_rows_to_text(path: Path) -> str:
+    raw = path.read_bytes()
+    soup = BeautifulSoup(raw, "html.parser")
+    rows: list[str] = []
+    for tr in soup.find_all("tr"):
+        cells = [normalize_text(cell.get_text(" ", strip=True)) for cell in tr.find_all(["th", "td"])]
+        cells = [cell for cell in cells if cell]
+        if len(cells) >= 2:
+            rows.append(" | ".join(cells))
+    return "\n\n".join(row for row in rows if len(row) >= 20)
+
+
 def normalize_text(text: str) -> str:
     text = text.replace("\xa0", " ")
     text = re.sub(r"[ \t]+", " ", text)
@@ -54,17 +66,34 @@ def normalize_text(text: str) -> str:
     return text.strip()
 
 
-def parse_sections(filing: FilingRecord) -> list[Section]:
+def parse_sections(filing: FilingRecord | SourceDocument) -> list[Section]:
     path = Path(filing.local_path)
     warnings: list[str] = []
     text = html_file_to_text(path)
     if not text:
         return []
+    exhibit_section = exhibit_section_name(filing)
+    if exhibit_section:
+        if exhibit_section == "exhibit_21_subsidiaries":
+            table_text = html_table_rows_to_text(path)
+            if table_text:
+                text = table_text
+        warnings.append("source_document_parsed_as_full_exhibit")
+        return [
+            Section(
+                filing=filing,
+                section_name=exhibit_section,
+                text=text[:250_000],
+                parser_name=PARSER_NAME,
+                parser_version=PARSER_VERSION,
+                warnings=warnings.copy(),
+            )
+        ]
     patterns = SECTION_PATTERNS.get(filing.form, [])
     sections = split_sections(text, patterns)
     if not sections:
         warnings.append("target_sections_not_found_using_full_filing")
-        sections = [("full_filing", text[:250_000])]
+        sections = [(fallback_section_name(filing), text[:250_000])]
     return [
         Section(
             filing=filing,
@@ -113,15 +142,18 @@ def choose_section_match(matches: list[re.Match], text_length: int) -> re.Match 
 def segment_passages(section: Section, max_chars: int = 1800) -> list[Passage]:
     paragraphs = [part.strip() for part in re.split(r"\n\s*\n", section.text) if part.strip()]
     passages: list[Passage] = []
+    min_chars = 30 if section.section_name == "exhibit_21_subsidiaries" else 80
     offset = 0
     for paragraph in paragraphs:
         clean = normalize_text(paragraph)
-        if len(clean) < 80:
+        if len(clean) < min_chars:
             continue
         for chunk in chunk_text(clean, max_chars=max_chars):
+            source_document = source_document_name(section.filing)
+            source_document_type = source_document_type_name(section.filing)
             passage_id = (
                 f"{section.filing.ticker}_{section.filing.accession_no_dashes()}_"
-                f"{section.section_name}_{offset}"
+                f"{document_token(source_document)}_{section.section_name}_{offset}"
             )
             passages.append(
                 Passage(
@@ -133,12 +165,14 @@ def segment_passages(section: Section, max_chars: int = 1800) -> list[Passage]:
                     accession_number=section.filing.accession_number,
                     filing_date=section.filing.filing_date,
                     accepted_timestamp=section.filing.accepted_timestamp,
-                    source_document_url=section.filing.primary_document_url,
+                    source_document_url=source_document_url(section.filing),
                     section=section.section_name,
                     paragraph_offset=offset,
                     text=chunk,
                     parser_name=section.parser_name,
                     parser_version=section.parser_version,
+                    source_document=source_document,
+                    source_document_type=source_document_type,
                 )
             )
             offset += 1
@@ -162,3 +196,46 @@ def chunk_text(text: str, max_chars: int) -> list[str]:
     if current:
         chunks.append(current.strip())
     return chunks
+
+
+def source_document_url(filing: FilingRecord | SourceDocument) -> str:
+    return getattr(filing, "document_url", "") or getattr(filing, "primary_document_url", "")
+
+
+def source_document_name(filing: FilingRecord | SourceDocument) -> str:
+    return getattr(filing, "document", "") or getattr(filing, "primary_document", "")
+
+
+def source_document_type_name(filing: FilingRecord | SourceDocument) -> str:
+    return getattr(filing, "document_type", "") or "PRIMARY"
+
+
+def exhibit_section_name(filing: FilingRecord | SourceDocument) -> str:
+    document_type = source_document_type_name(filing).upper()
+    if document_type == "PRIMARY":
+        return ""
+    if document_type.startswith("EX-10"):
+        return "exhibit_10_material_contract"
+    if document_type.startswith("EX-21"):
+        return "exhibit_21_subsidiaries"
+    if document_type.startswith("EX-99.1"):
+        return "exhibit_99_1_investor_or_earnings"
+    if document_type.startswith("EX-99"):
+        return "exhibit_99_investor_or_event_material"
+    if document_type.startswith("EX-"):
+        return "exhibit_other"
+    return ""
+
+
+def fallback_section_name(filing: FilingRecord | SourceDocument) -> str:
+    if filing.form == "6-K":
+        return "foreign_report_full_text"
+    if filing.form == "8-K":
+        return "event_report_full_text"
+    return "full_filing"
+
+
+def document_token(document: str) -> str:
+    token = Path(document or "document").stem.lower()
+    token = re.sub(r"[^a-z0-9]+", "_", token).strip("_")
+    return token[:80] or "document"

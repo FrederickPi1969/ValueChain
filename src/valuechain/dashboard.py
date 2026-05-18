@@ -7,7 +7,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from valuechain.aggregation import bottleneck_candidates
-from valuechain.models import Company, FilingRecord, GraphEdge, Passage, RelationEvidence
+from valuechain.models import Company, FilingRecord, GraphEdge, Passage, RelationEvidence, SourceDocument
 
 
 def render_dashboard(
@@ -17,6 +17,7 @@ def render_dashboard(
     yahoo_rows: list[dict] | None = None,
     companies: list[Company] | None = None,
     filings: list[FilingRecord] | None = None,
+    source_documents: list[SourceDocument] | None = None,
     passages: list[Passage] | None = None,
     candidate_passages: list[Passage] | None = None,
 ) -> dict:
@@ -33,6 +34,7 @@ def render_dashboard(
         yahoo_rows,
         companies,
         filings=filings,
+        source_documents=source_documents,
         passages=passages,
         candidate_passages=candidate_passages,
     )
@@ -60,6 +62,7 @@ def build_dashboard_data(
     yahoo_rows: list[dict] | None = None,
     companies: list[Company] | None = None,
     filings: list[FilingRecord] | None = None,
+    source_documents: list[SourceDocument] | None = None,
     passages: list[Passage] | None = None,
     candidate_passages: list[Passage] | None = None,
     company_activity: dict[str, dict[str, int]] | None = None,
@@ -82,7 +85,10 @@ def build_dashboard_data(
         (
             company_activity
             if company_activity is not None
-            else build_company_activity(filings, passages, candidate_passages)
+            else merge_activity(
+                build_company_activity(filings, passages, candidate_passages),
+                build_company_document_activity(source_documents),
+            )
         ),
     )
     bottlenecks = bottleneck_candidates(edges)
@@ -96,6 +102,8 @@ def build_dashboard_data(
             "active_company_count": len(active_companies),
             "company_row_count": len(company_context),
             "bottleneck_count": len(bottlenecks),
+            "source_document_count": len(source_documents or []),
+            "exhibit_document_count": sum(1 for document in source_documents or [] if not document.is_primary),
         },
         "relation_mix": relation_mix.most_common(),
         "modality_mix": modality_mix.most_common(),
@@ -145,6 +153,8 @@ def build_company_context(
         confidences = confidence_values.get(subject, [])
         activity = company_activity.get(subject, {}) if company_activity else {}
         filing_count = int(activity.get("filing_count", 0))
+        source_document_count = int(activity.get("source_document_count", 0))
+        exhibit_document_count = int(activity.get("exhibit_document_count", 0))
         passage_count = int(activity.get("passage_count", 0))
         candidate_count = int(activity.get("candidate_passage_count", 0))
         edge_count = edge_counts.get(subject, 0)
@@ -159,6 +169,8 @@ def build_company_context(
                 "cik": company.cik if company else "",
                 "notes": company.notes if company else "",
                 "filing_count": filing_count,
+                "source_document_count": source_document_count,
+                "exhibit_document_count": exhibit_document_count,
                 "passage_count": passage_count,
                 "candidate_passage_count": candidate_count,
                 "coverage_status": coverage_status(
@@ -198,6 +210,28 @@ def build_company_activity(
     for passage in candidate_passages or []:
         activity[passage.company_name]["candidate_passage_count"] += 1
     return dict(activity)
+
+
+def build_company_document_activity(
+    source_documents: list[SourceDocument] | None = None,
+) -> dict[str, dict[str, int]]:
+    activity: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"source_document_count": 0, "exhibit_document_count": 0}
+    )
+    for document in source_documents or []:
+        activity[document.company_name]["source_document_count"] += 1
+        if not document.is_primary:
+            activity[document.company_name]["exhibit_document_count"] += 1
+    return dict(activity)
+
+
+def merge_activity(*activity_maps: dict[str, dict[str, int]]) -> dict[str, dict[str, int]]:
+    merged: dict[str, dict[str, int]] = defaultdict(dict)
+    for activity_map in activity_maps:
+        for company, values in activity_map.items():
+            for key, value in values.items():
+                merged[company][key] = int(merged[company].get(key, 0)) + int(value)
+    return dict(merged)
 
 
 def coverage_status(

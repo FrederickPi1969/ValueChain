@@ -101,6 +101,19 @@ Recall-first rules:
 10. When in doubt between [] and a directly supported class-level exposure, output the exposure with
     lower confidence rather than returning [].
 
+SEC source-document rules:
+11. In 8-K Item 1.01 and Exhibit 10 material contracts, extract counterparties and dependency/partnership
+    obligations directly stated in the agreement summary or contract text. Do not treat governing-law,
+    notice-address, signature-block, or boilerplate party references as dependencies without an operative
+    supply, service, license, lease, purchase, distribution, collaboration, capacity, power, or hosting clause.
+12. In Exhibit 21 subsidiary lists, emit subsidiary_or_control relations for named subsidiaries/affiliates
+    controlled by the subject. Do not infer supplier/customer/manufacturing relations from subsidiary names.
+13. In Exhibit 99.1 earnings releases and investor materials, extract customer concentration, capacity,
+    data center, cloud, power, supply-chain, strategic partnership, and geography exposure when explicitly
+    tied to operations, revenue, capex, demand, or disclosed risk.
+14. In 20-F and 6-K foreign issuer reports, apply the same ontology; keep geography/export-control/facility
+    exposure only when connected to operations or value-chain dependency.
+
 Failure cases to avoid:
 - "Power" as a company segment is not power_or_utility_dependency.
 - A competitor list is not strategic_partner.
@@ -159,6 +172,8 @@ def build_prompt(passage: Passage) -> str:
         f"Subject company: {passage.company_name}\n"
         f"Form: {passage.form}\n"
         f"Section: {passage.section}\n"
+        f"Source document: {passage.source_document or 'primary document'}\n"
+        f"Source document type: {passage.source_document_type or 'PRIMARY'}\n"
         f"Passage:\n{passage.text[:3500]}"
     )
 
@@ -210,6 +225,8 @@ def records_from_payload(
                 paragraph_offset=passage.paragraph_offset,
                 parser_name=passage.parser_name,
                 parser_version=passage.parser_version,
+                source_document=passage.source_document,
+                source_document_type=passage.source_document_type,
             )
         )
     return records
@@ -254,7 +271,7 @@ class HybridRelationExtractor:
 
     def extract(self, passage: Passage) -> list[RelationEvidence]:
         rule_records = self.rules_extractor.extract(passage)
-        if self.llm_extractor is None:
+        if self.llm_extractor is None or should_skip_llm(passage):
             return rule_records
         try:
             llm_records = self.llm_extractor.extract(passage)
@@ -266,7 +283,7 @@ class HybridRelationExtractor:
 
     async def extract_async(self, passage: Passage) -> list[RelationEvidence]:
         rule_records = self.rules_extractor.extract(passage)
-        if self.llm_extractor is None:
+        if self.llm_extractor is None or should_skip_llm(passage):
             return rule_records
         try:
             llm_records = await self.llm_extractor.extract_async(passage)
@@ -295,3 +312,7 @@ def merge_relation_records(
         if key not in existing:
             merged.append(record)
     return merged
+
+
+def should_skip_llm(passage: Passage) -> bool:
+    return passage.section.startswith("exhibit_21") or passage.source_document_type == "EX-21"

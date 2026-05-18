@@ -1,4 +1,4 @@
-version: "0.1"
+version: "0.2"
 parser_contract:
   required_provenance:
     - accession_number
@@ -8,6 +8,8 @@ parser_contract:
     - filing_date
     - accepted_timestamp
     - source_document_url
+    - source_document
+    - source_document_type
     - section
     - passage_id
     - paragraph_offset
@@ -122,6 +124,11 @@ merge_policy:
 llm_extraction_policy:
   version: "0.3-recall"
   role: "Recall-first extractor. Prefer named objects, but output descriptive class-level exposure when no named counterparty is disclosed."
+  sec_document_policy:
+    - "Treat SEC archive primary filings and selected Exhibit 10/21/99.1 documents as source documents with their own provenance."
+    - "Exhibit 10 material contracts are high-priority for named counterparties and agreement obligations, but boilerplate party references alone are not dependencies."
+    - "Exhibit 21 subsidiary lists map to subsidiary_or_control only; do not infer operating dependencies from subsidiary names."
+    - "Exhibit 99.1 earnings releases and investor materials are valid evidence for customer concentration, capacity, data center, cloud, power, supply-chain, strategic partnership, and geography exposure when explicit."
   object_policy:
     preferred:
       - named_company

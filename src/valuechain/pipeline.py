@@ -13,7 +13,7 @@ from valuechain.entity_resolution import EntityResolver
 from valuechain.filing_parser import parse_sections, segment_passages
 from valuechain.io_utils import write_csv, write_jsonl, write_json
 from valuechain.llm_client import LLMConfig, OpenAICompatibleClient
-from valuechain.models import Company, FilingRecord, GraphEdge, Passage, RelationEvidence
+from valuechain.models import Company, FilingRecord, GraphEdge, Passage, RelationEvidence, SourceDocument
 from valuechain.planning import build_execution_plan
 from valuechain.postgres import write_run_to_postgres
 from valuechain.relation_llm import HybridRelationExtractor, LLMRelationExtractor
@@ -54,12 +54,16 @@ class PipelineOptions:
     llm_concurrency: int = 4
     embedding_merge: bool = False
     embedding_threshold: float = 0.92
+    include_exhibits: bool = True
+    exhibit_types: tuple[str, ...] = ("EX-10", "EX-21", "EX-99", "EX-99.1")
+    max_exhibits_per_filing: int = 8
 
 
 @dataclass
 class PipelineResult:
     companies: list[Company]
     filings: list[FilingRecord]
+    source_documents: list[SourceDocument]
     passages: list[Passage]
     candidate_passages: list[Passage]
     evidence: list[RelationEvidence]
@@ -107,10 +111,14 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
         fieldnames=["ticker", "company_name", "role", "priority", "notes", "cik", "exchange"],
     )
 
-    filings = discover_and_download_filings(sec_client, resolved_companies, settings, options)
+    filings, source_documents = discover_and_download_filings(sec_client, resolved_companies, settings, options)
     write_csv(run_processed_dir / "filing_manifest.csv", [filing.to_dict() for filing in filings])
+    write_csv(
+        run_processed_dir / "source_document_manifest.csv",
+        [document.to_dict() for document in source_documents],
+    )
 
-    passages = parse_all_passages(filings)
+    passages = parse_all_passages(source_documents)
     candidate_passages = filter_candidates(passages, min_score=options.min_relevance_score)
     write_jsonl(run_processed_dir / "passages.jsonl", [passage.to_dict() for passage in passages])
     write_jsonl(
@@ -157,6 +165,7 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
         yahoo_rows,
         resolved_companies,
         filings=filings,
+        source_documents=source_documents,
         passages=passages,
         candidate_passages=candidate_passages,
     )
@@ -169,6 +178,7 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
         dashboard_path,
         resolved_companies,
         filings,
+        source_documents,
         passages,
         candidate_passages,
         evidence,
@@ -184,6 +194,7 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
             summary=summary,
             companies=resolved_companies,
             filings=filings,
+            source_documents=source_documents,
             passages=passages,
             candidate_passages=candidate_passages,
             evidence=evidence,
@@ -204,6 +215,7 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
     return PipelineResult(
         companies=resolved_companies,
         filings=filings,
+        source_documents=source_documents,
         passages=passages,
         candidate_passages=candidate_passages,
         evidence=evidence,
@@ -220,9 +232,10 @@ def discover_and_download_filings(
     companies: list[Company],
     settings: Settings,
     options: PipelineOptions,
-) -> list[FilingRecord]:
+) -> tuple[list[FilingRecord], list[SourceDocument]]:
     forms = set(options.forms)
     filings: list[FilingRecord] = []
+    source_documents: list[SourceDocument] = []
     for company in companies:
         company_filings = sec_client.discover_filings(
             company,
@@ -233,14 +246,22 @@ def discover_and_download_filings(
             selection=options.filing_selection,
         )
         for filing in company_filings:
-            filings.append(sec_client.download_primary_document(filing, settings.raw_dir))
-    return filings
+            documents = sec_client.download_source_documents(
+                filing,
+                settings.raw_dir,
+                include_exhibits=options.include_exhibits,
+                exhibit_types=options.exhibit_types,
+                max_exhibits_per_filing=options.max_exhibits_per_filing,
+            )
+            filings.append(filing)
+            source_documents.extend(documents)
+    return filings, source_documents
 
 
-def parse_all_passages(filings: list[FilingRecord]) -> list[Passage]:
+def parse_all_passages(source_documents: list[SourceDocument]) -> list[Passage]:
     passages: list[Passage] = []
-    for filing in filings:
-        for section in parse_sections(filing):
+    for source_document in source_documents:
+        for section in parse_sections(source_document):
             passages.extend(segment_passages(section))
     return passages
 
@@ -348,6 +369,8 @@ def write_validation_sample(path: Path, evidence: list[RelationEvidence], limit:
                 "form": record.form,
                 "filing_date": record.filing_date,
                 "section": record.source_section,
+                "source_document": record.source_document,
+                "source_document_type": record.source_document_type,
                 "passage_id": record.passage_id,
                 "evidence_text": record.evidence_text,
                 "source_document_url": record.source_document_url,
@@ -364,6 +387,7 @@ def build_run_summary(
     dashboard_path: Path,
     companies: list[Company],
     filings: list[FilingRecord],
+    source_documents: list[SourceDocument],
     passages: list[Passage],
     candidate_passages: list[Passage],
     evidence: list[RelationEvidence],
@@ -394,6 +418,9 @@ def build_run_summary(
             "llm_concurrency": options.llm_concurrency,
             "embedding_merge": options.embedding_merge,
             "embedding_threshold": options.embedding_threshold,
+            "include_exhibits": options.include_exhibits,
+            "exhibit_types": list(options.exhibit_types),
+            "max_exhibits_per_filing": options.max_exhibits_per_filing,
             "extraction_model": settings.extraction_model,
             "complex_model": settings.complex_model,
             "embedding_model": settings.embedding_model,
@@ -402,6 +429,8 @@ def build_run_summary(
             "companies": len(companies),
             "roles": summarize_universe(companies)["role_counts"],
             "filings": len(filings),
+            "source_documents": len(source_documents),
+            "exhibit_documents": sum(1 for document in source_documents if not document.is_primary),
             "passages": len(passages),
             "candidate_passages": len(candidate_passages),
             "relation_evidence_raw": raw_evidence_count or len(evidence),
@@ -413,6 +442,7 @@ def build_run_summary(
             "company_universe": str(processed_dir / "company_universe_resolved.csv"),
             "input_plan": str(processed_dir / "input_plan.json"),
             "filing_manifest": str(processed_dir / "filing_manifest.csv"),
+            "source_document_manifest": str(processed_dir / "source_document_manifest.csv"),
             "relation_evidence_raw": str(processed_dir / "relation_evidence_raw.jsonl"),
             "relation_evidence": str(processed_dir / "relation_evidence.jsonl"),
             "merge_diagnostics": str(processed_dir / "merge_diagnostics.csv"),

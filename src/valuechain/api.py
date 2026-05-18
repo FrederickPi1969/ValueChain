@@ -11,7 +11,7 @@ from psycopg_pool import AsyncConnectionPool
 
 from valuechain.config import Settings
 from valuechain.dashboard import build_dashboard_data
-from valuechain.models import Company, GraphEdge, RelationEvidence
+from valuechain.models import Company, GraphEdge, RelationEvidence, SourceDocument
 
 
 settings = Settings()
@@ -158,7 +158,7 @@ async def evidence(
                evidence_text, confidence_score, extractor_model_version, ticker, cik, form,
                filing_date::text AS filing_date, accepted_timestamp, accession_number,
                source_document_url, source_section, passage_id, paragraph_offset,
-               parser_name, parser_version
+               parser_name, parser_version, source_document, source_document_type
         FROM relation_evidence
         WHERE {where}
         ORDER BY filing_date DESC NULLS LAST, subject, relation_type
@@ -193,7 +193,7 @@ async def dashboard_data(run_id: str, request: Request) -> dict[str, Any]:
                evidence_text, confidence_score, extractor_model_version, ticker, cik, form,
                filing_date::text AS filing_date, accepted_timestamp, accession_number,
                source_document_url, source_section, passage_id, paragraph_offset,
-               parser_name, parser_version
+               parser_name, parser_version, source_document, source_document_type
         FROM relation_evidence
         WHERE run_id = %s
         ORDER BY filing_date DESC NULLS LAST, subject, relation_type
@@ -210,11 +210,25 @@ async def dashboard_data(run_id: str, request: Request) -> dict[str, Any]:
         """,
         (run_id,),
     )
+    source_document_rows = await fetch_all(
+        request,
+        """
+        SELECT ticker, cik, company_name, form, accession_number, filing_date::text AS filing_date,
+               report_date, accepted_timestamp, archive_url, document, document_type, description,
+               sequence, document_url, local_path, sha256, is_primary
+        FROM source_documents
+        WHERE run_id = %s
+        ORDER BY ticker, filing_date DESC NULLS LAST, accession_number, is_primary DESC, sequence
+        """,
+        (run_id,),
+    )
     activity_rows = await fetch_all(
         request,
         """
         SELECT c.company_name,
                COALESCE(f.filing_count, 0)::int AS filing_count,
+               COALESCE(d.source_document_count, 0)::int AS source_document_count,
+               COALESCE(d.exhibit_document_count, 0)::int AS exhibit_document_count,
                COALESCE(p.passage_count, 0)::int AS passage_count,
                COALESCE(p.candidate_passage_count, 0)::int AS candidate_passage_count
         FROM companies c
@@ -226,6 +240,14 @@ async def dashboard_data(run_id: str, request: Request) -> dict[str, Any]:
         ) f ON f.company_name = c.company_name
         LEFT JOIN (
             SELECT company_name,
+                   COUNT(*) AS source_document_count,
+                   COUNT(*) FILTER (WHERE NOT is_primary) AS exhibit_document_count
+            FROM source_documents
+            WHERE run_id = %s
+            GROUP BY company_name
+        ) d ON d.company_name = c.company_name
+        LEFT JOIN (
+            SELECT company_name,
                    COUNT(*) AS passage_count,
                    COUNT(*) FILTER (WHERE is_candidate) AS candidate_passage_count
             FROM passages
@@ -234,20 +256,29 @@ async def dashboard_data(run_id: str, request: Request) -> dict[str, Any]:
         ) p ON p.company_name = c.company_name
         WHERE c.run_id = %s
         """,
-        (run_id, run_id, run_id),
+        (run_id, run_id, run_id, run_id),
     )
     edges = [GraphEdge(**row) for row in edge_rows]
     records = [RelationEvidence(**row) for row in evidence_rows]
     companies = [Company(**row) for row in company_rows]
+    source_documents = [SourceDocument(**row) for row in source_document_rows]
     company_activity = {
         row["company_name"]: {
             "filing_count": row["filing_count"],
+            "source_document_count": row["source_document_count"],
+            "exhibit_document_count": row["exhibit_document_count"],
             "passage_count": row["passage_count"],
             "candidate_passage_count": row["candidate_passage_count"],
         }
         for row in activity_rows
     }
-    return build_dashboard_data(edges, records, companies=companies, company_activity=company_activity)
+    return build_dashboard_data(
+        edges,
+        records,
+        companies=companies,
+        source_documents=source_documents,
+        company_activity=company_activity,
+    )
 
 
 def build_filters(
