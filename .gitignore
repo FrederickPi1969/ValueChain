@@ -1,6 +1,11 @@
 .DS_Store
 .env
 .venv/
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/public/data/runs.json
+frontend/public/data/runs/
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -9,9 +14,6 @@ __pycache__/
 
 data/raw/**
 data/processed/**
-reports/*.html
-reports/*.json
-reports/*.csv
+reports/**
 !data/universe/
 !data/universe/ai_infra_universe.csv
-

@@ -15,7 +15,7 @@ def render_dashboard(
     edges: list[GraphEdge],
     evidence: list[RelationEvidence],
     yahoo_rows: list[dict] | None = None,
-) -> None:
+) -> dict:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     template_dir = Path(__file__).resolve().parents[2] / "templates"
     env = Environment(
@@ -23,6 +23,30 @@ def render_dashboard(
         autoescape=select_autoescape(["html", "xml"]),
     )
     template = env.get_template("dashboard.html.j2")
+    dashboard_data = build_dashboard_data(edges, evidence, yahoo_rows)
+    output_path.write_text(
+        template.render(
+            edge_count=dashboard_data["summary"]["edge_count"],
+            evidence_count=dashboard_data["summary"]["evidence_count"],
+            company_count=dashboard_data["summary"]["company_count"],
+            relation_mix=dashboard_data["relation_mix"],
+            modality_mix=dashboard_data["modality_mix"],
+            bottlenecks=dashboard_data["bottlenecks"],
+            company_context=dashboard_data["companies"],
+            edges=dashboard_data["edges"][:200],
+            evidence=dashboard_data["evidence"],
+            dashboard_data_json=json.dumps(dashboard_data, ensure_ascii=False),
+        ),
+        encoding="utf-8",
+    )
+    return dashboard_data
+
+
+def build_dashboard_data(
+    edges: list[GraphEdge],
+    evidence: list[RelationEvidence],
+    yahoo_rows: list[dict] | None = None,
+) -> dict:
     evidence_by_company = Counter(record.subject for record in evidence)
     relation_mix = Counter(record.relation_type for record in evidence)
     modality_mix = Counter(record.modality for record in evidence)
@@ -48,21 +72,7 @@ def render_dashboard(
         "edges": [edge.to_dict() for edge in sorted_edges],
         "evidence": [record.to_dict() for record in evidence_rows],
     }
-    output_path.write_text(
-        template.render(
-            edge_count=len(edges),
-            evidence_count=len(evidence),
-            company_count=len({edge.subject for edge in edges}),
-            relation_mix=relation_mix.most_common(),
-            modality_mix=modality_mix.most_common(),
-            bottlenecks=bottlenecks,
-            company_context=company_context,
-            edges=sorted_edges[:200],
-            evidence=evidence_rows,
-            dashboard_data_json=json.dumps(dashboard_data, ensure_ascii=False),
-        ),
-        encoding="utf-8",
-    )
+    return dashboard_data
 
 
 def build_company_context(

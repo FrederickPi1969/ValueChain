@@ -12,9 +12,18 @@ from valuechain.io_utils import write_csv, write_jsonl, write_json
 from valuechain.llm_client import LLMConfig, OpenAICompatibleClient
 from valuechain.models import Company, FilingRecord, GraphEdge, Passage, RelationEvidence
 from valuechain.planning import build_execution_plan
+from valuechain.postgres import write_run_to_postgres
 from valuechain.relation_llm import HybridRelationExtractor, LLMRelationExtractor
 from valuechain.relation_rules import RuleBasedRelationExtractor
 from valuechain.relevance import filter_candidates
+from valuechain.run_registry import (
+    copy_latest_dashboard,
+    copy_latest_processed_outputs,
+    make_run_id,
+    normalize_run_id,
+    render_run_index,
+    update_run_registry,
+)
 from valuechain.sec_client import SECClient
 from valuechain.universe import read_universe, summarize_universe
 from valuechain.yahoo_enrichment import fetch_yahoo_snapshot
@@ -34,6 +43,10 @@ class PipelineOptions:
     extractor: str = "rules"
     min_relevance_score: float = 2.0
     skip_yahoo: bool = False
+    run_id: str = ""
+    run_label: str = ""
+    write_postgres: bool = False
+    postgres_url: str = ""
 
 
 @dataclass
@@ -46,10 +59,17 @@ class PipelineResult:
     edges: list[GraphEdge]
     yahoo_rows: list[dict]
     dashboard_path: Path
+    run_id: str
+    index_path: Path
 
 
 def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult:
     ensure_dirs(settings)
+    run_id = normalize_run_id(options.run_id) if options.run_id else make_run_id("valuechain")
+    run_processed_dir = settings.processed_dir / "runs" / run_id
+    run_report_dir = settings.reports_dir / "runs" / run_id
+    run_processed_dir.mkdir(parents=True, exist_ok=True)
+    run_report_dir.mkdir(parents=True, exist_ok=True)
     companies = read_universe(
         options.universe_path,
         tickers=options.tickers,
@@ -58,7 +78,7 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
         limit=options.limit_companies,
     )
     write_json(
-        settings.processed_dir / "input_plan.json",
+        run_processed_dir / "input_plan.json",
         build_execution_plan(
             companies,
             forms=options.forms,
@@ -74,38 +94,75 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
     )
     resolved_companies = sec_client.resolve_companies(companies)
     write_csv(
-        settings.processed_dir / "company_universe_resolved.csv",
+        run_processed_dir / "company_universe_resolved.csv",
         [company.to_dict() for company in resolved_companies],
         fieldnames=["ticker", "company_name", "role", "priority", "notes", "cik", "exchange"],
     )
 
     filings = discover_and_download_filings(sec_client, resolved_companies, settings, options)
-    write_csv(settings.processed_dir / "filing_manifest.csv", [filing.to_dict() for filing in filings])
+    write_csv(run_processed_dir / "filing_manifest.csv", [filing.to_dict() for filing in filings])
 
     passages = parse_all_passages(filings)
     candidate_passages = filter_candidates(passages, min_score=options.min_relevance_score)
-    write_jsonl(settings.processed_dir / "passages.jsonl", [passage.to_dict() for passage in passages])
+    write_jsonl(run_processed_dir / "passages.jsonl", [passage.to_dict() for passage in passages])
     write_jsonl(
-        settings.processed_dir / "candidate_passages.jsonl",
+        run_processed_dir / "candidate_passages.jsonl",
         [passage.to_dict() for passage in candidate_passages],
     )
 
     extractor = build_extractor(settings, options, resolved_companies)
     evidence = extract_relations(candidate_passages, extractor)
-    write_jsonl(settings.processed_dir / "relation_evidence.jsonl", [record.to_dict() for record in evidence])
+    write_jsonl(run_processed_dir / "relation_evidence.jsonl", [record.to_dict() for record in evidence])
 
     edges = aggregate_edges(evidence)
-    write_csv(settings.processed_dir / "graph_edges.csv", [edge.to_dict() for edge in edges])
-    write_csv(settings.processed_dir / "bottleneck_candidates.csv", bottleneck_candidates(edges))
-    write_validation_sample(settings.processed_dir / "validation_sample.csv", evidence)
+    write_csv(run_processed_dir / "graph_edges.csv", [edge.to_dict() for edge in edges])
+    write_csv(run_processed_dir / "bottleneck_candidates.csv", bottleneck_candidates(edges))
+    write_validation_sample(run_processed_dir / "validation_sample.csv", evidence)
 
     yahoo_rows = [] if options.skip_yahoo else fetch_yahoo_snapshot(resolved_companies)
     if yahoo_rows:
-        write_csv(settings.processed_dir / "yahoo_snapshot.csv", yahoo_rows)
+        write_csv(run_processed_dir / "yahoo_snapshot.csv", yahoo_rows)
 
-    dashboard_path = settings.reports_dir / "dashboard.html"
-    render_dashboard(dashboard_path, edges, evidence, yahoo_rows)
-    write_run_summary(settings, options, resolved_companies, filings, passages, candidate_passages, evidence, edges)
+    dashboard_path = run_report_dir / "dashboard.html"
+    dashboard_data = render_dashboard(dashboard_path, edges, evidence, yahoo_rows)
+    write_json(run_report_dir / "dashboard-data.json", dashboard_data)
+    summary = build_run_summary(
+        settings,
+        options,
+        run_id,
+        run_processed_dir,
+        dashboard_path,
+        resolved_companies,
+        filings,
+        passages,
+        candidate_passages,
+        evidence,
+        edges,
+    )
+    write_json(run_processed_dir / "run_summary.json", summary)
+    if options.write_postgres:
+        write_run_to_postgres(
+            database_url=options.postgres_url or settings.database_url,
+            run_id=run_id,
+            summary=summary,
+            companies=resolved_companies,
+            filings=filings,
+            passages=passages,
+            candidate_passages=candidate_passages,
+            evidence=evidence,
+            edges=edges,
+        )
+    update_run_registry(
+        settings,
+        run_id=run_id,
+        run_label=options.run_label,
+        summary=summary,
+        dashboard_path=dashboard_path,
+        processed_dir=run_processed_dir,
+    )
+    copy_latest_dashboard(settings, dashboard_path)
+    copy_latest_processed_outputs(run_processed_dir, settings.processed_dir)
+    index_path = render_run_index(settings)
 
     return PipelineResult(
         companies=resolved_companies,
@@ -116,6 +173,8 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
         edges=edges,
         yahoo_rows=yahoo_rows,
         dashboard_path=dashboard_path,
+        run_id=run_id,
+        index_path=index_path,
     )
 
 
@@ -202,19 +261,22 @@ def write_validation_sample(path: Path, evidence: list[RelationEvidence], limit:
     write_csv(path, rows)
 
 
-def write_run_summary(
+def build_run_summary(
     settings: Settings,
     options: PipelineOptions,
+    run_id: str,
+    processed_dir: Path,
+    dashboard_path: Path,
     companies: list[Company],
     filings: list[FilingRecord],
     passages: list[Passage],
     candidate_passages: list[Passage],
     evidence: list[RelationEvidence],
     edges: list[GraphEdge],
-) -> None:
-    write_json(
-        settings.processed_dir / "run_summary.json",
-        {
+) -> dict:
+    return {
+            "run_id": run_id,
+            "run_label": options.run_label or run_id,
             "options": {
                 "tickers": options.tickers,
                 "roles": options.roles,
@@ -227,6 +289,9 @@ def write_run_summary(
                 "extractor": options.extractor,
                 "min_relevance_score": options.min_relevance_score,
                 "skip_yahoo": options.skip_yahoo,
+                "run_id": run_id,
+                "run_label": options.run_label,
+                "write_postgres": options.write_postgres,
                 "extraction_model": settings.extraction_model,
                 "complex_model": settings.complex_model,
             },
@@ -240,13 +305,13 @@ def write_run_summary(
                 "graph_edges": len(edges),
             },
             "outputs": {
-                "company_universe": str(settings.processed_dir / "company_universe_resolved.csv"),
-                "input_plan": str(settings.processed_dir / "input_plan.json"),
-                "filing_manifest": str(settings.processed_dir / "filing_manifest.csv"),
-                "relation_evidence": str(settings.processed_dir / "relation_evidence.jsonl"),
-                "graph_edges": str(settings.processed_dir / "graph_edges.csv"),
-                "validation_sample": str(settings.processed_dir / "validation_sample.csv"),
-                "dashboard": str(settings.reports_dir / "dashboard.html"),
+                "company_universe": str(processed_dir / "company_universe_resolved.csv"),
+                "input_plan": str(processed_dir / "input_plan.json"),
+                "filing_manifest": str(processed_dir / "filing_manifest.csv"),
+                "relation_evidence": str(processed_dir / "relation_evidence.jsonl"),
+                "graph_edges": str(processed_dir / "graph_edges.csv"),
+                "validation_sample": str(processed_dir / "validation_sample.csv"),
+                "dashboard": str(dashboard_path),
+                "dashboard_data": str(dashboard_path.parent / "dashboard-data.json"),
             },
-        },
-    )
+        }

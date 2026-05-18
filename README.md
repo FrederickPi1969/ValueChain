@@ -36,6 +36,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
 cp .env.example .env
+cd frontend && npm install && cd ..
 ```
 
 Edit `.env` and set `VALUECHAIN_SEC_USER_AGENT` to a real project/contact
@@ -75,10 +76,10 @@ source .env
 valuechain run --tickers NVDA,AMD,MSFT --forms 10-K,10-Q,8-K --max-filings-per-company 2 --skip-yahoo
 ```
 
-Industry-layer run over priority 1 names:
+Industry-layer run over priority 1 names, with a named run for the frontend:
 
 ```bash
-valuechain run --priority 1 --forms 10-K,10-Q,8-K,20-F --max-filings-per-company 3 --skip-yahoo
+valuechain run --priority 1 --forms 10-K,10-Q,8-K,20-F --max-filings-per-company 3 --skip-yahoo --run-label "Priority 1 AI infra"
 ```
 
 With Yahoo Finance enrichment:
@@ -99,26 +100,44 @@ HTTP calls when the network path requires `proxy.frederickpi.com`.
 
 Outputs are written to:
 
-- `data/processed/company_universe_resolved.csv`
-- `data/processed/filing_manifest.csv`
-- `data/processed/passages.jsonl`
-- `data/processed/candidate_passages.jsonl`
-- `data/processed/relation_evidence.jsonl`
-- `data/processed/graph_edges.csv`
-- `data/processed/yahoo_snapshot.csv`
-- `data/processed/validation_sample.csv`
-- `data/processed/run_summary.json`
-- `data/processed/input_plan.json`
-- `reports/dashboard.html`
+- `data/processed/runs/<run_id>/company_universe_resolved.csv`
+- `data/processed/runs/<run_id>/filing_manifest.csv`
+- `data/processed/runs/<run_id>/passages.jsonl`
+- `data/processed/runs/<run_id>/candidate_passages.jsonl`
+- `data/processed/runs/<run_id>/relation_evidence.jsonl`
+- `data/processed/runs/<run_id>/graph_edges.csv`
+- `data/processed/runs/<run_id>/validation_sample.csv`
+- `data/processed/runs/<run_id>/run_summary.json`
+- `reports/runs/<run_id>/dashboard-data.json`
+- `frontend/public/data/runs/<run_id>/dashboard-data.json`
 
-Open `reports/dashboard.html` in a browser to inspect company exposures,
-bottleneck candidates, typed edges, and original filing evidence.
+## Vite Frontend
 
-## Frontend
+The main frontend is a Vite React app in `frontend/`. It reads generated JSON
+artifacts from `frontend/public/data`, so one dev server can browse many runs.
 
-The generated dashboard is a static portfolio review console, so it can be
-opened directly from `reports/dashboard.html` or served by any simple static
-server. It includes:
+```bash
+cd frontend
+npm run dev
+```
+
+Open:
+
+```text
+http://127.0.0.1:5173/
+```
+
+Each `valuechain run ...` writes an independent run under:
+
+- `data/processed/runs/<run_id>/`
+- `reports/runs/<run_id>/`
+- `frontend/public/data/runs/<run_id>/dashboard-data.json`
+
+`reports/dashboard.html` remains only a legacy latest-run static snapshot.
+
+The Vite frontend follows a Seeking Alpha-style research console: dense tables,
+schema-level exposure views, and evidence drill-down instead of a raw graph as
+the primary interface. It includes:
 
 - global search across companies, dependencies, relation types, and evidence;
 - company / relation / modality filters;
@@ -128,6 +147,35 @@ server. It includes:
 - portfolio exposure, bottleneck, edge, and evidence tabs;
 - evidence drawer with SEC provenance and source filing link;
 - CSV export for the filtered edge table.
+
+## Postgres
+
+Start local Postgres:
+
+```bash
+docker compose up -d postgres
+```
+
+Write a run into Postgres:
+
+```bash
+valuechain run --priority 1 --limit-companies 5 --forms 10-K --max-filings-per-company 1 --skip-yahoo --run-id pg-smoke-5 --run-label "Postgres smoke" --write-postgres
+```
+
+Default connection:
+
+```text
+postgresql://valuechain:valuechain_dev@127.0.0.1:5433/valuechain
+```
+
+Optional DB browser:
+
+```bash
+docker compose up -d adminer
+```
+
+Adminer is available at `http://127.0.0.1:8081` with server `postgres`,
+database `valuechain`, user `valuechain`, password `valuechain_dev`.
 
 ## Design Notes
 

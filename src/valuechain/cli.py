@@ -33,6 +33,10 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--extractor", choices=["rules", "llm", "hybrid"], default="rules")
     run.add_argument("--min-relevance-score", type=float, default=2.0)
     run.add_argument("--skip-yahoo", action="store_true")
+    run.add_argument("--run-id", default="", help="Stable id for this run. Defaults to a timestamped id.")
+    run.add_argument("--run-label", default="", help="Human-readable label shown in the frontend run index.")
+    run.add_argument("--write-postgres", action="store_true", help="Write run artifacts into Postgres.")
+    run.add_argument("--postgres-url", default="", help="Override VALUECHAIN_DATABASE_URL for this run.")
     return parser
 
 
@@ -96,8 +100,13 @@ def main(argv: list[str] | None = None) -> None:
             extractor=args.extractor,
             min_relevance_score=args.min_relevance_score,
             skip_yahoo=args.skip_yahoo,
+            run_id=args.run_id,
+            run_label=args.run_label,
+            write_postgres=args.write_postgres,
+            postgres_url=args.postgres_url,
         )
         result = run_pipeline(settings, options)
+        print(f"run_id={result.run_id}")
         print(f"companies={len(result.companies)}")
         print(f"filings={len(result.filings)}")
         print(f"passages={len(result.passages)}")
@@ -105,6 +114,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"relation_evidence={len(result.evidence)}")
         print(f"graph_edges={len(result.edges)}")
         print(f"dashboard={result.dashboard_path}")
+        print(f"frontend_index={result.index_path}")
 
 
 def read_filtered_universe(args: argparse.Namespace):

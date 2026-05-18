@@ -33,6 +33,10 @@ class Settings:
     llm_report_url: str = os.getenv(
         "VALUECHAIN_LLM_REPORT_URL", "http://localllm.frederickpi.com/report"
     )
+    database_url: str = os.getenv(
+        "VALUECHAIN_DATABASE_URL",
+        "postgresql://valuechain:valuechain_dev@127.0.0.1:5433/valuechain",
+    )
 
     @property
     def proxies(self) -> dict[str, str]:
@@ -61,4 +65,3 @@ def load_yaml(path: Path) -> dict:
 
 def load_ontology(settings: Settings) -> dict:
     return load_yaml(settings.ontology_path)
-
