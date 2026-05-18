@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from valuechain.dashboard import build_dashboard_data, render_dashboard
-from valuechain.models import Company, GraphEdge, RelationEvidence
+from valuechain.models import Company, FilingRecord, GraphEdge, Passage, RelationEvidence
 
 
 def test_render_dashboard_writes_html(tmp_path: Path) -> None:
@@ -77,3 +77,48 @@ def test_dashboard_includes_universe_companies_without_edges() -> None:
     assert set(rows) == {"A Corp", "B Corp"}
     assert rows["B Corp"]["edge_count"] == 0
     assert rows["B Corp"]["ticker"] == "B"
+
+
+def test_dashboard_company_context_includes_pipeline_coverage_counts() -> None:
+    companies = [Company(ticker="NET", company_name="Cloudflare Inc.", role="edge_cloud_network", priority=2)]
+    filings = [
+        FilingRecord(
+            ticker="NET",
+            cik="1",
+            company_name="Cloudflare Inc.",
+            form="10-K",
+            accession_number="a1",
+            filing_date="2026-01-01",
+        )
+    ]
+    passages = [
+        Passage(
+            passage_id="p1",
+            ticker="NET",
+            cik="1",
+            company_name="Cloudflare Inc.",
+            form="10-K",
+            accession_number="a1",
+            filing_date="2026-01-01",
+            accepted_timestamp="",
+            source_document_url="https://example.com",
+            section="item_1_business",
+            paragraph_offset=0,
+            text="We rely on network providers.",
+            parser_name="parser",
+            parser_version="0.1",
+        )
+    ]
+    data = build_dashboard_data(
+        [],
+        [],
+        companies=companies,
+        filings=filings,
+        passages=passages,
+        candidate_passages=passages,
+    )
+    row = data["companies"][0]
+    assert row["filing_count"] == 1
+    assert row["passage_count"] == 1
+    assert row["candidate_passage_count"] == 1
+    assert row["coverage_status"] == "candidate_only"

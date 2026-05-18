@@ -21,6 +21,9 @@ export function Companies({ companies, onCompany }) {
               <th>Company</th>
               <th>Ticker</th>
               <th>Role</th>
+              <th>Status</th>
+              <th>Filings</th>
+              <th>Candidates</th>
               <th>Edges</th>
               <th>Evidence</th>
               <th>Current</th>
@@ -35,6 +38,9 @@ export function Companies({ companies, onCompany }) {
                 <td><button className="link-button" onClick={() => onCompany(row.company)}>{row.company}</button></td>
                 <td>{row.ticker}</td>
                 <td>{row.role}</td>
+                <td>{formatStatus(row.coverage_status)}</td>
+                <td>{row.filing_count}</td>
+                <td>{row.candidate_passage_count}</td>
                 <td>{row.edge_count}</td>
                 <td>{row.evidence_count}</td>
                 <td>{row.current_evidence_count}</td>
@@ -48,4 +54,15 @@ export function Companies({ companies, onCompany }) {
       </div>
     </section>
   );
+}
+
+function formatStatus(status) {
+  const labels = {
+    graph_ready: 'Graph ready',
+    evidence_only: 'Evidence only',
+    candidate_only: 'Candidates only',
+    filed_no_candidates: 'Filed',
+    no_filings: 'No filings',
+  };
+  return labels[status] || status || '';
 }

@@ -12,7 +12,7 @@ export VALUECHAIN_FILINGS_PER_FORM="${VALUECHAIN_FILINGS_PER_FORM:-1}"
 export VALUECHAIN_RUN_ID="${VALUECHAIN_RUN_ID:-industry-llm-balanced-prompt-v2}"
 
 valuechain run \
-  --forms 10-K,10-Q,8-K \
+  --forms 10-K,10-Q,8-K,20-F,6-K \
   --max-filings-per-company "$VALUECHAIN_FILINGS_PER_FORM" \
   --filing-selection form-balanced \
   --skip-yahoo \

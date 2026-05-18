@@ -7,7 +7,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from valuechain.aggregation import bottleneck_candidates
-from valuechain.models import Company, GraphEdge, RelationEvidence
+from valuechain.models import Company, FilingRecord, GraphEdge, Passage, RelationEvidence
 
 
 def render_dashboard(
@@ -16,6 +16,9 @@ def render_dashboard(
     evidence: list[RelationEvidence],
     yahoo_rows: list[dict] | None = None,
     companies: list[Company] | None = None,
+    filings: list[FilingRecord] | None = None,
+    passages: list[Passage] | None = None,
+    candidate_passages: list[Passage] | None = None,
 ) -> dict:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     template_dir = Path(__file__).resolve().parents[2] / "templates"
@@ -24,7 +27,15 @@ def render_dashboard(
         autoescape=select_autoescape(["html", "xml"]),
     )
     template = env.get_template("dashboard.html.j2")
-    dashboard_data = build_dashboard_data(edges, evidence, yahoo_rows, companies)
+    dashboard_data = build_dashboard_data(
+        edges,
+        evidence,
+        yahoo_rows,
+        companies,
+        filings=filings,
+        passages=passages,
+        candidate_passages=candidate_passages,
+    )
     output_path.write_text(
         template.render(
             edge_count=dashboard_data["summary"]["edge_count"],
@@ -48,6 +59,10 @@ def build_dashboard_data(
     evidence: list[RelationEvidence],
     yahoo_rows: list[dict] | None = None,
     companies: list[Company] | None = None,
+    filings: list[FilingRecord] | None = None,
+    passages: list[Passage] | None = None,
+    candidate_passages: list[Passage] | None = None,
+    company_activity: dict[str, dict[str, int]] | None = None,
 ) -> dict:
     evidence_by_company = Counter(record.subject for record in evidence)
     relation_mix = Counter(record.relation_type for record in evidence)
@@ -64,6 +79,11 @@ def build_dashboard_data(
         evidence_by_company,
         yahoo_by_symbol,
         companies,
+        (
+            company_activity
+            if company_activity is not None
+            else build_company_activity(filings, passages, candidate_passages)
+        ),
     )
     bottlenecks = bottleneck_candidates(edges)
     active_companies = {edge.subject for edge in edges} | {record.subject for record in evidence}
@@ -93,6 +113,7 @@ def build_company_context(
     evidence_by_company: Counter,
     yahoo_by_symbol: dict[str, dict],
     companies: list[Company] | None = None,
+    company_activity: dict[str, dict[str, int]] | None = None,
 ) -> list[dict]:
     company_by_subject = {company.company_name: company for company in companies or []}
     subjects = sorted(
@@ -122,6 +143,12 @@ def build_company_context(
         ticker = ticker_by_subject.get(subject, "")
         yahoo = yahoo_by_symbol.get(ticker.upper(), {})
         confidences = confidence_values.get(subject, [])
+        activity = company_activity.get(subject, {}) if company_activity else {}
+        filing_count = int(activity.get("filing_count", 0))
+        passage_count = int(activity.get("passage_count", 0))
+        candidate_count = int(activity.get("candidate_passage_count", 0))
+        edge_count = edge_counts.get(subject, 0)
+        evidence_count = evidence_by_company.get(subject, 0)
         rows.append(
             {
                 "company": subject,
@@ -131,8 +158,17 @@ def build_company_context(
                 "exchange": company.exchange if company else "",
                 "cik": company.cik if company else "",
                 "notes": company.notes if company else "",
-                "evidence_count": evidence_by_company.get(subject, 0),
-                "edge_count": edge_counts.get(subject, 0),
+                "filing_count": filing_count,
+                "passage_count": passage_count,
+                "candidate_passage_count": candidate_count,
+                "coverage_status": coverage_status(
+                    filing_count,
+                    candidate_count,
+                    evidence_count,
+                    edge_count,
+                ),
+                "evidence_count": evidence_count,
+                "edge_count": edge_count,
                 "risk_evidence_count": modality_counts[subject].get("risk_hypothetical", 0),
                 "current_evidence_count": modality_counts[subject].get("current_fact", 0),
                 "modality_counts": dict(modality_counts[subject]),
@@ -145,6 +181,40 @@ def build_company_context(
             }
         )
     return sorted(rows, key=company_sort_key)
+
+
+def build_company_activity(
+    filings: list[FilingRecord] | None = None,
+    passages: list[Passage] | None = None,
+    candidate_passages: list[Passage] | None = None,
+) -> dict[str, dict[str, int]]:
+    activity: dict[str, dict[str, int]] = defaultdict(
+        lambda: {"filing_count": 0, "passage_count": 0, "candidate_passage_count": 0}
+    )
+    for filing in filings or []:
+        activity[filing.company_name]["filing_count"] += 1
+    for passage in passages or []:
+        activity[passage.company_name]["passage_count"] += 1
+    for passage in candidate_passages or []:
+        activity[passage.company_name]["candidate_passage_count"] += 1
+    return dict(activity)
+
+
+def coverage_status(
+    filing_count: int,
+    candidate_count: int,
+    evidence_count: int,
+    edge_count: int,
+) -> str:
+    if edge_count:
+        return "graph_ready"
+    if evidence_count:
+        return "evidence_only"
+    if candidate_count:
+        return "candidate_only"
+    if filing_count:
+        return "filed_no_candidates"
+    return "no_filings"
 
 
 def company_sort_key(row: dict) -> tuple[int, int, str]:

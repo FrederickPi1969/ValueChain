@@ -210,10 +210,44 @@ async def dashboard_data(run_id: str, request: Request) -> dict[str, Any]:
         """,
         (run_id,),
     )
+    activity_rows = await fetch_all(
+        request,
+        """
+        SELECT c.company_name,
+               COALESCE(f.filing_count, 0)::int AS filing_count,
+               COALESCE(p.passage_count, 0)::int AS passage_count,
+               COALESCE(p.candidate_passage_count, 0)::int AS candidate_passage_count
+        FROM companies c
+        LEFT JOIN (
+            SELECT company_name, COUNT(*) AS filing_count
+            FROM filings
+            WHERE run_id = %s
+            GROUP BY company_name
+        ) f ON f.company_name = c.company_name
+        LEFT JOIN (
+            SELECT company_name,
+                   COUNT(*) AS passage_count,
+                   COUNT(*) FILTER (WHERE is_candidate) AS candidate_passage_count
+            FROM passages
+            WHERE run_id = %s
+            GROUP BY company_name
+        ) p ON p.company_name = c.company_name
+        WHERE c.run_id = %s
+        """,
+        (run_id, run_id, run_id),
+    )
     edges = [GraphEdge(**row) for row in edge_rows]
     records = [RelationEvidence(**row) for row in evidence_rows]
     companies = [Company(**row) for row in company_rows]
-    return build_dashboard_data(edges, records, companies=companies)
+    company_activity = {
+        row["company_name"]: {
+            "filing_count": row["filing_count"],
+            "passage_count": row["passage_count"],
+            "candidate_passage_count": row["candidate_passage_count"],
+        }
+        for row in activity_rows
+    }
+    return build_dashboard_data(edges, records, companies=companies, company_activity=company_activity)
 
 
 def build_filters(
