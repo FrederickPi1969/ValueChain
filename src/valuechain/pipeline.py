@@ -141,7 +141,7 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
     embedding_diagnostics: list[dict[str, object]] = []
     if options.embedding_merge:
         evidence, embedding_diagnostics = apply_embedding_merge(settings, options, evidence)
-        if embedding_diagnostics:
+        if any(row.get("action") == "merge" for row in embedding_diagnostics):
             evidence, post_embedding_diagnostics = denoise_relation_evidence(evidence)
             merge_diagnostics.extend(post_embedding_diagnostics)
     write_csv(run_processed_dir / "embedding_merge_diagnostics.csv", embedding_diagnostics)
