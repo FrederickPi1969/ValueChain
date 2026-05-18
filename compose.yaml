@@ -28,5 +28,21 @@ services:
       postgres:
         condition: service_healthy
 
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: valuechain-api
+    restart: unless-stopped
+    environment:
+      VALUECHAIN_DATABASE_URL: postgresql://valuechain:valuechain_dev@postgres:5432/valuechain
+      VALUECHAIN_API_HOST: 0.0.0.0
+      VALUECHAIN_API_PORT: 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   valuechain_pgdata:

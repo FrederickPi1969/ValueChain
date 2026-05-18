@@ -1,0 +1,254 @@
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+from typing import Any
+
+import uvicorn
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
+from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
+
+from valuechain.config import Settings
+from valuechain.dashboard import build_dashboard_data
+from valuechain.models import GraphEdge, RelationEvidence
+
+
+settings = Settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    pool = AsyncConnectionPool(
+        conninfo=settings.database_url,
+        kwargs={"row_factory": dict_row},
+        min_size=1,
+        max_size=8,
+        open=False,
+    )
+    await pool.open()
+    app.state.pool = pool
+    try:
+        yield
+    finally:
+        await pool.close()
+
+
+app = FastAPI(title="AI Value Chain API", version="0.1.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/api/health")
+async def health(request: Request) -> dict[str, Any]:
+    async with request.app.state.pool.connection() as conn:
+        row = await conn.execute("SELECT 1 AS ok")
+        result = await row.fetchone()
+    return {"ok": result["ok"] == 1}
+
+
+@app.get("/api/runs")
+async def list_runs(request: Request) -> dict[str, list[dict[str, Any]]]:
+    rows = await fetch_all(
+        request,
+        """
+        SELECT run_id, run_label, created_at, options, counts
+        FROM runs
+        ORDER BY created_at DESC
+        """,
+    )
+    return {
+        "runs": [
+            {
+                **row,
+                "created_at": row["created_at"].isoformat(),
+                "data_path": f"/api/runs/{row['run_id']}/dashboard-data",
+            }
+            for row in rows
+        ]
+    }
+
+
+@app.get("/api/runs/{run_id}/companies")
+async def companies(run_id: str, request: Request) -> dict[str, Any]:
+    rows = await fetch_all(
+        request,
+        """
+        SELECT ticker, company_name, role, priority, notes, cik, exchange
+        FROM companies
+        WHERE run_id = %s
+        ORDER BY priority NULLS LAST, role, ticker
+        """,
+        (run_id,),
+    )
+    return {"run_id": run_id, "companies": rows}
+
+
+@app.get("/api/runs/{run_id}/edges")
+async def edges(
+    run_id: str,
+    request: Request,
+    company: str = "",
+    relation: str = "",
+    modality: str = "",
+    q: str = "",
+    limit: int = Query(500, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
+) -> dict[str, Any]:
+    where, params = build_filters(
+        run_id,
+        company,
+        relation,
+        modality,
+        q,
+        subject_col="subject",
+    )
+    rows = await fetch_all(
+        request,
+        f"""
+        SELECT subject, object, relation_type, modality,
+               first_seen::text AS first_seen, last_seen::text AS last_seen,
+               evidence_count, avg_confidence, forms, accessions, source_urls
+        FROM graph_edges
+        WHERE {where}
+        ORDER BY evidence_count DESC NULLS LAST, subject, relation_type
+        LIMIT %s OFFSET %s
+        """,
+        (*params, limit, offset),
+    )
+    return {"run_id": run_id, "edges": rows, "limit": limit, "offset": offset}
+
+
+@app.get("/api/runs/{run_id}/evidence")
+async def evidence(
+    run_id: str,
+    request: Request,
+    company: str = "",
+    relation: str = "",
+    modality: str = "",
+    q: str = "",
+    limit: int = Query(500, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
+) -> dict[str, Any]:
+    where, params = build_filters(
+        run_id,
+        company,
+        relation,
+        modality,
+        q,
+        subject_col="subject",
+        q_columns=(
+            "subject",
+            "object",
+            "relation_type",
+            "evidence_text",
+            "source_section",
+            "accession_number",
+        ),
+    )
+    rows = await fetch_all(
+        request,
+        f"""
+        SELECT subject, object, relation_type, direction, modality, certainty, temporal_scope,
+               evidence_text, confidence_score, extractor_model_version, ticker, cik, form,
+               filing_date::text AS filing_date, accepted_timestamp, accession_number,
+               source_document_url, source_section, passage_id, paragraph_offset,
+               parser_name, parser_version
+        FROM relation_evidence
+        WHERE {where}
+        ORDER BY filing_date DESC NULLS LAST, subject, relation_type
+        LIMIT %s OFFSET %s
+        """,
+        (*params, limit, offset),
+    )
+    return {"run_id": run_id, "evidence": rows, "limit": limit, "offset": offset}
+
+
+@app.get("/api/runs/{run_id}/dashboard-data")
+async def dashboard_data(run_id: str, request: Request) -> dict[str, Any]:
+    run = await fetch_one(request, "SELECT run_id FROM runs WHERE run_id = %s", (run_id,))
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
+    edge_rows = await fetch_all(
+        request,
+        """
+        SELECT subject, object, relation_type, modality,
+               first_seen::text AS first_seen, last_seen::text AS last_seen,
+               evidence_count, avg_confidence, forms, accessions, source_urls
+        FROM graph_edges
+        WHERE run_id = %s
+        ORDER BY evidence_count DESC NULLS LAST, subject, relation_type
+        """,
+        (run_id,),
+    )
+    evidence_rows = await fetch_all(
+        request,
+        """
+        SELECT subject, object, relation_type, direction, modality, certainty, temporal_scope,
+               evidence_text, confidence_score, extractor_model_version, ticker, cik, form,
+               filing_date::text AS filing_date, accepted_timestamp, accession_number,
+               source_document_url, source_section, passage_id, paragraph_offset,
+               parser_name, parser_version
+        FROM relation_evidence
+        WHERE run_id = %s
+        ORDER BY filing_date DESC NULLS LAST, subject, relation_type
+        """,
+        (run_id,),
+    )
+    edges = [GraphEdge(**row) for row in edge_rows]
+    records = [RelationEvidence(**row) for row in evidence_rows]
+    return build_dashboard_data(edges, records)
+
+
+def build_filters(
+    run_id: str,
+    company: str,
+    relation: str,
+    modality: str,
+    q: str,
+    subject_col: str,
+    q_columns: tuple[str, ...] = ("subject", "object", "relation_type"),
+) -> tuple[str, tuple[Any, ...]]:
+    clauses = ["run_id = %s"]
+    params: list[Any] = [run_id]
+    if company:
+        clauses.append(f"{subject_col} = %s")
+        params.append(company)
+    if relation:
+        clauses.append("relation_type = %s")
+        params.append(relation)
+    if modality:
+        clauses.append("modality = %s")
+        params.append(modality)
+    if q:
+        clauses.append("(" + " OR ".join(f"{column} ILIKE %s" for column in q_columns) + ")")
+        like = f"%{q}%"
+        params.extend([like] * len(q_columns))
+    return " AND ".join(clauses), tuple(params)
+
+
+async def fetch_all(request: Request, query: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
+    async with request.app.state.pool.connection() as conn:
+        cursor = await conn.execute(query, params)
+        rows = await cursor.fetchall()
+    return [dict(row) for row in rows]
+
+
+async def fetch_one(request: Request, query: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
+    async with request.app.state.pool.connection() as conn:
+        cursor = await conn.execute(query, params)
+        row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+def main() -> None:
+    uvicorn.run("valuechain.api:app", host=settings.api_host, port=settings.api_port, reload=False)
+
+
+if __name__ == "__main__":
+    main()

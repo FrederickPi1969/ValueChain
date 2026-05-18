@@ -37,6 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--run-label", default="", help="Human-readable label shown in the frontend run index.")
     run.add_argument("--write-postgres", action="store_true", help="Write run artifacts into Postgres.")
     run.add_argument("--postgres-url", default="", help="Override VALUECHAIN_DATABASE_URL for this run.")
+    run.add_argument("--llm-concurrency", type=int, default=None, help="Concurrent LLM extraction requests.")
     return parser
 
 
@@ -104,6 +105,7 @@ def main(argv: list[str] | None = None) -> None:
             run_label=args.run_label,
             write_postgres=args.write_postgres,
             postgres_url=args.postgres_url,
+            llm_concurrency=args.llm_concurrency or settings.llm_concurrency,
         )
         result = run_pipeline(settings, options)
         print(f"run_id={result.run_id}")

@@ -92,7 +92,7 @@ Hybrid extraction, using the configured Qwen endpoint when available and
 falling back to rules if an LLM call fails:
 
 ```bash
-valuechain run --tickers NVDA,AMD,MSFT --extractor hybrid --max-filings-per-company 1
+valuechain run --tickers NVDA,AMD,MSFT --extractor hybrid --llm-concurrency 8 --max-filings-per-company 1
 ```
 
 `VALUECHAIN_HTTP_PROXY` / `VALUECHAIN_HTTPS_PROXY` can be used for SEC and LLM
@@ -113,8 +113,9 @@ Outputs are written to:
 
 ## Vite Frontend
 
-The main frontend is a Vite React app in `frontend/`. It reads generated JSON
-artifacts from `frontend/public/data`, so one dev server can browse many runs.
+The main frontend is a Vite React app in `frontend/`. It reads the FastAPI
+backend first when it is running, and falls back to generated JSON artifacts in
+`frontend/public/data` for offline review.
 
 ```bash
 cd frontend
@@ -150,10 +151,10 @@ the primary interface. It includes:
 
 ## Postgres
 
-Start local Postgres:
+Start local Postgres and the async API:
 
 ```bash
-docker compose up -d postgres
+docker compose up -d postgres api
 ```
 
 Write a run into Postgres:
@@ -166,6 +167,22 @@ Default connection:
 
 ```text
 postgresql://valuechain:valuechain_dev@127.0.0.1:5433/valuechain
+```
+
+The backend API is available at:
+
+```text
+http://127.0.0.1:8000/api/health
+http://127.0.0.1:8000/api/runs
+http://127.0.0.1:8000/api/runs/<run_id>/dashboard-data
+http://127.0.0.1:8000/api/runs/<run_id>/edges
+http://127.0.0.1:8000/api/runs/<run_id>/evidence
+```
+
+For local development without Docker:
+
+```bash
+VALUECHAIN_DATABASE_URL="postgresql://valuechain:valuechain_dev@127.0.0.1:5433/valuechain" valuechain-api
 ```
 
 Optional DB browser:
@@ -190,3 +207,21 @@ network graph. It emphasizes:
 
 The ontology is intentionally small and editable in `config/ontology.yaml`.
 The source registry is in `config/source_registry.yaml`.
+
+## Async LLM Extraction
+
+LLM and hybrid extraction use an async OpenAI-compatible client with connection
+pooling and a semaphore-controlled request limit. The default extraction model
+is the available 4B route `Qwen3.5-4B-OptiQ-4bit`; the larger 35B model remains
+configured separately for later complex steps. The default concurrency is
+conservative:
+
+```bash
+VALUECHAIN_LLM_CONCURRENCY=4
+```
+
+Raise it per run only when the endpoint can handle the load:
+
+```bash
+valuechain run --priority 1 --extractor hybrid --llm-concurrency 8 --max-filings-per-company 1 --write-postgres
+```

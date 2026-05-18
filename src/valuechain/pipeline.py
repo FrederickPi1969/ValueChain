@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -47,6 +48,7 @@ class PipelineOptions:
     run_label: str = ""
     write_postgres: bool = False
     postgres_url: str = ""
+    llm_concurrency: int = 4
 
 
 @dataclass
@@ -111,7 +113,11 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
     )
 
     extractor = build_extractor(settings, options, resolved_companies)
-    evidence = extract_relations(candidate_passages, extractor)
+    evidence = extract_relations(
+        candidate_passages,
+        extractor,
+        concurrency=max(1, options.llm_concurrency),
+    )
     write_jsonl(run_processed_dir / "relation_evidence.jsonl", [record.to_dict() for record in evidence])
 
     edges = aggregate_edges(evidence)
@@ -219,6 +225,8 @@ def build_extractor(settings: Settings, options: PipelineOptions, companies: lis
             model=settings.extraction_model,
             report_url=settings.llm_report_url,
             proxy_url=settings.https_proxy or settings.http_proxy,
+            max_connections=max(4, options.llm_concurrency * 2),
+            max_keepalive_connections=max(2, options.llm_concurrency),
         )
     )
     llm = LLMRelationExtractor(llm_client, model_version=settings.extraction_model)
@@ -229,11 +237,36 @@ def build_extractor(settings: Settings, options: PipelineOptions, companies: lis
     raise ValueError(f"Unknown extractor: {options.extractor}")
 
 
-def extract_relations(candidate_passages: list[Passage], extractor) -> list[RelationEvidence]:
+def extract_relations(
+    candidate_passages: list[Passage],
+    extractor,
+    concurrency: int = 4,
+) -> list[RelationEvidence]:
+    if hasattr(extractor, "extract_async"):
+        return asyncio.run(extract_relations_async(candidate_passages, extractor, concurrency=concurrency))
     records: list[RelationEvidence] = []
     for passage in candidate_passages:
         records.extend(extractor.extract(passage))
     return records
+
+
+async def extract_relations_async(
+    candidate_passages: list[Passage],
+    extractor,
+    concurrency: int = 4,
+) -> list[RelationEvidence]:
+    semaphore = asyncio.Semaphore(max(1, concurrency))
+
+    async def extract_one(passage: Passage) -> list[RelationEvidence]:
+        async with semaphore:
+            return await extractor.extract_async(passage)
+
+    try:
+        batches = await asyncio.gather(*(extract_one(passage) for passage in candidate_passages))
+    finally:
+        if hasattr(extractor, "aclose"):
+            await extractor.aclose()
+    return [record for batch in batches for record in batch]
 
 
 def write_validation_sample(path: Path, evidence: list[RelationEvidence], limit: int = 120) -> None:
@@ -275,43 +308,44 @@ def build_run_summary(
     edges: list[GraphEdge],
 ) -> dict:
     return {
+        "run_id": run_id,
+        "run_label": options.run_label or run_id,
+        "options": {
+            "tickers": options.tickers,
+            "roles": options.roles,
+            "max_priority": options.max_priority,
+            "limit_companies": options.limit_companies,
+            "forms": list(options.forms),
+            "max_filings_per_company": options.max_filings_per_company,
+            "filing_date_from": options.filing_date_from,
+            "filing_date_to": options.filing_date_to,
+            "extractor": options.extractor,
+            "min_relevance_score": options.min_relevance_score,
+            "skip_yahoo": options.skip_yahoo,
             "run_id": run_id,
-            "run_label": options.run_label or run_id,
-            "options": {
-                "tickers": options.tickers,
-                "roles": options.roles,
-                "max_priority": options.max_priority,
-                "limit_companies": options.limit_companies,
-                "forms": list(options.forms),
-                "max_filings_per_company": options.max_filings_per_company,
-                "filing_date_from": options.filing_date_from,
-                "filing_date_to": options.filing_date_to,
-                "extractor": options.extractor,
-                "min_relevance_score": options.min_relevance_score,
-                "skip_yahoo": options.skip_yahoo,
-                "run_id": run_id,
-                "run_label": options.run_label,
-                "write_postgres": options.write_postgres,
-                "extraction_model": settings.extraction_model,
-                "complex_model": settings.complex_model,
-            },
-            "counts": {
-                "companies": len(companies),
-                "roles": summarize_universe(companies)["role_counts"],
-                "filings": len(filings),
-                "passages": len(passages),
-                "candidate_passages": len(candidate_passages),
-                "relation_evidence": len(evidence),
-                "graph_edges": len(edges),
-            },
-            "outputs": {
-                "company_universe": str(processed_dir / "company_universe_resolved.csv"),
-                "input_plan": str(processed_dir / "input_plan.json"),
-                "filing_manifest": str(processed_dir / "filing_manifest.csv"),
-                "relation_evidence": str(processed_dir / "relation_evidence.jsonl"),
-                "graph_edges": str(processed_dir / "graph_edges.csv"),
-                "validation_sample": str(processed_dir / "validation_sample.csv"),
-                "dashboard": str(dashboard_path),
-                "dashboard_data": str(dashboard_path.parent / "dashboard-data.json"),
-            },
-        }
+            "run_label": options.run_label,
+            "write_postgres": options.write_postgres,
+            "llm_concurrency": options.llm_concurrency,
+            "extraction_model": settings.extraction_model,
+            "complex_model": settings.complex_model,
+        },
+        "counts": {
+            "companies": len(companies),
+            "roles": summarize_universe(companies)["role_counts"],
+            "filings": len(filings),
+            "passages": len(passages),
+            "candidate_passages": len(candidate_passages),
+            "relation_evidence": len(evidence),
+            "graph_edges": len(edges),
+        },
+        "outputs": {
+            "company_universe": str(processed_dir / "company_universe_resolved.csv"),
+            "input_plan": str(processed_dir / "input_plan.json"),
+            "filing_manifest": str(processed_dir / "filing_manifest.csv"),
+            "relation_evidence": str(processed_dir / "relation_evidence.jsonl"),
+            "graph_edges": str(processed_dir / "graph_edges.csv"),
+            "validation_sample": str(processed_dir / "validation_sample.csv"),
+            "dashboard": str(dashboard_path),
+            "dashboard_data": str(dashboard_path.parent / "dashboard-data.json"),
+        },
+    }
