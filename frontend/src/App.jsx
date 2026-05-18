@@ -6,7 +6,7 @@ import { FilterBar } from './components/FilterBar.jsx';
 import { MetricStrip } from './components/MetricStrip.jsx';
 import { RunSelector } from './components/RunSelector.jsx';
 import { Tabs } from './components/Tabs.jsx';
-import { exportCsv, filterBottlenecks, filterEdges, filterEvidence } from './lib/filters.js';
+import { exportCsv, filterBottlenecks, filterCompanies, filterEdges, filterEvidence } from './lib/filters.js';
 import { Bottlenecks } from './views/Bottlenecks.jsx';
 import { Companies } from './views/Companies.jsx';
 import { Edges } from './views/Edges.jsx';
@@ -80,6 +80,7 @@ export function App() {
   const filteredEdges = useMemo(() => filterEdges(data?.edges || [], filters), [data, filters]);
   const filteredEvidence = useMemo(() => filterEvidence(data?.evidence || [], filters), [data, filters]);
   const filteredBottlenecks = useMemo(() => filterBottlenecks(data?.bottlenecks || [], filters), [data, filters]);
+  const filteredCompanies = useMemo(() => filterCompanies(data?.companies || [], filters), [data, filters]);
 
   const updateFilters = (patch) => setFilters((current) => ({ ...current, ...patch }));
 
@@ -111,6 +112,7 @@ export function App() {
           <main>
             <MetricStrip
               data={data}
+              filteredCompanies={filteredCompanies}
               filteredEdges={filteredEdges}
               filteredEvidence={filteredEvidence}
               filteredBottlenecks={filteredBottlenecks}
@@ -121,8 +123,7 @@ export function App() {
                 {activeTab === 'overview' && <Overview edges={filteredEdges} evidence={filteredEvidence} />}
                 {activeTab === 'companies' && (
                   <Companies
-                    companies={data.companies || []}
-                    filters={filters}
+                    companies={filteredCompanies}
                     onCompany={(company) => updateFilters({ company })}
                   />
                 )}

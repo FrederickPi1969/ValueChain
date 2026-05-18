@@ -148,7 +148,7 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
         write_csv(run_processed_dir / "yahoo_snapshot.csv", yahoo_rows)
 
     dashboard_path = run_report_dir / "dashboard.html"
-    dashboard_data = render_dashboard(dashboard_path, edges, evidence, yahoo_rows)
+    dashboard_data = render_dashboard(dashboard_path, edges, evidence, yahoo_rows, resolved_companies)
     write_json(run_report_dir / "dashboard-data.json", dashboard_data)
     summary = build_run_summary(
         settings,

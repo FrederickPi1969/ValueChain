@@ -11,7 +11,7 @@ from psycopg_pool import AsyncConnectionPool
 
 from valuechain.config import Settings
 from valuechain.dashboard import build_dashboard_data
-from valuechain.models import GraphEdge, RelationEvidence
+from valuechain.models import Company, GraphEdge, RelationEvidence
 
 
 settings = Settings()
@@ -200,9 +200,20 @@ async def dashboard_data(run_id: str, request: Request) -> dict[str, Any]:
         """,
         (run_id,),
     )
+    company_rows = await fetch_all(
+        request,
+        """
+        SELECT ticker, company_name, role, priority, notes, cik, exchange
+        FROM companies
+        WHERE run_id = %s
+        ORDER BY priority NULLS LAST, role, ticker
+        """,
+        (run_id,),
+    )
     edges = [GraphEdge(**row) for row in edge_rows]
     records = [RelationEvidence(**row) for row in evidence_rows]
-    return build_dashboard_data(edges, records)
+    companies = [Company(**row) for row in company_rows]
+    return build_dashboard_data(edges, records, companies=companies)
 
 
 def build_filters(

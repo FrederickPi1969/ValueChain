@@ -40,6 +40,23 @@ export function filterBottlenecks(bottlenecks, filters) {
   });
 }
 
+export function filterCompanies(companies, filters) {
+  const query = normalizeSearch(filters.query);
+  return companies.filter((row) => {
+    if (filters.company && row.company !== filters.company) return false;
+    if (filters.relation && !relationTypes(row).includes(filters.relation)) return false;
+    if (filters.modality && !Number(row.modality_counts?.[filters.modality] || 0)) return false;
+    return rowContains(row, query);
+  });
+}
+
+function relationTypes(row) {
+  return String(row.relation_types || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 export function countWeighted(rows, key) {
   const counts = new Map();
   rows.forEach((row) => {

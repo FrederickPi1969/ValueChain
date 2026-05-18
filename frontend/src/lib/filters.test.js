@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterBottlenecks, filterEdges, filterEvidence, uniqueSorted } from './filters.js';
+import { filterBottlenecks, filterCompanies, filterEdges, filterEvidence, uniqueSorted } from './filters.js';
 
 describe('filters', () => {
   it('filters edges by company, relation, modality, and search text', () => {
@@ -29,6 +29,20 @@ describe('filters', () => {
     const rows = [{ object: 'TSMC', subjects: 'NVIDIA;AMD', relation_types: 'foundry_dependency' }];
     expect(filterBottlenecks(rows, { company: 'AMD' })).toHaveLength(1);
     expect(filterBottlenecks(rows, { company: 'Microsoft' })).toHaveLength(0);
+  });
+
+  it('filters company universe rows without requiring graph edges', () => {
+    const rows = [
+      {
+        company: 'NVIDIA',
+        relation_types: 'foundry_dependency, supplier_dependency',
+        modality_counts: { current_fact: 2 },
+      },
+      { company: 'Microsoft', relation_types: '', modality_counts: {} },
+    ];
+    expect(filterCompanies(rows, { query: '', company: '', relation: '', modality: '' })).toHaveLength(2);
+    expect(filterCompanies(rows, { relation: 'foundry_dependency' })).toEqual([rows[0]]);
+    expect(filterCompanies(rows, { modality: 'current_fact' })).toEqual([rows[0]]);
   });
 
   it('returns sorted unique values', () => {

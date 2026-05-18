@@ -2,7 +2,9 @@ import { Download, RotateCcw, Search } from 'lucide-react';
 import { uniqueSorted } from '../lib/filters.js';
 
 export function FilterBar({ data, filters, onChange, onReset, onExport, onCurrentFacts }) {
-  const companies = uniqueSorted((data?.edges || []).map((edge) => edge.subject));
+  const companies = uniqueSorted(
+    (data?.companies?.length ? data.companies.map((row) => row.company) : (data?.edges || []).map((edge) => edge.subject))
+  );
   const relations = uniqueSorted((data?.edges || []).map((edge) => edge.relation_type));
   const modalities = uniqueSorted((data?.edges || []).map((edge) => edge.modality));
 

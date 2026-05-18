@@ -7,7 +7,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from valuechain.aggregation import bottleneck_candidates
-from valuechain.models import GraphEdge, RelationEvidence
+from valuechain.models import Company, GraphEdge, RelationEvidence
 
 
 def render_dashboard(
@@ -15,6 +15,7 @@ def render_dashboard(
     edges: list[GraphEdge],
     evidence: list[RelationEvidence],
     yahoo_rows: list[dict] | None = None,
+    companies: list[Company] | None = None,
 ) -> dict:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     template_dir = Path(__file__).resolve().parents[2] / "templates"
@@ -23,7 +24,7 @@ def render_dashboard(
         autoescape=select_autoescape(["html", "xml"]),
     )
     template = env.get_template("dashboard.html.j2")
-    dashboard_data = build_dashboard_data(edges, evidence, yahoo_rows)
+    dashboard_data = build_dashboard_data(edges, evidence, yahoo_rows, companies)
     output_path.write_text(
         template.render(
             edge_count=dashboard_data["summary"]["edge_count"],
@@ -46,6 +47,7 @@ def build_dashboard_data(
     edges: list[GraphEdge],
     evidence: list[RelationEvidence],
     yahoo_rows: list[dict] | None = None,
+    companies: list[Company] | None = None,
 ) -> dict:
     evidence_by_company = Counter(record.subject for record in evidence)
     relation_mix = Counter(record.relation_type for record in evidence)
@@ -55,14 +57,24 @@ def build_dashboard_data(
         evidence,
         key=lambda record: (record.subject, record.relation_type, -record.confidence_score),
     )
-    yahoo_by_symbol = {str(row.get("symbol", "")): row for row in yahoo_rows or []}
-    company_context = build_company_context(edges, evidence, evidence_by_company, yahoo_by_symbol)
+    yahoo_by_symbol = {str(row.get("symbol", "")).upper(): row for row in yahoo_rows or []}
+    company_context = build_company_context(
+        edges,
+        evidence,
+        evidence_by_company,
+        yahoo_by_symbol,
+        companies,
+    )
     bottlenecks = bottleneck_candidates(edges)
+    active_companies = {edge.subject for edge in edges} | {record.subject for record in evidence}
+    universe_companies = {company.company_name for company in companies or []}
     dashboard_data = {
         "summary": {
             "edge_count": len(edges),
             "evidence_count": len(evidence),
-            "company_count": len({edge.subject for edge in edges}),
+            "company_count": len(universe_companies) if universe_companies else len(active_companies),
+            "active_company_count": len(active_companies),
+            "company_row_count": len(company_context),
             "bottleneck_count": len(bottlenecks),
         },
         "relation_mix": relation_mix.most_common(),
@@ -80,37 +92,50 @@ def build_company_context(
     evidence: list[RelationEvidence],
     evidence_by_company: Counter,
     yahoo_by_symbol: dict[str, dict],
+    companies: list[Company] | None = None,
 ) -> list[dict]:
-    subjects = sorted({edge.subject for edge in edges})
-    ticker_by_subject: dict[str, str] = {}
+    company_by_subject = {company.company_name: company for company in companies or []}
+    subjects = sorted(
+        {edge.subject for edge in edges}
+        | {record.subject for record in evidence}
+        | set(company_by_subject)
+    )
+    ticker_by_subject: dict[str, str] = {
+        company.company_name: company.ticker for company in companies or []
+    }
     for record in evidence:
         ticker_by_subject.setdefault(record.subject, record.ticker)
     exposures: dict[str, set[str]] = defaultdict(set)
     edge_counts: Counter = Counter()
-    risk_counts: Counter = Counter()
-    current_counts: Counter = Counter()
-    avg_confidence: dict[str, list[float]] = defaultdict(list)
+    modality_counts: dict[str, Counter] = defaultdict(Counter)
+    confidence_values: dict[str, list[float]] = defaultdict(list)
+    for record in evidence:
+        exposures[record.subject].add(record.relation_type)
+        modality_counts[record.subject][record.modality] += 1
+        confidence_values[record.subject].append(record.confidence_score)
     for edge in edges:
         exposures[edge.subject].add(edge.relation_type)
         edge_counts[edge.subject] += 1
-        avg_confidence[edge.subject].append(edge.avg_confidence)
-        if edge.modality == "risk_hypothetical":
-            risk_counts[edge.subject] += edge.evidence_count
-        if edge.modality == "current_fact":
-            current_counts[edge.subject] += edge.evidence_count
     rows: list[dict] = []
     for subject in subjects:
+        company = company_by_subject.get(subject)
         ticker = ticker_by_subject.get(subject, "")
-        yahoo = yahoo_by_symbol.get(ticker, {})
-        confidences = avg_confidence.get(subject, [])
+        yahoo = yahoo_by_symbol.get(ticker.upper(), {})
+        confidences = confidence_values.get(subject, [])
         rows.append(
             {
                 "company": subject,
                 "ticker": ticker,
+                "role": company.role if company else "",
+                "priority": company.priority if company else "",
+                "exchange": company.exchange if company else "",
+                "cik": company.cik if company else "",
+                "notes": company.notes if company else "",
                 "evidence_count": evidence_by_company.get(subject, 0),
                 "edge_count": edge_counts.get(subject, 0),
-                "risk_evidence_count": risk_counts.get(subject, 0),
-                "current_evidence_count": current_counts.get(subject, 0),
+                "risk_evidence_count": modality_counts[subject].get("risk_hypothetical", 0),
+                "current_evidence_count": modality_counts[subject].get("current_fact", 0),
+                "modality_counts": dict(modality_counts[subject]),
                 "avg_confidence": round(sum(confidences) / max(len(confidences), 1), 3),
                 "relation_types": ", ".join(sorted(exposures[subject])),
                 "relation_type_count": len(exposures[subject]),
@@ -119,4 +144,13 @@ def build_company_context(
                 "marketCap": yahoo.get("marketCap", ""),
             }
         )
-    return sorted(rows, key=lambda row: -int(row["evidence_count"]))
+    return sorted(rows, key=company_sort_key)
+
+
+def company_sort_key(row: dict) -> tuple[int, int, str]:
+    priority = row.get("priority")
+    try:
+        priority_value = int(priority)
+    except (TypeError, ValueError):
+        priority_value = 999
+    return (priority_value, -int(row["evidence_count"]), str(row["company"]))

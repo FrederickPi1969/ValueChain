@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from valuechain.dashboard import render_dashboard
-from valuechain.models import GraphEdge, RelationEvidence
+from valuechain.dashboard import build_dashboard_data, render_dashboard
+from valuechain.models import Company, GraphEdge, RelationEvidence
 
 
 def test_render_dashboard_writes_html(tmp_path: Path) -> None:
@@ -49,3 +49,31 @@ def test_render_dashboard_writes_html(tmp_path: Path) -> None:
     assert "dashboardData" in html
     assert "Company x Relation Heatmap" in html
     assert "TSMC" in html
+
+
+def test_dashboard_includes_universe_companies_without_edges() -> None:
+    companies = [
+        Company(ticker="A", company_name="A Corp", role="accelerator_compute", priority=1),
+        Company(ticker="B", company_name="B Corp", role="cloud_hyperscaler", priority=1),
+    ]
+    edge = GraphEdge(
+        subject="A Corp",
+        object="TSMC",
+        relation_type="foundry_dependency",
+        modality="current_fact",
+        first_seen="2025-01-01",
+        last_seen="2025-01-01",
+        evidence_count=1,
+        avg_confidence=0.8,
+        forms="10-K",
+        accessions="a1",
+        source_urls="https://example.com",
+    )
+    data = build_dashboard_data([edge], [], companies=companies)
+    rows = {row["company"]: row for row in data["companies"]}
+
+    assert data["summary"]["company_count"] == 2
+    assert data["summary"]["active_company_count"] == 1
+    assert set(rows) == {"A Corp", "B Corp"}
+    assert rows["B Corp"]["edge_count"] == 0
+    assert rows["B Corp"]["ticker"] == "B"

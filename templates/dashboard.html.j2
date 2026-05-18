@@ -633,6 +633,7 @@
                 <tr>
                   <th>Company</th>
                   <th>Ticker</th>
+                  <th>Role</th>
                   <th>Edges</th>
                   <th>Evidence</th>
                   <th>Current</th>
@@ -773,7 +774,10 @@
     }
 
     function initFilters() {
-      optionList(els.company, uniqueSorted(DATA.edges.map(edge => edge.subject)), 'All companies');
+      const companyOptions = DATA.companies?.length
+        ? DATA.companies.map(row => row.company)
+        : DATA.edges.map(edge => edge.subject);
+      optionList(els.company, uniqueSorted(companyOptions), 'All companies');
       optionList(els.relation, uniqueSorted(DATA.edges.map(edge => edge.relation_type)), 'All relations');
       optionList(els.modality, uniqueSorted(DATA.edges.map(edge => edge.modality)), 'All modalities');
     }
@@ -803,6 +807,17 @@
       if (state.relation && row.relation_type !== state.relation) return false;
       if (state.modality && row.modality !== state.modality) return false;
       return matchesSearch(row);
+    }
+
+    function companyMatches(row) {
+      if (state.company && row.company !== state.company) return false;
+      if (state.relation && !relationTypes(row).includes(state.relation)) return false;
+      if (state.modality && !Number(row.modality_counts?.[state.modality] || 0)) return false;
+      return matchesSearch(row);
+    }
+
+    function relationTypes(row) {
+      return String(row.relation_types || '').split(',').map(item => item.trim()).filter(Boolean);
     }
 
     function countBy(rows, key) {
@@ -862,14 +877,18 @@
 
     function renderCompanies() {
       const companyRows = DATA.companies
-        .filter(row => !state.company || row.company === state.company)
-        .filter(matchesSearch)
-        .sort((a, b) => Number(b.evidence_count) - Number(a.evidence_count));
+        .filter(companyMatches)
+        .sort((a, b) =>
+          Number(a.priority || 999) - Number(b.priority || 999) ||
+          Number(b.evidence_count) - Number(a.evidence_count) ||
+          String(a.company).localeCompare(String(b.company))
+        );
       document.getElementById('companyTableCount').textContent = `${companyRows.length} rows`;
       document.getElementById('companyRows').innerHTML = companyRows.map(row => `
         <tr>
           <td><button class="btn" data-company="${escapeAttr(row.company)}">${escapeHtml(row.company)}</button></td>
           <td>${escapeHtml(row.ticker || '')}</td>
+          <td class="text-tight">${escapeHtml(row.role || '')}</td>
           <td class="score-cell">${row.edge_count || 0}</td>
           <td class="score-cell">${row.evidence_count || 0}</td>
           <td class="score-cell">${row.current_evidence_count || 0}</td>
@@ -877,7 +896,7 @@
           <td class="score-cell">${row.relation_type_count || 0}</td>
           <td class="score-cell">${row.avg_confidence || ''}</td>
         </tr>
-      `).join('') || `<tr><td colspan="8">${emptyBlock('No matching companies')}</td></tr>`;
+      `).join('') || `<tr><td colspan="9">${emptyBlock('No matching companies')}</td></tr>`;
       document.querySelectorAll('[data-company]').forEach(button => {
         button.addEventListener('click', () => {
           state.company = button.dataset.company || '';
@@ -942,7 +961,7 @@
     }
 
     function renderMetrics() {
-      const companies = uniqueSorted(state.filteredEdges.map(edge => edge.subject));
+      const companies = DATA.companies.filter(companyMatches);
       const currentEvidence = state.filteredEvidence.filter(row => row.modality === 'current_fact').length;
       const riskEvidence = state.filteredEvidence.filter(row => row.modality === 'risk_hypothetical').length;
       const filteredBottlenecks = DATA.bottlenecks.filter(row => {
@@ -955,7 +974,7 @@
       els.metricCurrent.textContent = currentEvidence;
       els.metricRisk.textContent = riskEvidence;
       els.metricBottlenecks.textContent = filteredBottlenecks.length;
-      document.getElementById('metricCompaniesDelta').textContent = `of ${DATA.summary.company_count} total`;
+      document.getElementById('metricCompaniesDelta').textContent = `${DATA.summary.active_company_count || 0} active / ${DATA.summary.company_count} total`;
       document.getElementById('metricEdgesDelta').textContent = `of ${DATA.summary.edge_count} total`;
     }
 

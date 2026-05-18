@@ -1,8 +1,12 @@
-export function Companies({ companies, filters, onCompany }) {
+export function Companies({ companies, onCompany }) {
   const rows = companies
-    .filter((row) => !filters.company || row.company === filters.company)
-    .filter((row) => !filters.query || Object.values(row).join(' ').toLowerCase().includes(filters.query.toLowerCase()))
-    .sort((a, b) => Number(b.evidence_count) - Number(a.evidence_count));
+    .slice()
+    .sort(
+      (a, b) =>
+        Number(a.priority || 999) - Number(b.priority || 999) ||
+        Number(b.evidence_count) - Number(a.evidence_count) ||
+        String(a.company).localeCompare(String(b.company))
+    );
 
   return (
     <section className="panel wide">
@@ -16,6 +20,7 @@ export function Companies({ companies, filters, onCompany }) {
             <tr>
               <th>Company</th>
               <th>Ticker</th>
+              <th>Role</th>
               <th>Edges</th>
               <th>Evidence</th>
               <th>Current</th>
@@ -29,6 +34,7 @@ export function Companies({ companies, filters, onCompany }) {
               <tr key={row.company}>
                 <td><button className="link-button" onClick={() => onCompany(row.company)}>{row.company}</button></td>
                 <td>{row.ticker}</td>
+                <td>{row.role}</td>
                 <td>{row.edge_count}</td>
                 <td>{row.evidence_count}</td>
                 <td>{row.current_evidence_count}</td>
