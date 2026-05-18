@@ -23,6 +23,42 @@ COMMON_ALIASES: dict[str, str] = {
     "broadcom": "Broadcom Inc.",
 }
 
+ORG_SUFFIX_RE = re.compile(
+    r"\b([A-Z][A-Za-z0-9&.\-]*(?:\s+[A-Z][A-Za-z0-9&.\-]*){0,8}\s+"
+    r"(?:Inc\.?|Incorporated|Corporation|Corp\.?|Company|Co\.?|Ltd\.?|Limited|plc|PLC|"
+    r"N\.V\.|S\.A\.|LLC|Holdings)(?:,\s*Ltd\.?)?)\b"
+)
+
+LIST_INTRO_RE = re.compile(
+    r"\b(?:such as|including|include|includes|including but not limited to)\s+([^;\n]{1,260})",
+    flags=re.IGNORECASE,
+)
+
+COUNTERPARTY_LIST_MARKERS = ("such as", "including", "include", "includes")
+
+LIST_ITEM_STOPWORDS = {
+    "competition",
+    "table of contents",
+    "we",
+    "our",
+    "and",
+    "or",
+    "the",
+    "a",
+    "an",
+    "inc",
+    "corp",
+    "co",
+    "ltd",
+    "llc",
+    "plc",
+    "customers",
+    "suppliers",
+    "subcontractors",
+    "manufacturers",
+    "providers",
+}
+
 
 @dataclass
 class EntityResolver:
@@ -64,26 +100,44 @@ class EntityResolver:
                         confidence=0.85,
                     )
                 )
+        mentions.extend(extract_named_organization_mentions(text))
         return dedupe_mentions(mentions)
 
     def resolve_object(self, object_hint: str, text: str, subject_name: str = "") -> EntityMention:
+        return self.resolve_objects(object_hint, text, subject_name=subject_name, max_objects=1)[0]
+
+    def resolve_objects(
+        self,
+        object_hint: str,
+        text: str,
+        subject_name: str = "",
+        max_objects: int = 5,
+    ) -> list[EntityMention]:
         mentions = self.extract_mentions(text)
         subject_key = subject_name.strip().lower()
-        subject_mentions = [
-            mention for mention in mentions if mention.normalized_name.lower() in text[:150].lower()
-        ]
+        subject_normalized = normalize_entity_key(subject_name)
+        resolved: list[EntityMention] = []
         for mention in mentions:
             if subject_key and mention.normalized_name.lower() == subject_key:
                 continue
-            if mention not in subject_mentions:
-                return mention
+            if subject_normalized and normalize_entity_key(mention.normalized_name) == subject_normalized:
+                continue
+            if is_leading_sentence_subject(mention, text):
+                continue
+            resolved.append(mention)
+        if resolved:
+            if has_counterparty_list_marker(text):
+                return resolved[:max_objects]
+            return resolved[:1]
         normalized = object_hint.strip() or "unnamed counterparty"
-        return EntityMention(
-            text=normalized,
-            entity_type="dependency_class",
-            normalized_name=normalized,
-            confidence=0.45,
-        )
+        return [
+            EntityMention(
+                text=normalized,
+                entity_type="dependency_class",
+                normalized_name=normalized,
+                confidence=0.45,
+            )
+        ]
 
 
 def normalize_company_suffix(name: str) -> str:
@@ -95,6 +149,81 @@ def normalize_company_suffix(name: str) -> str:
     )
     normalized = re.sub(r"[,.\s]+", " ", normalized)
     return normalized.strip()
+
+
+def normalize_entity_key(name: str) -> str:
+    normalized = normalize_company_suffix(name).lower()
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def extract_named_organization_mentions(text: str) -> list[EntityMention]:
+    mentions: list[EntityMention] = []
+    for match in ORG_SUFFIX_RE.finditer(text):
+        name = clean_organization_name(match.group(1))
+        if not looks_like_organization_name(name):
+            continue
+        mentions.append(
+            EntityMention(
+                text=name,
+                entity_type="organization",
+                normalized_name=name,
+                confidence=0.68,
+            )
+        )
+    for match in LIST_INTRO_RE.finditer(text):
+        for item in split_counterparty_list(match.group(1)):
+            if not looks_like_organization_name(item):
+                continue
+            mentions.append(
+                EntityMention(
+                    text=item,
+                    entity_type="organization",
+                    normalized_name=item,
+                    confidence=0.58,
+                )
+            )
+    return dedupe_mentions(mentions)
+
+
+def split_counterparty_list(segment: str) -> list[str]:
+    segment = re.split(r"\bto\s+(?:perform|provide|supply|deliver|support)\b", segment, maxsplit=1)[0]
+    segment = re.split(r"\bfor\s+(?:assembly|manufacturing|testing|packaging|services)\b", segment, maxsplit=1)[0]
+    segment = segment.replace(" and ", ", ")
+    return [clean_organization_name(part) for part in segment.split(",") if clean_organization_name(part)]
+
+
+def clean_organization_name(name: str) -> str:
+    cleaned = re.sub(r"\s+", " ", name.strip(" \t\n\r,;:.()"))
+    cleaned = re.sub(r"\b(?:among others|etc)$", "", cleaned, flags=re.IGNORECASE).strip(" ,;:.")
+    return cleaned
+
+
+def looks_like_organization_name(name: str) -> bool:
+    if not name or len(name) < 3 or len(name) > 120:
+        return False
+    key = name.lower()
+    if key in LIST_ITEM_STOPWORDS:
+        return False
+    if any(word in key for word in ["table of contents", "item ", "part i", "part ii"]):
+        return False
+    words = name.split()
+    if len(words) > 9:
+        return False
+    has_suffix = ORG_SUFFIX_RE.fullmatch(name) is not None
+    titleish = sum(1 for word in words if word[:1].isupper() or word.isupper()) >= max(1, len(words) - 1)
+    return has_suffix or titleish
+
+
+def has_counterparty_list_marker(text: str) -> bool:
+    lowered = text.lower()
+    return any(marker in lowered for marker in COUNTERPARTY_LIST_MARKERS)
+
+
+def is_leading_sentence_subject(mention: EntityMention, text: str) -> bool:
+    prefix = text[:120].lower().lstrip()
+    names = {mention.text.lower(), mention.normalized_name.lower()}
+    return any(prefix.startswith(name) for name in names if name)
 
 
 def dedupe_mentions(mentions: list[EntityMention]) -> list[EntityMention]:

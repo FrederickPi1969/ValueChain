@@ -30,6 +30,7 @@ class Settings:
     llm_api_key: str = os.getenv("VALUECHAIN_LLM_API_KEY", "1969")
     extraction_model: str = os.getenv("VALUECHAIN_EXTRACTION_MODEL", "Qwen/Qwen3.5-4B")
     complex_model: str = os.getenv("VALUECHAIN_COMPLEX_MODEL", "Qwen/Qwen3.6-35B-A3B")
+    embedding_model: str = os.getenv("VALUECHAIN_EMBEDDING_MODEL", "qwen3-embed-0.6b")
     llm_report_url: str = os.getenv(
         "VALUECHAIN_LLM_REPORT_URL", "http://localllm.frederickpi.com/report"
     )

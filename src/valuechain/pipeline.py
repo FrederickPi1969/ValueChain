@@ -7,6 +7,8 @@ from pathlib import Path
 from valuechain.aggregation import aggregate_edges, bottleneck_candidates
 from valuechain.config import Settings, ensure_dirs
 from valuechain.dashboard import render_dashboard
+from valuechain.edge_quality import denoise_relation_evidence
+from valuechain.embeddings import EmbeddingConfig, OpenAIEmbeddingClient, embedding_merge_relation_evidence
 from valuechain.entity_resolution import EntityResolver
 from valuechain.filing_parser import parse_sections, segment_passages
 from valuechain.io_utils import write_csv, write_jsonl, write_json
@@ -49,6 +51,8 @@ class PipelineOptions:
     write_postgres: bool = False
     postgres_url: str = ""
     llm_concurrency: int = 4
+    embedding_merge: bool = False
+    embedding_threshold: float = 0.92
 
 
 @dataclass
@@ -113,14 +117,28 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
     )
 
     extractor = build_extractor(settings, options, resolved_companies)
-    evidence = extract_relations(
+    raw_evidence = extract_relations(
         candidate_passages,
         extractor,
         concurrency=max(1, options.llm_concurrency),
     )
+    write_jsonl(
+        run_processed_dir / "relation_evidence_raw.jsonl",
+        [record.to_dict() for record in raw_evidence],
+    )
+
+    evidence, merge_diagnostics = denoise_relation_evidence(raw_evidence)
+    embedding_diagnostics: list[dict[str, object]] = []
+    if options.embedding_merge:
+        evidence, embedding_diagnostics = apply_embedding_merge(settings, options, evidence)
+        if embedding_diagnostics:
+            evidence, post_embedding_diagnostics = denoise_relation_evidence(evidence)
+            merge_diagnostics.extend(post_embedding_diagnostics)
+    write_csv(run_processed_dir / "embedding_merge_diagnostics.csv", embedding_diagnostics)
+    write_csv(run_processed_dir / "merge_diagnostics.csv", merge_diagnostics)
     write_jsonl(run_processed_dir / "relation_evidence.jsonl", [record.to_dict() for record in evidence])
 
-    edges = aggregate_edges(evidence)
+    edges = aggregate_edges(evidence, apply_quality_gate=False)
     write_csv(run_processed_dir / "graph_edges.csv", [edge.to_dict() for edge in edges])
     write_csv(run_processed_dir / "bottleneck_candidates.csv", bottleneck_candidates(edges))
     write_validation_sample(run_processed_dir / "validation_sample.csv", evidence)
@@ -144,6 +162,8 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
         candidate_passages,
         evidence,
         edges,
+        raw_evidence_count=len(raw_evidence),
+        merge_diagnostics=merge_diagnostics,
     )
     write_json(run_processed_dir / "run_summary.json", summary)
     if options.write_postgres:
@@ -269,6 +289,36 @@ async def extract_relations_async(
     return [record for batch in batches for record in batch]
 
 
+def apply_embedding_merge(
+    settings: Settings,
+    options: PipelineOptions,
+    evidence: list[RelationEvidence],
+) -> tuple[list[RelationEvidence], list[dict[str, object]]]:
+    client = OpenAIEmbeddingClient(
+        EmbeddingConfig(
+            base_url=settings.llm_base_url,
+            api_key=settings.llm_api_key,
+            model=settings.embedding_model,
+            proxy_url=settings.https_proxy or settings.http_proxy,
+        )
+    )
+    try:
+        return embedding_merge_relation_evidence(
+            evidence,
+            client,
+            threshold=options.embedding_threshold,
+        )
+    except Exception as exc:
+        return evidence, [
+            {
+                "action": "error",
+                "reason": f"{type(exc).__name__}: {exc}",
+                "model": settings.embedding_model,
+                "threshold": options.embedding_threshold,
+            }
+        ]
+
+
 def write_validation_sample(path: Path, evidence: list[RelationEvidence], limit: int = 120) -> None:
     rows = []
     for record in sorted(evidence, key=lambda item: (item.subject, item.relation_type, item.passage_id))[:limit]:
@@ -306,7 +356,10 @@ def build_run_summary(
     candidate_passages: list[Passage],
     evidence: list[RelationEvidence],
     edges: list[GraphEdge],
+    raw_evidence_count: int = 0,
+    merge_diagnostics: list[dict[str, object]] | None = None,
 ) -> dict:
+    dropped_count = sum(1 for row in merge_diagnostics or [] if row.get("action") == "drop")
     return {
         "run_id": run_id,
         "run_label": options.run_label or run_id,
@@ -326,8 +379,11 @@ def build_run_summary(
             "run_label": options.run_label,
             "write_postgres": options.write_postgres,
             "llm_concurrency": options.llm_concurrency,
+            "embedding_merge": options.embedding_merge,
+            "embedding_threshold": options.embedding_threshold,
             "extraction_model": settings.extraction_model,
             "complex_model": settings.complex_model,
+            "embedding_model": settings.embedding_model,
         },
         "counts": {
             "companies": len(companies),
@@ -335,6 +391,8 @@ def build_run_summary(
             "filings": len(filings),
             "passages": len(passages),
             "candidate_passages": len(candidate_passages),
+            "relation_evidence_raw": raw_evidence_count or len(evidence),
+            "relation_evidence_dropped": dropped_count,
             "relation_evidence": len(evidence),
             "graph_edges": len(edges),
         },
@@ -342,7 +400,10 @@ def build_run_summary(
             "company_universe": str(processed_dir / "company_universe_resolved.csv"),
             "input_plan": str(processed_dir / "input_plan.json"),
             "filing_manifest": str(processed_dir / "filing_manifest.csv"),
+            "relation_evidence_raw": str(processed_dir / "relation_evidence_raw.jsonl"),
             "relation_evidence": str(processed_dir / "relation_evidence.jsonl"),
+            "merge_diagnostics": str(processed_dir / "merge_diagnostics.csv"),
+            "embedding_merge_diagnostics": str(processed_dir / "embedding_merge_diagnostics.csv"),
             "graph_edges": str(processed_dir / "graph_edges.csv"),
             "validation_sample": str(processed_dir / "validation_sample.csv"),
             "dashboard": str(dashboard_path),

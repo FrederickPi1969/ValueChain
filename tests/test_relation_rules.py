@@ -59,3 +59,19 @@ def test_rules_do_not_emit_subject_as_dependency_object() -> None:
     )
     assert records
     assert all(record.object != "Microsoft Corporation" for record in records)
+
+
+def test_rules_extract_multiple_named_subcontractors_from_list() -> None:
+    companies = [Company("NVDA", "NVIDIA Corporation", cik="0001045810")]
+    extractor = RuleBasedRelationExtractor(EntityResolver(companies))
+    records = extractor.extract(
+        make_passage(
+            "We engage with independent subcontractors and contract manufacturers such as "
+            "Hon Hai Precision Industry Co., Ltd., Wistron Corporation, and Fabrinet to "
+            "perform assembly, testing and packaging of our final products."
+        )
+    )
+    packaging_objects = {record.object for record in records if record.relation_type == "packaging_or_assembly_dependency"}
+    assert "Hon Hai Precision Industry Co" in packaging_objects or "Hon Hai Precision Industry Co., Ltd" in packaging_objects
+    assert "Wistron Corporation" in packaging_objects
+    assert "Fabrinet" in packaging_objects

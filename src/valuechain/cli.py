@@ -38,6 +38,8 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--write-postgres", action="store_true", help="Write run artifacts into Postgres.")
     run.add_argument("--postgres-url", default="", help="Override VALUECHAIN_DATABASE_URL for this run.")
     run.add_argument("--llm-concurrency", type=int, default=None, help="Concurrent LLM extraction requests.")
+    run.add_argument("--embedding-merge", action="store_true", help="Use local embedding model for object alias merge.")
+    run.add_argument("--embedding-threshold", type=float, default=0.92, help="Cosine threshold for embedding object merge.")
     return parser
 
 
@@ -106,6 +108,8 @@ def main(argv: list[str] | None = None) -> None:
             write_postgres=args.write_postgres,
             postgres_url=args.postgres_url,
             llm_concurrency=args.llm_concurrency or settings.llm_concurrency,
+            embedding_merge=args.embedding_merge,
+            embedding_threshold=args.embedding_threshold,
         )
         result = run_pipeline(settings, options)
         print(f"run_id={result.run_id}")

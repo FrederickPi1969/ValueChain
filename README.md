@@ -95,6 +95,13 @@ falling back to rules if an LLM call fails:
 valuechain run --tickers NVDA,AMD,MSFT --extractor hybrid --llm-concurrency 8 --max-filings-per-company 1
 ```
 
+Optional embedding-assisted object merge uses the same Endeavor aggregate
+OpenAI-compatible endpoint and `qwen3-embed-0.6b`:
+
+```bash
+valuechain run --priority 1 --forms 10-K --max-filings-per-company 1 --embedding-merge --embedding-threshold 0.92
+```
+
 `VALUECHAIN_HTTP_PROXY` / `VALUECHAIN_HTTPS_PROXY` can be used for SEC and LLM
 HTTP calls when the network path requires `proxy.frederickpi.com`.
 
@@ -104,7 +111,9 @@ Outputs are written to:
 - `data/processed/runs/<run_id>/filing_manifest.csv`
 - `data/processed/runs/<run_id>/passages.jsonl`
 - `data/processed/runs/<run_id>/candidate_passages.jsonl`
+- `data/processed/runs/<run_id>/relation_evidence_raw.jsonl`
 - `data/processed/runs/<run_id>/relation_evidence.jsonl`
+- `data/processed/runs/<run_id>/merge_diagnostics.csv`
 - `data/processed/runs/<run_id>/graph_edges.csv`
 - `data/processed/runs/<run_id>/validation_sample.csv`
 - `data/processed/runs/<run_id>/run_summary.json`
@@ -207,6 +216,14 @@ network graph. It emphasizes:
 
 The ontology is intentionally small and editable in `config/ontology.yaml`.
 The source registry is in `config/source_registry.yaml`.
+
+The graph build separates raw extraction from graph-ready evidence. Raw records
+are written to `relation_evidence_raw.jsonl`; schema-aware denoising
+canonicalizes aliases, removes generic placeholder objects that are not graph
+ready, and writes the audit trail to `merge_diagnostics.csv`. Bottleneck ranking
+excludes generic dependency classes such as `supplier(s)` or
+`cloud or hosting provider`, so repeated placeholders do not masquerade as real
+industry chokepoints.
 
 ## Async LLM Extraction
 

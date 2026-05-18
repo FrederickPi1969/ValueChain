@@ -87,3 +87,35 @@ relation_types:
     definition: "Subject has high concentration in suppliers, customers, geography, products, or capacity."
     include: ["concentration", "limited number", "substantial portion", "single customer"]
     exclude: ["diversified exposure statements"]
+merge_policy:
+  version: "0.1"
+  canonicalization:
+    - "Normalize public-company aliases such as AWS/Amazon.com, Azure/Microsoft, GCP/Alphabet, and TSMC/Taiwan Semiconductor before aggregation."
+    - "Strip common legal suffixes for merge keys while preserving display names."
+    - "Keep raw relation_evidence_raw.jsonl for audit; graph edges use filtered relation_evidence.jsonl."
+  graph_ready_rules:
+    named_counterparty_required:
+      - strategic_partner
+      - co_investment
+    class_objects_allowed_when_supported_by_text:
+      - customer_dependency
+      - manufacturing_dependency
+      - foundry_dependency
+      - packaging_or_assembly_dependency
+      - data_center_dependency
+      - power_or_utility_dependency
+      - network_or_interconnection_dependency
+      - distribution_or_channel_dependency
+      - licensing_dependency
+      - facility_or_geographic_exposure
+      - concentration_risk
+    restricted_generic_objects:
+      supplier_dependency: "Drop generic supplier(s) unless concentration, sole-source, or limited-number language is present."
+      cloud_or_hosting_dependency: "Drop generic cloud/hosting objects unless a named provider or explicit third-party hosting reliance is present."
+  bottleneck_policy:
+    - "Do not rank generic dependency classes as shared bottlenecks."
+    - "Rank named companies, organizations, facilities, or geographies by distinct dependent subjects and supporting evidence."
+  optional_embedding_merge:
+    model: "qwen3-embed-0.6b"
+    default_threshold: 0.92
+    usage: "Use for alias discovery after deterministic filtering; do not replace provenance or manual validation."

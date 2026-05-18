@@ -9,6 +9,11 @@ from valuechain.models import Passage, RelationEvidence
 SYSTEM_PROMPT = """You extract financial-domain dependency relations from SEC filing passages.
 Return only a JSON array. Do not include prose.
 Each object must have: object, relation_type, modality, certainty, temporal_scope, confidence_score.
+Prefer named counterparties when the passage discloses them. Use generic class objects only when the
+passage clearly states a dependency, concentration, or exposure without naming the counterparty.
+Do not emit a dependency just because the subject sells cloud, data center, networking, AI, or
+semiconductor products. Product-market, competition, and customer-benefit statements are not
+dependency relations unless they disclose reliance on another entity or constrained resource.
 Use only these relation_type values:
 supplier_dependency, customer_dependency, manufacturing_dependency, foundry_dependency,
 packaging_or_assembly_dependency, cloud_or_hosting_dependency, data_center_dependency,
@@ -66,7 +71,7 @@ def records_from_payload(
         if not isinstance(item, dict):
             continue
         relation_type = str(item.get("relation_type", "")).strip()
-        obj = str(item.get("object", "")).strip()
+        obj = normalize_object_payload(item.get("object", ""))
         if not relation_type or not obj:
             continue
         records.append(
@@ -96,6 +101,18 @@ def records_from_payload(
             )
         )
     return records
+
+
+def normalize_object_payload(value) -> str:
+    if isinstance(value, dict):
+        for key in ["name", "text", "normalized_name", "entity", "label"]:
+            candidate = str(value.get(key, "")).strip()
+            if candidate:
+                return candidate
+        return ""
+    if isinstance(value, list):
+        return "; ".join(str(item).strip() for item in value if str(item).strip())
+    return str(value).strip()
 
 
 @dataclass

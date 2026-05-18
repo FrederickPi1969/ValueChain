@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from valuechain.edge_quality import denoise_relation_evidence, is_placeholder_object
 from valuechain.models import GraphEdge, RelationEvidence
 
 
-def aggregate_edges(records: list[RelationEvidence]) -> list[GraphEdge]:
+def aggregate_edges(records: list[RelationEvidence], apply_quality_gate: bool = True) -> list[GraphEdge]:
+    if apply_quality_gate:
+        records, _ = denoise_relation_evidence(records)
     groups: dict[tuple[str, str, str, str], list[RelationEvidence]] = defaultdict(list)
     for record in records:
         key = (
@@ -41,11 +44,13 @@ def aggregate_edges(records: list[RelationEvidence]) -> list[GraphEdge]:
 def bottleneck_candidates(edges: list[GraphEdge], min_subjects: int = 2) -> list[dict[str, object]]:
     by_object: dict[str, list[GraphEdge]] = defaultdict(list)
     for edge in edges:
+        if is_placeholder_object(edge.object):
+            continue
         by_object[edge.object].append(edge)
     rows: list[dict[str, object]] = []
     for obj, obj_edges in by_object.items():
         subjects = sorted({edge.subject for edge in obj_edges})
-        if len(subjects) < min_subjects and len(obj_edges) < 2:
+        if len(subjects) < min_subjects:
             continue
         rows.append(
             {
@@ -57,4 +62,3 @@ def bottleneck_candidates(edges: list[GraphEdge], min_subjects: int = 2) -> list
             }
         )
     return sorted(rows, key=lambda row: (-int(row["dependent_company_count"]), -int(row["evidence_count"])))
-

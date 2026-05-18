@@ -7,7 +7,7 @@ from valuechain.entity_resolution import EntityResolver
 from valuechain.models import Passage, RelationEvidence
 
 
-EXTRACTOR_VERSION = "rules-0.1.0"
+EXTRACTOR_VERSION = "rules-0.2.0"
 
 
 RELATION_PATTERNS: list[tuple[str, str, str, float]] = [
@@ -73,37 +73,39 @@ class RuleBasedRelationExtractor:
                 certainty = "high"
             elif modality == "risk_hypothetical":
                 confidence -= 0.05
-            object_mention = self.resolver.resolve_object(
+            object_mentions = self.resolver.resolve_objects(
                 object_hint,
                 text,
                 subject_name=passage.company_name,
             )
-            records.append(
-                RelationEvidence(
-                    subject=passage.company_name,
-                    object=object_mention.normalized_name,
-                    relation_type=relation_type,
-                    direction="subject_depends_on_object",
-                    modality=modality,
-                    certainty=certainty,
-                    temporal_scope=infer_temporal_scope(lowered),
-                    evidence_text=text[:1800],
-                    confidence_score=round(max(0.0, min(confidence, 0.95)), 3),
-                    extractor_model_version=EXTRACTOR_VERSION,
-                    ticker=passage.ticker,
-                    cik=passage.cik,
-                    form=passage.form,
-                    filing_date=passage.filing_date,
-                    accepted_timestamp=passage.accepted_timestamp,
-                    accession_number=passage.accession_number,
-                    source_document_url=passage.source_document_url,
-                    source_section=passage.section,
-                    passage_id=passage.passage_id,
-                    paragraph_offset=passage.paragraph_offset,
-                    parser_name=passage.parser_name,
-                    parser_version=passage.parser_version,
+            for object_mention in object_mentions:
+                object_bonus = max(0.0, object_mention.confidence - 0.45) * 0.2
+                records.append(
+                    RelationEvidence(
+                        subject=passage.company_name,
+                        object=object_mention.normalized_name,
+                        relation_type=relation_type,
+                        direction="subject_depends_on_object",
+                        modality=modality,
+                        certainty=certainty,
+                        temporal_scope=infer_temporal_scope(lowered),
+                        evidence_text=text[:1800],
+                        confidence_score=round(max(0.0, min(confidence + object_bonus, 0.95)), 3),
+                        extractor_model_version=EXTRACTOR_VERSION,
+                        ticker=passage.ticker,
+                        cik=passage.cik,
+                        form=passage.form,
+                        filing_date=passage.filing_date,
+                        accepted_timestamp=passage.accepted_timestamp,
+                        accession_number=passage.accession_number,
+                        source_document_url=passage.source_document_url,
+                        source_section=passage.section,
+                        passage_id=passage.passage_id,
+                        paragraph_offset=passage.paragraph_offset,
+                        parser_name=passage.parser_name,
+                        parser_version=passage.parser_version,
+                    )
                 )
-            )
         return dedupe_records(records)
 
 

@@ -49,6 +49,26 @@ def test_bottleneck_candidates_detects_shared_object() -> None:
         ]
     )
     bottlenecks = bottleneck_candidates(edges)
-    assert bottlenecks[0]["object"] == "TSMC"
+    assert bottlenecks[0]["object"] == "Taiwan Semiconductor Manufacturing Company Limited"
     assert bottlenecks[0]["dependent_company_count"] == 2
 
+
+def test_aggregate_edges_filters_generic_supplier_noise() -> None:
+    edges = aggregate_edges(
+        [
+            evidence("A", "supplier(s)", "supplier_dependency", "a1"),
+            evidence("B", "supplier(s)", "supplier_dependency", "b1"),
+        ]
+    )
+    assert edges == []
+
+
+def test_bottleneck_candidates_skip_dependency_classes() -> None:
+    edges = aggregate_edges(
+        [
+            evidence("A", "foundry capacity or service", "foundry_dependency", "a1"),
+            evidence("B", "foundry capacity or service", "foundry_dependency", "b1"),
+        ]
+    )
+    assert edges
+    assert bottleneck_candidates(edges) == []
