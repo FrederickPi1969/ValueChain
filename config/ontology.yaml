@@ -1,0 +1,89 @@
+version: "0.1"
+parser_contract:
+  required_provenance:
+    - accession_number
+    - cik
+    - ticker
+    - form
+    - filing_date
+    - accepted_timestamp
+    - source_document_url
+    - section
+    - passage_id
+    - paragraph_offset
+    - evidence_text
+    - parser_name
+    - parser_version
+    - extractor_model_version
+    - confidence_score
+modalities:
+  current_fact: "Disclosed as a present operating relationship or dependency."
+  historical_fact: "Disclosed as a past, terminated, or superseded relationship."
+  risk_hypothetical: "Risk-factor or conditional language that describes possible future harm."
+  forward_looking: "Plan, expectation, target, or intended future dependency."
+  strategic: "Strategic partnership, investment, or formal collaboration."
+relation_types:
+  supplier_dependency:
+    definition: "Subject relies on a supplier or third-party provider for inputs, services, or components."
+    include: ["supplier", "vendor", "third-party", "sole source", "limited number"]
+    exclude: ["generic macro risk without an identifiable provider or dependency class"]
+  customer_dependency:
+    definition: "Subject depends on one or more customers for revenue, demand, or adoption."
+    include: ["customer concentration", "major customer", "accounts for revenue"]
+    exclude: ["generic customer demand statements without concentration or dependency"]
+  manufacturing_dependency:
+    definition: "Subject relies on outsourced manufacturing, contract manufacturing, or fabrication capacity."
+    include: ["contract manufacturer", "manufacturing partner", "fabrication", "wafer"]
+    exclude: ["internal manufacturing only"]
+  foundry_dependency:
+    definition: "Subject depends on semiconductor foundry capacity or technology."
+    include: ["foundry", "wafer fabrication", "process node"]
+    exclude: ["software hosting or cloud infrastructure"]
+  packaging_or_assembly_dependency:
+    definition: "Subject relies on outsourced packaging, advanced packaging, assembly, or test."
+    include: ["advanced packaging", "assembly", "test", "OSAT"]
+    exclude: ["generic product packaging for retail goods"]
+  cloud_or_hosting_dependency:
+    definition: "Subject relies on cloud, hosting, or hosted platform infrastructure."
+    include: ["cloud", "hosting", "SaaS infrastructure", "AWS", "Azure", "Google Cloud"]
+    exclude: ["cloud as a customer segment without operational reliance"]
+  data_center_dependency:
+    definition: "Subject relies on data center, colocation, compute capacity, or facilities."
+    include: ["data center", "colocation", "compute capacity", "server capacity"]
+    exclude: ["office facilities only"]
+  power_or_utility_dependency:
+    definition: "Subject depends on power, electricity, utility, cooling, or energy availability."
+    include: ["electricity", "power", "utility", "cooling", "energy supply"]
+    exclude: ["product power efficiency claims without supply exposure"]
+  network_or_interconnection_dependency:
+    definition: "Subject relies on network carriers, peering, interconnection, or connectivity."
+    include: ["network", "interconnection", "peering", "carrier", "bandwidth"]
+    exclude: ["general internet growth language"]
+  distribution_or_channel_dependency:
+    definition: "Subject relies on distributors, resellers, channels, app stores, or go-to-market partners."
+    include: ["distributor", "reseller", "channel partner", "app store"]
+    exclude: ["direct sales only"]
+  strategic_partner:
+    definition: "Subject has a strategic partnership or commercial collaboration."
+    include: ["strategic partnership", "collaboration", "alliance", "joint development"]
+    exclude: ["one-off supplier purchase without strategic language"]
+  co_investment:
+    definition: "Subject co-invests or jointly funds capacity, infrastructure, technology, or ventures."
+    include: ["joint investment", "co-investment", "joint venture"]
+    exclude: ["ordinary purchase orders"]
+  licensing_dependency:
+    definition: "Subject relies on licensed technology, IP, software, or content."
+    include: ["license", "licensed technology", "intellectual property"]
+    exclude: ["customer license revenue without dependency"]
+  facility_or_geographic_exposure:
+    definition: "Subject has exposure to specific facilities, regions, jurisdictions, or logistics corridors."
+    include: ["facility", "geography", "Taiwan", "China", "export controls", "earthquake"]
+    exclude: ["headquarters location only"]
+  subsidiary_or_control:
+    definition: "Subject controls, is controlled by, or materially depends on a subsidiary or affiliate."
+    include: ["subsidiary", "affiliate", "control", "owned by"]
+    exclude: ["unrelated legal boilerplate"]
+  concentration_risk:
+    definition: "Subject has high concentration in suppliers, customers, geography, products, or capacity."
+    include: ["concentration", "limited number", "substantial portion", "single customer"]
+    exclude: ["diversified exposure statements"]

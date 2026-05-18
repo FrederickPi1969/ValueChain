@@ -1,0 +1,76 @@
+sources:
+  sec_edgar_data_access:
+    category: official_source
+    url: "https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data"
+    role: "SEC access policy, archive access, fair access guidance."
+    priority: 1
+  sec_edgar_apis:
+    category: official_source
+    url: "https://www.sec.gov/search-filings/edgar-application-programming-interfaces"
+    role: "Official submissions, companyfacts, companyconcept, and frames API documentation."
+    priority: 1
+  sec_company_submissions:
+    category: official_source
+    url_template: "https://data.sec.gov/submissions/CIK##########.json"
+    role: "Company metadata and filing history."
+    priority: 1
+  sec_archive:
+    category: official_source
+    url_template: "https://www.sec.gov/Archives/edgar/data/{cik}/{accession_without_dashes}/"
+    role: "Evidence-bearing primary filings, complete submission text, exhibits, and filing detail pages."
+    priority: 1
+  sec_company_tickers:
+    category: official_source
+    url: "https://www.sec.gov/files/company_tickers.json"
+    role: "Ticker to CIK bootstrap."
+    priority: 1
+  sec_company_tickers_exchange:
+    category: official_source
+    url: "https://www.sec.gov/files/company_tickers_exchange.json"
+    role: "Ticker, CIK, exchange, and company name bootstrap."
+    priority: 1
+  sec_xbrl_companyfacts:
+    category: official_source
+    url_template: "https://data.sec.gov/api/xbrl/companyfacts/CIK##########.json"
+    role: "Issuer-level XBRL financial context."
+    priority: 2
+  sec_xbrl_frames:
+    category: official_source
+    url_template: "https://data.sec.gov/api/xbrl/frames/us-gaap/Assets/USD/CY2024Q4I.json"
+    role: "Cross-company financial benchmarks."
+    priority: 2
+  yahoo_finance:
+    category: enrichment
+    url: "https://finance.yahoo.com/"
+    role: "Market cap, price, sector, industry, beta, and other portfolio context."
+    priority: 2
+  gleif:
+    category: enrichment
+    url: "https://api.gleif.org/api/v1"
+    role: "LEI and legal entity normalization."
+    priority: 3
+  opencorporates:
+    category: enrichment
+    url: "https://api.opencorporates.com/documentation/API-Reference"
+    role: "Private company, subsidiary, jurisdiction, and registry enrichment."
+    priority: 3
+  edgartools:
+    category: wrapper
+    url: "https://edgartools.readthedocs.io/"
+    role: "Developer ergonomic wrapper around SEC data."
+    priority: 4
+  edgar_crawler:
+    category: parser
+    url: "https://github.com/lefterisloukas/edgar-crawler"
+    role: "Batch download and first-pass filing section parsing reference."
+    priority: 4
+  sec_edgar_toolkit:
+    category: wrapper
+    url: "https://github.com/stefanoamorelli/sec-edgar-toolkit"
+    role: "Typed access to official SEC APIs."
+    priority: 4
+  sec_api:
+    category: vendor
+    url: "https://sec-api.io/pricing"
+    role: "Optional commercial accelerator; not canonical truth."
+    priority: 5

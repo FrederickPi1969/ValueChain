@@ -1,0 +1,41 @@
+ticker,company_name,role,priority,notes
+NVDA,NVIDIA Corporation,accelerator_compute,1,GPU accelerators networking systems software stack
+AMD,Advanced Micro Devices Inc.,accelerator_compute,1,GPU CPU accelerators adaptive compute
+INTC,Intel Corporation,semiconductor_idm_foundry,1,CPU foundry packaging manufacturing
+AVGO,Broadcom Inc.,semiconductor_networking,1,networking ASIC accelerators infrastructure software
+MRVL,Marvell Technology Inc.,semiconductor_networking,1,data infrastructure chips optical DSP custom silicon
+MU,Micron Technology Inc.,memory,1,HBM DRAM NAND memory supplier
+TSM,Taiwan Semiconductor Manufacturing Company Limited,foundry,1,leading outsourced semiconductor foundry ADR
+ASML,ASML Holding N.V.,semicap_equipment,1,EUV lithography bottleneck supplier ADR
+AMAT,Applied Materials Inc.,semicap_equipment,1,semiconductor fabrication equipment
+LRCX,Lam Research Corporation,semicap_equipment,1,wafer fabrication equipment
+KLAC,KLA Corporation,semicap_equipment,1,process control metrology inspection
+ARM,Arm Holdings plc,semiconductor_ip,1,CPU architecture IP ADR
+QCOM,QUALCOMM Incorporated,semiconductor_platform,2,edge AI mobile compute IP
+ANET,Arista Networks Inc.,networking,1,AI data center switching
+CSCO,Cisco Systems Inc.,networking,2,networking infrastructure and security
+COHR,Coherent Corp.,optical_components,2,optical components datacenter interconnect
+DELL,Dell Technologies Inc.,servers,1,AI servers storage enterprise systems
+HPE,Hewlett Packard Enterprise Company,servers_networking,2,AI servers supercomputing networking
+SMCI,Super Micro Computer Inc.,servers,1,AI server integrator liquid cooling
+VRT,Vertiv Holdings Co.,data_center_power_cooling,1,data center power cooling infrastructure
+ETN,Eaton Corporation plc,power_equipment,2,electrical equipment power distribution
+GEV,GE Vernova Inc.,power_generation_grid,2,power generation grid infrastructure
+CEG,Constellation Energy Corporation,power_generation,2,nuclear power generation datacenter demand
+VST,Vistra Corp.,power_generation,2,power generation datacenter demand
+NEE,NextEra Energy Inc.,power_generation,3,renewables utility power availability
+EQIX,Equinix Inc.,colocation_data_centers,1,colocation interconnection data centers
+DLR,Digital Realty Trust Inc.,data_centers,1,data center REIT hyperscale colocation
+AMZN,Amazon.com Inc.,cloud_hyperscaler,1,AWS cloud AI infrastructure
+MSFT,Microsoft Corporation,cloud_hyperscaler,1,Azure OpenAI cloud AI infrastructure
+GOOGL,Alphabet Inc.,cloud_hyperscaler,1,Google Cloud TPU AI services
+META,Meta Platforms Inc.,hyperscaler_ai_demand,1,large AI infrastructure spender
+ORCL,Oracle Corporation,cloud_hyperscaler,2,Oracle Cloud AI infrastructure
+IBM,International Business Machines Corporation,enterprise_ai_cloud,3,enterprise AI hybrid cloud
+CRM,Salesforce Inc.,enterprise_ai_software,3,enterprise SaaS AI platform
+SNOW,Snowflake Inc.,data_platform,3,data cloud AI platform
+NET,Cloudflare Inc.,edge_cloud_network,2,edge compute network security
+DDOG,Datadog Inc.,cloud_observability,3,cloud observability AI operations
+PLTR,Palantir Technologies Inc.,ai_software,2,AI software government enterprise
+NOW,ServiceNow Inc.,enterprise_ai_software,3,workflow automation AI platform
+MDB,MongoDB Inc.,database_platform,3,developer database platform AI apps

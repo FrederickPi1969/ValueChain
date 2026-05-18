@@ -1,0 +1,17 @@
+.DS_Store
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+data/raw/**
+data/processed/**
+reports/*.html
+reports/*.json
+reports/*.csv
+!data/universe/
+!data/universe/ai_infra_universe.csv
+
