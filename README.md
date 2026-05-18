@@ -75,6 +75,8 @@ Outputs are written to:
 - `data/processed/relation_evidence.jsonl`
 - `data/processed/graph_edges.csv`
 - `data/processed/yahoo_snapshot.csv`
+- `data/processed/validation_sample.csv`
+- `data/processed/run_summary.json`
 - `reports/dashboard.html`
 
 Open `reports/dashboard.html` in a browser to inspect company exposures,

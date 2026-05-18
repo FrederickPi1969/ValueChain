@@ -8,7 +8,7 @@ from valuechain.config import Settings, ensure_dirs
 from valuechain.dashboard import render_dashboard
 from valuechain.entity_resolution import EntityResolver
 from valuechain.filing_parser import parse_sections, segment_passages
-from valuechain.io_utils import write_csv, write_jsonl
+from valuechain.io_utils import write_csv, write_jsonl, write_json
 from valuechain.llm_client import LLMConfig, OpenAICompatibleClient
 from valuechain.models import Company, FilingRecord, GraphEdge, Passage, RelationEvidence
 from valuechain.relation_llm import HybridRelationExtractor, LLMRelationExtractor
@@ -75,6 +75,7 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
     edges = aggregate_edges(evidence)
     write_csv(settings.processed_dir / "graph_edges.csv", [edge.to_dict() for edge in edges])
     write_csv(settings.processed_dir / "bottleneck_candidates.csv", bottleneck_candidates(edges))
+    write_validation_sample(settings.processed_dir / "validation_sample.csv", evidence)
 
     yahoo_rows = [] if options.skip_yahoo else fetch_yahoo_snapshot(resolved_companies)
     if yahoo_rows:
@@ -82,6 +83,7 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
 
     dashboard_path = settings.reports_dir / "dashboard.html"
     render_dashboard(dashboard_path, edges, evidence, yahoo_rows)
+    write_run_summary(settings, options, resolved_companies, filings, passages, candidate_passages, evidence, edges)
 
     return PipelineResult(
         companies=resolved_companies,
@@ -149,3 +151,71 @@ def extract_relations(candidate_passages: list[Passage], extractor) -> list[Rela
     for passage in candidate_passages:
         records.extend(extractor.extract(passage))
     return records
+
+
+def write_validation_sample(path: Path, evidence: list[RelationEvidence], limit: int = 120) -> None:
+    rows = []
+    for record in sorted(evidence, key=lambda item: (item.subject, item.relation_type, item.passage_id))[:limit]:
+        rows.append(
+            {
+                "gold_relation_present": "",
+                "gold_relation_type": "",
+                "gold_modality": "",
+                "review_notes": "",
+                "subject": record.subject,
+                "object": record.object,
+                "relation_type": record.relation_type,
+                "modality": record.modality,
+                "confidence_score": record.confidence_score,
+                "form": record.form,
+                "filing_date": record.filing_date,
+                "section": record.source_section,
+                "passage_id": record.passage_id,
+                "evidence_text": record.evidence_text,
+                "source_document_url": record.source_document_url,
+            }
+        )
+    write_csv(path, rows)
+
+
+def write_run_summary(
+    settings: Settings,
+    options: PipelineOptions,
+    companies: list[Company],
+    filings: list[FilingRecord],
+    passages: list[Passage],
+    candidate_passages: list[Passage],
+    evidence: list[RelationEvidence],
+    edges: list[GraphEdge],
+) -> None:
+    write_json(
+        settings.processed_dir / "run_summary.json",
+        {
+            "options": {
+                "tickers": options.tickers,
+                "forms": list(options.forms),
+                "max_filings_per_company": options.max_filings_per_company,
+                "extractor": options.extractor,
+                "min_relevance_score": options.min_relevance_score,
+                "skip_yahoo": options.skip_yahoo,
+                "extraction_model": settings.extraction_model,
+                "complex_model": settings.complex_model,
+            },
+            "counts": {
+                "companies": len(companies),
+                "filings": len(filings),
+                "passages": len(passages),
+                "candidate_passages": len(candidate_passages),
+                "relation_evidence": len(evidence),
+                "graph_edges": len(edges),
+            },
+            "outputs": {
+                "company_universe": str(settings.processed_dir / "company_universe_resolved.csv"),
+                "filing_manifest": str(settings.processed_dir / "filing_manifest.csv"),
+                "relation_evidence": str(settings.processed_dir / "relation_evidence.jsonl"),
+                "graph_edges": str(settings.processed_dir / "graph_edges.csv"),
+                "validation_sample": str(settings.processed_dir / "validation_sample.csv"),
+                "dashboard": str(settings.reports_dir / "dashboard.html"),
+            },
+        },
+    )

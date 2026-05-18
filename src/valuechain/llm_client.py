@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 import httpx
@@ -22,13 +22,14 @@ class OpenAICompatibleClient:
         self.config = config
 
     def available(self) -> bool:
-        return bool(self.config.base_url and self.config.model)
+        return bool(self._resolved_config().base_url and self.config.model)
 
     def chat_json(self, system: str, user: str, max_tokens: int = 1200) -> Any:
-        if not self.available():
+        config = self._resolved_config()
+        if not config.base_url:
             raise RuntimeError("LLM base_url/model is not configured")
         payload = {
-            "model": self.config.model,
+            "model": config.model,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -38,19 +39,39 @@ class OpenAICompatibleClient:
             "chat_template_kwargs": {"enable_thinking": False},
         }
         request_kwargs: dict[str, Any] = {
-            "headers": {"Authorization": f"Bearer {self.config.api_key}"},
+            "headers": {"Authorization": f"Bearer {config.api_key}"},
             "json": payload,
-            "timeout": self.config.timeout_s,
+            "timeout": config.timeout_s,
         }
-        if self.config.proxy_url:
-            request_kwargs["proxy"] = self.config.proxy_url
+        if config.proxy_url:
+            request_kwargs["proxy"] = config.proxy_url
         response = httpx.post(
-            f"{self.config.base_url.rstrip('/')}/chat/completions",
+            f"{config.base_url.rstrip('/')}/chat/completions",
             **request_kwargs,
         )
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
         return parse_json_content(content)
+
+    def _resolved_config(self) -> LLMConfig:
+        if self.config.base_url or not self.config.report_url:
+            return self.config
+        return resolve_from_report(self.config)
+
+
+def resolve_from_report(config: LLMConfig) -> LLMConfig:
+    response = httpx.get(config.report_url, timeout=10)
+    response.raise_for_status()
+    report = response.json()
+    if not isinstance(report, dict):
+        return config
+    hosts = report.get(config.model)
+    if not isinstance(hosts, list) or not hosts:
+        return config
+    host = next((str(item) for item in hosts if isinstance(item, str) and ":virtual" not in item), "")
+    if not host:
+        return config
+    return replace(config, base_url=f"http://{host}/v1")
 
 
 def parse_json_content(content: str) -> Any:
