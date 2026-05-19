@@ -42,6 +42,20 @@ For each company:
 
 This yields a scorecard that is easier to scan than a graph.
 
+The current implementation expands this into percentile factors:
+
+- `dependency_risk_pct`
+- `operating_dependency_pct`
+- `chokepoint_exposure_pct`
+- `customer_concentration_pct`
+- `capex_beneficiary_pct`
+- `fragility_pct`
+- `evidence_quality_pct`
+- `investment_relevance_pct`
+
+These are screening factors, not final alpha factors. They are designed to rank where an
+ETF analyst should spend review time.
+
 ### 3. Modality Mix
 
 Separate:
@@ -93,18 +107,72 @@ These are not final investment factors. They are screening features for analyst 
 
 ## GDELT Query Design
 
-Start with exact company names plus value-chain keywords:
+Use three query modes rather than one broad search:
 
 ```text
-"NVIDIA" (AI OR "artificial intelligence" OR GPU OR datacenter OR "data center" OR power OR cloud OR semiconductor)
+company:
+  "NVIDIA"
+
+value_chain:
+  "NVIDIA" (AI OR "artificial intelligence" OR GPU OR semiconductor OR chip OR "data center" OR datacenter OR cloud OR power OR grid OR foundry OR HBM)
+
+sec_object:
+  "NVIDIA" "Taiwan Semiconductor Manufacturing Company Limited"
 ```
 
-Then later compare against:
+The query modes have different jobs:
 
-- exact company-only query
-- ticker query, where safe
-- company + relation-object query, such as "NVIDIA" AND "TSMC"
-- bottleneck-object query, such as "data center power"
+- company-only gives a control sample and catches broad company news
+- value-chain query increases recall for AI infrastructure narratives
+- SEC-object query tests whether disclosed counterparties are becoming news-active
+
+The large validation run shows that `sec_object` has high average relevance but lower
+coverage and more attribution risk. It should be used as a drilldown query, not as the
+only news retrieval path.
+
+## News NLP Layers
+
+The news overlay now has two layers:
+
+1. Heuristic annotation:
+   - event theme keyword hits
+   - source tier
+   - query-mode provenance
+   - headline quality flags
+   - event relevance score
+
+2. Local LLM event framing:
+   - event type
+   - materiality score 0-3
+   - value-chain relevance score 0-3
+   - direction
+   - dependency object
+   - short event summary
+
+The LLM layer is intentionally applied after filtering. It is not allowed to create graph
+edges and it should not override SEC evidence. Its job is to reduce headline noise and
+separate operating events from stock-market commentary.
+
+## Combined Monitor Logic
+
+The combined monitor joins SEC factors, heuristic news scores, and sampled LLM event
+frames:
+
+```text
+monitor_priority =
+  SEC structural score
+  + news event score
+  + SEC/news theme alignment
+  + source/coverage quality
+  + sampled LLM materiality
+```
+
+Important caps:
+
+- dominant `market_reaction` news is capped and labeled `sec_thesis_market_noise`
+- `other` news with weak average event relevance is capped
+- missing GDELT coverage does not erase SEC-only thesis rows
+- GDELT is never treated as dependency evidence
 
 ## Failure Modes
 
@@ -114,6 +182,12 @@ Then later compare against:
 - Article count is not sentiment.
 - Headlines can be stock-market commentary rather than operating events.
 - GDELT context cannot replace SEC provenance.
+- SEC-object search can retrieve a sector article mentioning the object but not actually
+  supporting the ticker-level thesis.
+- LLM headline classification can infer too much from weak titles, so the prompt must
+  require "use only supplied fields" and return low materiality for market-only headlines.
+- External APIs can rate-limit large parallel runs; production needs checkpointed job
+  queues and resumable retries.
 
 ## What Would Count As Useful
 
@@ -123,4 +197,3 @@ The experiment is promising if it produces:
 - a bottleneck thesis table with clear relation-type and modality mix
 - a news overlay that surfaces relevant recent events without overwhelming noise
 - a repeatable method that can be rerun from local artifacts without touching the database
-
