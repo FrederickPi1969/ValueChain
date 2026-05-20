@@ -332,6 +332,16 @@ tbody tr:hover {
   text-align: left;
 }
 
+.compact-button {
+  min-height: 28px;
+  padding: 4px 8px;
+  box-shadow: none;
+}
+
+.muted {
+  color: var(--muted);
+}
+
 .pill {
   display: inline-flex;
   min-height: 24px;
@@ -379,6 +389,205 @@ tbody tr:hover {
 .evidence-preview {
   max-width: 460px;
   overflow-wrap: anywhere;
+}
+
+.brief-layout {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.brief-sidebar,
+.brief-detail {
+  min-width: 0;
+}
+
+.brief-sidebar {
+  display: grid;
+  gap: 10px;
+  position: sticky;
+  top: 82px;
+}
+
+.brief-search {
+  min-height: 38px;
+}
+
+.brief-list {
+  display: grid;
+  gap: 6px;
+  max-height: 720px;
+  overflow: auto;
+}
+
+.brief-list-row {
+  display: grid;
+  gap: 2px;
+  justify-items: start;
+  width: 100%;
+  min-height: 74px;
+  padding: 10px;
+  box-shadow: none;
+  text-align: left;
+}
+
+.brief-list-row.active {
+  border-color: var(--teal);
+  background: #f0fdfa;
+}
+
+.brief-list-row span,
+.brief-list-row small,
+.brief-subtitle,
+.claim-meta,
+.claim-card small {
+  color: var(--muted);
+}
+
+.brief-detail {
+  display: grid;
+  gap: 16px;
+}
+
+.brief-header,
+.brief-analyst,
+.brief-claim-section,
+.brief-evidence {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.brief-header {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 16px;
+  align-items: start;
+}
+
+.brief-header h2 {
+  margin: 2px 0 6px;
+  font-size: 28px;
+  line-height: 1.15;
+}
+
+.brief-header p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+}
+
+.eyebrow {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.brief-subtitle,
+.claim-meta,
+.relation-chips,
+.claim-modalities {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.brief-subtitle span:not(:last-child)::after {
+  content: "/";
+  margin-left: 8px;
+  color: var(--line-strong);
+}
+
+.relation-chips {
+  grid-column: 1 / -1;
+}
+
+.brief-analyst {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.3fr) repeat(3, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.brief-analyst p {
+  margin: 4px 0 0;
+}
+
+.analyst-list h3,
+.brief-claim-section h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.analyst-list ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.analyst-list li {
+  margin-bottom: 6px;
+}
+
+.brief-section-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.section-title {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.section-title span {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.claim-list {
+  display: grid;
+  gap: 8px;
+}
+
+.claim-card {
+  display: grid;
+  gap: 8px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.claim-topline {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+.claim-topline strong {
+  overflow-wrap: anywhere;
+}
+
+.inline-alert,
+.brief-loading {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff7ed;
+  padding: 10px 12px;
+}
+
+.inline-alert {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--amber);
 }
 
 .drawer {
@@ -490,6 +699,14 @@ tbody tr:hover {
   }
   .view-grid {
     grid-template-columns: 1fr;
+  }
+  .brief-layout,
+  .brief-analyst,
+  .brief-section-grid {
+    grid-template-columns: 1fr;
+  }
+  .brief-sidebar {
+    position: static;
   }
 }
 

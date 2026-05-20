@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { fetchDashboardData, fetchRunRegistry } from './api/data.js';
+import { fetchCompanyBrief, fetchCompanyBriefIndex, fetchDashboardData, fetchRunRegistry } from './api/data.js';
 import { EvidenceDrawer } from './components/EvidenceDrawer.jsx';
 import { FilterBar } from './components/FilterBar.jsx';
 import { MetricStrip } from './components/MetricStrip.jsx';
 import { RunSelector } from './components/RunSelector.jsx';
 import { Tabs } from './components/Tabs.jsx';
+import { briefTickerSet, matchBriefForCompany } from './lib/briefs.js';
 import { exportCsv, filterBottlenecks, filterCompanies, filterEdges, filterEvidence } from './lib/filters.js';
+import { Briefs } from './views/Briefs.jsx';
 import { Bottlenecks } from './views/Bottlenecks.jsx';
 import { Companies } from './views/Companies.jsx';
 import { Edges } from './views/Edges.jsx';
@@ -17,6 +19,7 @@ const EMPTY_FILTERS = { query: '', company: '', relation: '', modality: '' };
 const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'companies', label: 'Companies' },
+  { id: 'briefs', label: 'Briefs' },
   { id: 'bottlenecks', label: 'Bottlenecks' },
   { id: 'edges', label: 'Edges' },
   { id: 'evidence', label: 'Evidence' },
@@ -29,6 +32,11 @@ export function App() {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedEvidence, setSelectedEvidence] = useState(null);
+  const [briefIndex, setBriefIndex] = useState([]);
+  const [selectedBriefTicker, setSelectedBriefTicker] = useState('');
+  const [selectedBrief, setSelectedBrief] = useState(null);
+  const [briefLoading, setBriefLoading] = useState(false);
+  const [briefError, setBriefError] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -77,12 +85,70 @@ export function App() {
     };
   }, [runs, selectedRunId]);
 
+  useEffect(() => {
+    const run = runs.find((item) => item.run_id === selectedRunId);
+    if (!run) return;
+    let cancelled = false;
+    setBriefIndex([]);
+    setSelectedBriefTicker('');
+    setSelectedBrief(null);
+    setBriefError('');
+    fetchCompanyBriefIndex(run)
+      .then((rows) => {
+        if (!cancelled) {
+          setBriefIndex(rows);
+          setSelectedBriefTicker(rows[0]?.ticker || '');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setBriefError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [runs, selectedRunId]);
+
+  useEffect(() => {
+    const run = runs.find((item) => item.run_id === selectedRunId);
+    const entry = briefIndex.find((item) => item.ticker === selectedBriefTicker);
+    if (!run || !entry) {
+      setSelectedBrief(null);
+      setBriefLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setBriefLoading(true);
+    setBriefError('');
+    fetchCompanyBrief(run, entry)
+      .then((payload) => {
+        if (!cancelled) setSelectedBrief(payload);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setSelectedBrief(null);
+          setBriefError(err.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setBriefLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [runs, selectedRunId, briefIndex, selectedBriefTicker]);
+
   const filteredEdges = useMemo(() => filterEdges(data?.edges || [], filters), [data, filters]);
   const filteredEvidence = useMemo(() => filterEvidence(data?.evidence || [], filters), [data, filters]);
   const filteredBottlenecks = useMemo(() => filterBottlenecks(data?.bottlenecks || [], filters), [data, filters]);
   const filteredCompanies = useMemo(() => filterCompanies(data?.companies || [], filters), [data, filters]);
+  const availableBriefTickers = useMemo(() => briefTickerSet(briefIndex), [briefIndex]);
 
   const updateFilters = (patch) => setFilters((current) => ({ ...current, ...patch }));
+  const openCompanyBrief = (company) => {
+    const entry = matchBriefForCompany(company, briefIndex);
+    if (entry) setSelectedBriefTicker(entry.ticker);
+    setActiveTab('briefs');
+  };
 
   if (error) {
     return (
@@ -125,6 +191,19 @@ export function App() {
                   <Companies
                     companies={filteredCompanies}
                     onCompany={(company) => updateFilters({ company })}
+                    onBrief={openCompanyBrief}
+                    briefTickers={availableBriefTickers}
+                  />
+                )}
+                {activeTab === 'briefs' && (
+                  <Briefs
+                    entries={briefIndex}
+                    brief={selectedBrief}
+                    loading={briefLoading}
+                    error={briefError}
+                    selectedTicker={selectedBriefTicker}
+                    onSelectTicker={setSelectedBriefTicker}
+                    onCompanyFilter={(company) => updateFilters({ company })}
                   />
                 )}
                 {activeTab === 'bottlenecks' && <Bottlenecks rows={filteredBottlenecks} />}

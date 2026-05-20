@@ -116,3 +116,52 @@ def sync_frontend_public_data(settings: Settings, runs: list[dict[str, Any]]) ->
         target_dir = public_data_dir / "runs" / run_id
         target_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target_dir / "dashboard-data.json")
+        sync_frontend_public_briefs(settings, run_id)
+
+
+def sync_frontend_public_briefs(settings: Settings, run_id: str) -> list[dict[str, Any]]:
+    """Copy generated company briefs into Vite static data and write a small index."""
+
+    frontend_dir = settings.root_dir / "frontend"
+    if not frontend_dir.exists():
+        return []
+    source_dir = settings.reports_dir / "runs" / run_id / "briefs"
+    if not source_dir.exists():
+        return []
+
+    target_dir = frontend_dir / "public" / "data" / "runs" / run_id / "briefs"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    for stale in target_dir.glob("*_dependency_brief.json"):
+        stale.unlink()
+
+    rows: list[dict[str, Any]] = []
+    for source in sorted(source_dir.rglob("*_dependency_brief.json")):
+        try:
+            payload = json.loads(source.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        company = payload.get("company") if isinstance(payload.get("company"), dict) else {}
+        interpretation = payload.get("analyst_interpretation")
+        if not isinstance(interpretation, dict):
+            interpretation = {}
+        diagnostics = payload.get("diagnostics") if isinstance(payload.get("diagnostics"), dict) else {}
+        ticker = str(company.get("ticker") or source.name.split("_", 1)[0]).upper()
+        target_name = f"{ticker}_dependency_brief.json"
+        shutil.copy2(source, target_dir / target_name)
+        rows.append(
+            {
+                "ticker": ticker,
+                "company_name": company.get("company_name") or ticker,
+                "role": company.get("role") or "",
+                "priority": company.get("priority") or "",
+                "path": f"/data/runs/{run_id}/briefs/{target_name}",
+                "model_version": payload.get("model_version") or interpretation.get("model_version") or "",
+                "claim_count": diagnostics.get("claim_count", 0),
+                "evidence_count": len(payload.get("evidence_table") or []),
+                "summary": interpretation.get("one_paragraph_summary") or "",
+            }
+        )
+
+    rows.sort(key=lambda row: (int(row["priority"]) if str(row["priority"]).isdigit() else 999, row["ticker"]))
+    write_json(target_dir / "index.json", {"run_id": run_id, "briefs": rows})
+    return rows

@@ -159,6 +159,14 @@ artifacts; it does not mutate the pipeline outputs or Postgres. The report
 writer is multi-round: outline planning, final writing, citation validation, and
 repair when needed. See `docs/company_dependency_brief.md`.
 
+Sync generated briefs into the Vite dashboard's static data and open the
+frontend Briefs tab:
+
+```bash
+python scripts/sync_company_briefs_to_frontend.py --run-id industry-sec-exhibits-v3
+cd frontend && npm run dev
+```
+
 For a focused smoke test:
 
 ```bash

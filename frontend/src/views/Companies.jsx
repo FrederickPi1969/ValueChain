@@ -1,4 +1,4 @@
-export function Companies({ companies, onCompany }) {
+export function Companies({ companies, onCompany, onBrief, briefTickers = new Set() }) {
   const rows = companies
     .slice()
     .sort(
@@ -19,6 +19,7 @@ export function Companies({ companies, onCompany }) {
           <thead>
             <tr>
               <th>Company</th>
+              <th>Brief</th>
               <th>Ticker</th>
               <th>Role</th>
               <th>Status</th>
@@ -38,6 +39,13 @@ export function Companies({ companies, onCompany }) {
             {rows.map((row) => (
               <tr key={row.company}>
                 <td><button className="link-button" onClick={() => onCompany(row.company)}>{row.company}</button></td>
+                <td>
+                  {briefTickers.has(String(row.ticker || '').toUpperCase()) ? (
+                    <button className="compact-button" onClick={() => onBrief(row)}>Open</button>
+                  ) : (
+                    <span className="muted">-</span>
+                  )}
+                </td>
                 <td>{row.ticker}</td>
                 <td>{row.role}</td>
                 <td>{formatStatus(row.coverage_status)}</td>
