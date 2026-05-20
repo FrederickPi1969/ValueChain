@@ -78,14 +78,48 @@ HEADING_OBJECTS = {
     "item 1a",
     "risk factors",
 }
+PLACEHOLDER_OBJECTS = {
+    "aibs",
+    "competitors",
+    "compute and networking segment",
+    "compute & networking segment",
+    "csps",
+    "customer a",
+    "customer b",
+    "customer c",
+    "direct customer a",
+    "direct customer b",
+    "direct customer c",
+    "dpus",
+    "direct, indirect and cloud service purchasers",
+    "enterprises and governments",
+    "euv systems components",
+    "fpgas",
+    "gpu accelerators",
+    "neocloud builders",
+    "odms",
+    "one customer",
+    "server cpus",
+    "supply chain",
+    "adaptive socs",
+    "ai nics",
+    "designated non-423 corporation",
+    "ip-related costs",
+    "related corporation",
+}
 WEAK_OBJECT_PATTERNS = {
     "alternative production capacity",
+    "another direct customer",
+    "direct customer",
     "largest customer",
     "limited number of vendors",
+    "limited or single-source suppliers",
+    "limited group of suppliers",
     "partner network",
     "partner and retail network",
     "services. customers",
     "single-sourced",
+    "sole supplier",
     "third parties",
     "third-party manufacturers",
     "third-party vendors",
@@ -180,6 +214,35 @@ RELATION_LOCAL_CUES = {
         "joint investment",
         "joint venture",
     },
+}
+RISK_CONTEXT_CUES = {
+    "adverse",
+    "availability",
+    "bankruptcies",
+    "constraint",
+    "constraints",
+    "credit risk",
+    "delay",
+    "delays",
+    "depend",
+    "disrupt",
+    "disruption",
+    "fail",
+    "geopolitical",
+    "labor",
+    "loss",
+    "material adverse",
+    "natural disaster",
+    "not available",
+    "political",
+    "procure alternatives",
+    "regulatory",
+    "restriction",
+    "risk",
+    "shortage",
+    "supply constraints",
+    "tariff",
+    "unable",
 }
 
 
@@ -332,22 +395,18 @@ def generate_company_dependency_brief(
     ]
     display_current_fact_evidence = filter_supported_current_fact_evidence(current_fact_evidence)
     top_operating = select_top_operating_claims(display_current_fact_evidence, options)
-    risk_evidence = [
+    risk_evidence = filter_display_risk_evidence([
         row
         for row in enriched_evidence
         if row.get("relation_type") != "subsidiary_or_control"
-        and (row.get("modality") != "current_fact" or is_supported_display_relation(row))
         and (
             row.get("relation_type") in RISK_RELATION_TYPES
             or "risk" in str(row.get("modality", ""))
             or "hypothetical" in str(row.get("modality", ""))
         )
-    ]
+    ])
     strategic_evidence = select_strategic_evidence(enriched_evidence)
-    top_risk = top_claims(
-        build_claims(risk_evidence, id_prefix="R"),
-        options.max_claims_per_section,
-    )
+    top_risk = select_top_risk_claims(risk_evidence, options)
     current_fact = top_claims(
         build_claims(filter_display_current_fact_evidence(display_current_fact_evidence), id_prefix="F"),
         options.max_claims_per_section,
@@ -356,8 +415,9 @@ def generate_company_dependency_brief(
         build_claims(strategic_evidence, id_prefix="S"),
         options.max_claims_per_section,
     )
+    display_evidence = dedupe_evidence(display_current_fact_evidence + risk_evidence + strategic_evidence)
     evidence_table = build_evidence_table(
-        enriched_evidence,
+        display_evidence,
         top_operating + top_risk + current_fact + strategic,
         max_rows=options.max_evidence_table_rows,
         max_chars=options.max_evidence_chars,
@@ -412,7 +472,7 @@ def select_top_operating_claims(
         if not is_low_quality_operating_object(claim.canonical_object)
     ]
     if named_claims:
-        return top_claims(named_claims, options.max_claims_per_section)
+        return top_operating_claims(named_claims, options.max_claims_per_section)
     weak_descriptive_claims = [
         claim
         for claim in current_claims
@@ -429,7 +489,7 @@ def select_top_operating_claims(
         and not is_heading_object(claim.canonical_object)
     ]
     if weak_descriptive_claims:
-        return top_claims(weak_descriptive_claims, options.max_claims_per_section)
+        return top_operating_claims(weak_descriptive_claims, options.max_claims_per_section)
     generic_claims = [
         claim
         for claim in current_claims
@@ -437,12 +497,88 @@ def select_top_operating_claims(
         and not is_geography_object(claim.canonical_object)
         and not is_heading_object(claim.canonical_object)
     ]
-    return top_claims(generic_claims, options.max_claims_per_section)
+    return top_operating_claims(generic_claims, options.max_claims_per_section)
+
+
+def top_operating_claims(claims: list[BriefClaim], limit: int) -> list[BriefClaim]:
+    ordered = sorted(
+        claims,
+        key=lambda claim: (
+            operating_relation_rank(claim.relation_type),
+            -claim.evidence_count,
+            -claim.avg_confidence,
+            claim.relation_type,
+            claim.canonical_object.lower(),
+        ),
+    )
+    return ordered[:limit]
+
+
+def operating_relation_rank(relation_type: str) -> int:
+    if relation_type == "licensing_dependency":
+        return 2
+    if relation_type == "distribution_or_channel_dependency":
+        return 1
+    return 0
+
+
+def select_top_risk_claims(risk_evidence: list[dict[str, Any]], options: BriefOptions) -> list[BriefClaim]:
+    claims = build_claims(risk_evidence, id_prefix="R")
+    ordered = sorted(
+        claims,
+        key=lambda claim: (
+            risk_object_rank(claim.canonical_object),
+            -claim.evidence_count,
+            -claim.avg_confidence,
+            claim.relation_type,
+            claim.canonical_object.lower(),
+        ),
+    )
+    return ordered[: options.max_claims_per_section]
+
+
+def risk_object_rank(value: str) -> int:
+    if is_generic_object(value) or is_heading_object(value):
+        return 2
+    if matches_weak_object_pattern(value):
+        return 1
+    return 0
 
 
 def filter_supported_current_fact_evidence(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    supported = [row for row in evidence if is_supported_display_relation(row)]
+    supported = [row for row in evidence if is_supported_current_fact_display_row(row)]
     return supported or evidence
+
+
+def is_supported_current_fact_display_row(row: dict[str, Any]) -> bool:
+    relation_type = str(row.get("relation_type") or "")
+    if relation_type in RISK_RELATION_TYPES:
+        return is_supported_display_risk_relation(row)
+    return is_supported_display_relation(row)
+
+
+def filter_display_risk_evidence(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    supported = [row for row in evidence if is_supported_display_risk_relation(row)]
+    return supported or evidence
+
+
+def is_supported_display_risk_relation(row: dict[str, Any]) -> bool:
+    relation_type = str(row.get("relation_type") or "")
+    modality = str(row.get("modality") or "")
+    obj = str(row.get("canonical_object") or row.get("object") or "")
+    if modality == "current_fact" and relation_type in OPERATING_RELATION_TYPES and not is_supported_display_relation(row):
+        return False
+    if modality == "current_fact" and (is_generic_object(obj) or is_heading_object(obj)):
+        return False
+    if relation_type == "concentration_risk":
+        return has_concentration_context(row)
+    if relation_type == "facility_or_geographic_exposure":
+        return has_facility_or_geography_context(row) and (
+            has_risk_context(row) or modality in {"risk_hypothetical", "forward_looking"}
+        )
+    if relation_type in RISK_RELATION_TYPES and not has_risk_context(row):
+        return "risk" in modality or "hypothetical" in modality
+    return True
 
 
 def is_supported_display_relation(row: dict[str, Any]) -> bool:
@@ -454,6 +590,8 @@ def is_supported_display_relation(row: dict[str, Any]) -> bool:
         return is_low_quality_display_object(obj)
     context = local_object_context(row)
     if is_negative_strategic_context(context):
+        return False
+    if relation_type == "licensing_dependency" and is_credit_agreement_index_context(row, context):
         return False
     if is_trademark_context(context):
         return False
@@ -489,9 +627,27 @@ def filter_display_current_fact_evidence(evidence: list[dict[str, Any]]) -> list
     filtered = [
         row
         for row in evidence
-        if not is_low_quality_display_object(str(row.get("canonical_object") or row.get("object") or ""))
+        if str(row.get("relation_type") or "") in OPERATING_RELATION_TYPES
+        and not is_low_quality_display_object(str(row.get("canonical_object") or row.get("object") or ""))
     ]
-    return filtered or evidence
+    if filtered:
+        return filtered
+    weak_descriptive = [
+        row
+        for row in evidence
+        if str(row.get("relation_type") or "")
+        in {
+            "supplier_dependency",
+            "manufacturing_dependency",
+            "foundry_dependency",
+            "packaging_or_assembly_dependency",
+        }
+        and matches_weak_object_pattern(str(row.get("canonical_object") or row.get("object") or ""))
+        and not is_generic_object(str(row.get("canonical_object") or row.get("object") or ""))
+        and not is_geography_object(str(row.get("canonical_object") or row.get("object") or ""))
+        and not is_heading_object(str(row.get("canonical_object") or row.get("object") or ""))
+    ]
+    return weak_descriptive
 
 
 def evidence_mentions_object(row: dict[str, Any]) -> bool:
@@ -615,6 +771,73 @@ def has_strong_dependency_cue(context: str) -> bool:
     return contains_any(context, strong_cues)
 
 
+def has_risk_context(row: dict[str, Any]) -> bool:
+    text = normalize_name(row.get("evidence_text", ""))
+    context = local_object_context(row)
+    return contains_any(context, RISK_CONTEXT_CUES) or contains_any(text[:900], RISK_CONTEXT_CUES)
+
+
+def has_concentration_context(row: dict[str, Any]) -> bool:
+    context = local_object_context(row)
+    concentration_cues = {
+        "10% or more",
+        "accounted for",
+        "concentrated",
+        "concentration",
+        "few customers",
+        "limited number",
+        "major customer",
+        "significant portion",
+        "substantial portion",
+    }
+    object_segments = object_local_segments(row, context)
+    if object_segments:
+        return any(contains_any(segment, concentration_cues) for segment in object_segments)
+    return contains_any(context, concentration_cues)
+
+
+def has_facility_or_geography_context(row: dict[str, Any]) -> bool:
+    obj = str(row.get("canonical_object") or row.get("object") or "")
+    if looks_like_legal_entity(obj):
+        return False
+    context = local_object_context(row)
+    text = normalize_name(row.get("evidence_text", ""))[:1000]
+    facility_cues = {
+        "data center",
+        "facilities",
+        "facility",
+        "geographic",
+        "international",
+        "located",
+        "locations",
+        "manufacturing",
+        "operations",
+        "region",
+        "worldwide operations",
+    }
+    if is_geography_object(obj):
+        return contains_any(context, facility_cues | RISK_CONTEXT_CUES) or contains_any(text, facility_cues | RISK_CONTEXT_CUES)
+    return contains_any(context, facility_cues) or contains_any(text, facility_cues)
+
+
+def object_local_segments(row: dict[str, Any], context: str) -> list[str]:
+    variants = object_name_variants(row)
+    segments = [segment.strip() for segment in re.split(r"[.;]\s*", context) if segment.strip()]
+    return [segment for segment in segments if any(variant in segment for variant in variants)]
+
+
+def is_credit_agreement_index_context(row: dict[str, Any], context: str) -> bool:
+    section = normalize_name(row.get("source_section", ""))
+    text = normalize_name(row.get("evidence_text", ""))[:1200]
+    if "material_contract" in section or "exhibit_10" in section:
+        return False
+    return (
+        "credit agreement" in text
+        and "incorporated by reference" in text
+        and not contains_any(context, {"cross-license", "license agreement", "desires to license"})
+    )
+
+
 def contains_any(value: str, needles: set[str]) -> bool:
     return any(needle in value for needle in needles)
 
@@ -710,7 +933,11 @@ def build_claims(evidence: list[dict[str, Any]], id_prefix: str = "C") -> list[B
         claim_id = f"{id_prefix}{idx:03d}"
         representative = sorted(
             rows,
-            key=lambda row: (safe_float(row.get("confidence_score")), str(row.get("filing_date", ""))),
+            key=lambda row: (
+                passage_quality_score(row),
+                safe_float(row.get("confidence_score")),
+                str(row.get("filing_date", "")),
+            ),
             reverse=True,
         )[:3]
         claims.append(
@@ -851,6 +1078,10 @@ def passage_quality_score(row: dict[str, Any]) -> float:
         score -= 2.0
     if looks_like_financial_table_fragment(text):
         score -= 1.0
+    if looks_like_exhibit_index_fragment(text):
+        score -= 2.5
+    if is_material_contract_clause(row, text):
+        score += 1.0
     if obj and is_low_quality_display_object(obj):
         score -= 0.8
     return score
@@ -870,6 +1101,25 @@ def looks_like_financial_table_fragment(text: str) -> bool:
     dollar_count = text.count("$")
     percent_count = text.count("%")
     return dollar_count + percent_count >= 5
+
+
+def looks_like_exhibit_index_fragment(text: str) -> bool:
+    exhibit_refs = len(re.findall(r"\b10\.\d+\b", text))
+    return (
+        "incorporated by reference" in text
+        or ("filed as exhibit" in text and exhibit_refs >= 1)
+        or exhibit_refs >= 4
+    )
+
+
+def is_material_contract_clause(row: dict[str, Any], text: str) -> bool:
+    section = normalize_name(row.get("source_section", ""))
+    relation_type = str(row.get("relation_type") or "")
+    if "material_contract" not in section and "exhibit_10" not in section:
+        return False
+    if relation_type == "licensing_dependency":
+        return contains_any(text[:900], {"cross-license agreement", "license agreement", "desires to license"})
+    return contains_any(text[:700], {"agreement", "entered into", "whereas"})
 
 
 def dedupe_claims(claims: list[BriefClaim]) -> list[BriefClaim]:
@@ -901,8 +1151,50 @@ def evidence_row_from_dict(row: dict[str, Any], claim: BriefClaim, row_id: str, 
         section=str(row.get("source_section", "")),
         paragraph_offset=safe_int(row.get("paragraph_offset")),
         source_document_url=str(row.get("source_document_url", "")),
-        evidence_text=truncate_text(str(row.get("evidence_text", "")), max_chars),
+        evidence_text=evidence_excerpt(row, max_chars),
     )
+
+
+def evidence_excerpt(row: dict[str, Any], max_chars: int) -> str:
+    clean = " ".join(str(row.get("evidence_text", "")).split())
+    if len(clean) <= max_chars:
+        return clean
+    anchor = evidence_excerpt_anchor(clean, row)
+    if anchor < 0:
+        return truncate_text(clean, max_chars)
+    return centered_truncate(clean, anchor, max_chars)
+
+
+def evidence_excerpt_anchor(clean_text: str, row: dict[str, Any]) -> int:
+    lowered = clean_text.casefold()
+    for value in [str(row.get("object") or ""), str(row.get("canonical_object") or "")]:
+        value = value.strip()
+        if not value:
+            continue
+        idx = lowered.find(value.casefold())
+        if idx >= 0:
+            return idx
+        simplified = simplify_legal_name(normalize_name(value))
+        if len(simplified) >= 4:
+            match = re.search(rf"\b{re.escape(simplified)}\b", lowered)
+            if match:
+                return match.start()
+    return -1
+
+
+def centered_truncate(value: str, anchor: int, max_chars: int) -> str:
+    if len(value) <= max_chars:
+        return value
+    half = max_chars // 2
+    start = max(0, anchor - half)
+    end = min(len(value), start + max_chars)
+    start = max(0, end - max_chars)
+    snippet = value[start:end].strip()
+    if start > 0:
+        snippet = "..." + snippet[3:].lstrip()
+    if end < len(value):
+        snippet = snippet[:-3].rstrip() + "..."
+    return snippet
 
 
 def infer_company_role(company: dict[str, Any], claims: list[BriefClaim]) -> dict[str, Any]:
@@ -1002,6 +1294,9 @@ def generate_analyst_interpretation(
     if not cited:
         interpretation.setdefault("citation_warnings", []).append("LLM produced no valid evidence citations.")
     interpretation["valid_citations"] = cited
+    support_warnings = validate_interpretation_support(interpretation, evidence_table)
+    if support_warnings:
+        interpretation["support_warnings"] = support_warnings
     interpretation["generation_rounds"] = rounds + ["citation_validation"]
     return interpretation
 
@@ -1029,6 +1324,7 @@ Every paragraph or bullet must cite at least one evidence id copied exactly from
 Never cite claim ids such as C001, F001, R001, or S001.
 Distinguish current facts from forward-looking or risk-hypothetical language.
 Do not infer mitigation, resilience, diversification benefits, or causal financial impact unless the cited evidence explicitly says so.
+Avoid strong causal wording such as "hinges", "validates", "reduces execution risk", "revenue potential", or "directly limits" unless cited current-fact evidence names a specific counterparty.
 If a relation type or object looks ambiguous, discuss it under weak_or_missing_evidence instead of treating it as a firm dependency.
 Keep the paragraph under 130 words and each bullet under 45 words.
 Return 2-3 bullets per list.
@@ -1200,6 +1496,50 @@ def uncited_interpretation_items(interpretation: dict[str, Any]) -> list[str]:
 
 def has_evidence_citation(value: str) -> bool:
     return bool(re.search(r"\bE[0-9A-Z]{8,}\b", value))
+
+
+def validate_interpretation_support(interpretation: dict[str, Any], evidence_table: list[EvidenceRow]) -> list[str]:
+    evidence_by_id = {row.evidence_id: row for row in evidence_table}
+    warnings = []
+    for field, text in interpretation_text_items(interpretation):
+        lowered = normalize_name(text)
+        if not contains_any(lowered, OVERCLAIM_PHRASES):
+            continue
+        cited_rows = [evidence_by_id[eid] for eid in re.findall(r"\bE[0-9A-Z]{8,}\b", text) if eid in evidence_by_id]
+        if not any(is_strong_current_named_evidence(row) for row in cited_rows):
+            warnings.append(f"{field}: strong wording is not backed by current-fact named-counterparty evidence")
+    return warnings
+
+
+OVERCLAIM_PHRASES = {
+    "directly limits",
+    "hinges",
+    "immediately halt",
+    "operational viability",
+    "reduces execution risk",
+    "revenue potential",
+    "single-point failure",
+    "validates",
+}
+
+
+def interpretation_text_items(interpretation: dict[str, Any]) -> list[tuple[str, str]]:
+    items = [("one_paragraph_summary", str(interpretation.get("one_paragraph_summary") or ""))]
+    for field in ["what_this_implies", "what_to_monitor", "weak_or_missing_evidence"]:
+        value = interpretation.get(field)
+        if isinstance(value, list):
+            items.extend((f"{field}[{idx}]", str(item)) for idx, item in enumerate(value))
+        else:
+            items.append((field, str(value or "")))
+    return items
+
+
+def is_strong_current_named_evidence(row: EvidenceRow) -> bool:
+    return (
+        row.modality == "current_fact"
+        and row.relation_type in OPERATING_RELATION_TYPES
+        and not is_low_quality_display_object(row.canonical_object)
+    )
 
 
 def repair_interpretation_citations(
@@ -1520,6 +1860,7 @@ def is_low_quality_display_object(value: str) -> bool:
         is_generic_object(value)
         or is_geography_object(value)
         or is_heading_object(value)
+        or is_placeholder_object(value)
         or matches_weak_object_pattern(value)
     )
 
@@ -1536,6 +1877,35 @@ def is_heading_object(value: str) -> bool:
 def matches_weak_object_pattern(value: str) -> bool:
     normalized = normalize_name(value)
     return any(pattern in normalized for pattern in WEAK_OBJECT_PATTERNS)
+
+
+def is_placeholder_object(value: str) -> bool:
+    normalized = normalize_name(value)
+    if normalized in PLACEHOLDER_OBJECTS:
+        return True
+    if re.fullmatch(r"(direct )?customer [a-z]", normalized):
+        return True
+    if re.fullmatch(r"(product|customer|supplier|partner|competitor)s?", normalized):
+        return True
+    return False
+
+
+def looks_like_legal_entity(value: str) -> bool:
+    normalized = normalize_name(value)
+    legal_terms = {
+        "ag",
+        "corp",
+        "corporation",
+        "inc",
+        "incorporated",
+        "limited",
+        "llc",
+        "ltd",
+        "n v",
+        "nv",
+        "plc",
+    }
+    return any(re.search(rf"\b{re.escape(term)}\b", normalized) for term in legal_terms)
 
 
 def normalize_lookup(value: Any) -> str:

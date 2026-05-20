@@ -111,8 +111,16 @@ python scripts/generate_company_dependency_brief.py \
   trademark notices, negative contract clauses, or risk sentences such as
   `if we lose...` when the local object context does not support the extracted
   relation type. Raw evidence remains unchanged for audit and later recall work.
+- The evidence table is lineage-aware: citable rows come from display-survived
+  current-fact, risk, and strategic evidence, not from the full raw evidence pool
+  for the same `(relation_type, object)` key. Excerpts are centered around the
+  object when possible so the cited row can be inspected without opening the
+  full filing.
 - Risk-hypothetical language is presented under risk exposure, not current
   operating dependency.
+- The user-facing current-fact section is restricted to operating dependency
+  relations. Concentration and geography risks remain in the risk section unless
+  later promoted by a dedicated analyst workflow.
 - Strategic relations only include `strategic_partner`, `co_investment`, or
   evidence explicitly marked strategic, and ordinary licensing dependencies are
   not promoted into the strategic section.
@@ -126,5 +134,8 @@ python scripts/generate_company_dependency_brief.py \
 - The writer is instructed not to infer mitigation, resilience, diversification
   benefits, or financial causality unless the cited evidence explicitly supports
   it.
+- A deterministic support audit adds warnings when the interpretation uses
+  strong causal wording while citing only weak, generic, or risk-hypothetical
+  evidence.
 - Ambiguous relation types or object labels should be discussed as weak evidence,
   not firm operating dependencies.

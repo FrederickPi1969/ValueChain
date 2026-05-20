@@ -5,20 +5,24 @@ from pathlib import Path
 
 from valuechain.company_dependency_brief import (
     BriefClaim,
+    EvidenceRow,
     BriefOptions,
     build_evidence_table,
     enforce_citation_constraints,
     evidence_id,
     filter_display_current_fact_evidence,
+    filter_display_risk_evidence,
     filter_supported_current_fact_evidence,
     generate_company_dependency_brief,
     has_evidence_citation,
     invalid_citations,
     passage_quality_score,
     parse_lenient_json_content,
+    select_top_risk_claims,
     select_top_operating_claims,
     select_strategic_evidence,
     uncited_interpretation_items,
+    validate_interpretation_support,
     valid_citations,
     write_company_dependency_brief,
 )
@@ -311,6 +315,37 @@ def test_current_fact_display_filters_generic_classes_when_named_claims_exist() 
     assert [row["object"] for row in filtered] == ["Contoso Components LLC"]
 
 
+def test_current_fact_display_keeps_operating_relations_not_risk_classes() -> None:
+    rows = [
+        evidence_row(
+            ticker="NVDA",
+            cik="0001045810",
+            subject="NVIDIA Corporation",
+            obj="Customer A",
+            relation_type="concentration_risk",
+            modality="current_fact",
+            confidence=0.95,
+            accession="0001045810-26-000001",
+            paragraph=1,
+            text="Customer A accounted for 10% or more of revenue.",
+        ),
+        evidence_row(
+            ticker="NVDA",
+            cik="0001045810",
+            subject="NVIDIA Corporation",
+            obj="Taiwan Semiconductor Manufacturing Company Limited",
+            relation_type="foundry_dependency",
+            modality="current_fact",
+            confidence=0.9,
+            accession="0001045810-26-000001",
+            paragraph=2,
+            text="We rely on Taiwan Semiconductor Manufacturing Company Limited for wafer fabrication.",
+        ),
+    ]
+    filtered = filter_display_current_fact_evidence(rows)
+    assert [row["object"] for row in filtered] == ["Taiwan Semiconductor Manufacturing Company Limited"]
+
+
 def test_evidence_table_prefers_clean_passage_over_boilerplate() -> None:
     noisy = evidence_row(
         ticker="NVDA",
@@ -354,6 +389,152 @@ def test_evidence_table_prefers_clean_passage_over_boilerplate() -> None:
     assert passage_quality_score(clean) > passage_quality_score(noisy)
     table = build_evidence_table([noisy, clean], [claim], max_rows=2, max_chars=200)
     assert table[0].paragraph_offset == 2
+
+
+def test_evidence_table_prefers_material_contract_over_exhibit_index() -> None:
+    index_row = evidence_row(
+        ticker="AMD",
+        cik="0000002488",
+        subject="Advanced Micro Devices Inc.",
+        obj="Broadcom Inc.",
+        relation_type="licensing_dependency",
+        modality="current_fact",
+        confidence=0.9,
+        accession="0000002488-26-000018",
+        paragraph=177,
+        text=(
+            "10.68 Intellectual Property Cross-License Agreement between Advanced Micro Devices, Inc. "
+            "and Broadcom Inc., filed as Exhibit 10.78 and incorporated by reference."
+        ),
+    )
+    index_row["source_section"] = "item_7_mdna"
+    contract_row = evidence_row(
+        ticker="AMD",
+        cik="0000002488",
+        subject="Advanced Micro Devices Inc.",
+        obj="Broadcom Inc.",
+        relation_type="licensing_dependency",
+        modality="current_fact",
+        confidence=0.78,
+        accession="0000002488-26-000018",
+        paragraph=1,
+        text=(
+            "This Intellectual Property Cross-License Agreement is by and between AMD and Broadcom Inc. "
+            "AMD desires to license certain intellectual property rights to Broadcom."
+        ),
+    )
+    contract_row["source_section"] = "exhibit_10_material_contract"
+    claim = BriefClaim(
+        claim_id="C001",
+        category="operating_dependency",
+        relation_type="licensing_dependency",
+        object="Broadcom Inc.",
+        canonical_object="Broadcom Inc.",
+        object_lei="",
+        modality_mix="current_fact",
+        evidence_count=2,
+        avg_confidence=0.84,
+        forms="10-K",
+        accessions="0000002488-26-000018",
+        first_seen="2026-02-20",
+        last_seen="2026-02-20",
+    )
+    assert passage_quality_score(contract_row) > passage_quality_score(index_row)
+    table = build_evidence_table([index_row, contract_row], [claim], max_rows=2, max_chars=240)
+    assert table[0].paragraph_offset == 1
+
+
+def test_generate_brief_evidence_table_uses_display_filtered_rows(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    write_csv(
+        run_dir / "company_universe_resolved.csv",
+        [
+            {
+                "ticker": "NVDA",
+                "company_name": "NVIDIA Corporation",
+                "role": "accelerator_compute",
+                "cik": "0001045810",
+            }
+        ],
+    )
+    rows = [
+        evidence_row(
+            ticker="NVDA",
+            cik="0001045810",
+            subject="NVIDIA Corporation",
+            obj="Microsoft Corporation",
+            relation_type="supplier_dependency",
+            modality="current_fact",
+            confidence=0.99,
+            accession="0001045810-26-000021",
+            paragraph=18,
+            text="Competition includes cloud companies such as Amazon and Microsoft Corporation.",
+        ),
+        evidence_row(
+            ticker="NVDA",
+            cik="0001045810",
+            subject="NVIDIA Corporation",
+            obj="Microsoft Corporation",
+            relation_type="supplier_dependency",
+            modality="current_fact",
+            confidence=0.8,
+            accession="0001045810-26-000021",
+            paragraph=19,
+            text="We rely on Microsoft Corporation to supply critical software components.",
+        ),
+    ]
+    with (run_dir / "relation_evidence.jsonl").open("w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row, sort_keys=True) + "\n")
+
+    brief = generate_company_dependency_brief(
+        run_dir=run_dir,
+        company_query="NVDA",
+        llm_client=None,
+        model_version="deterministic",
+        options=BriefOptions(max_claims_per_section=4, max_evidence_table_rows=4),
+    )
+    assert brief.top_operating_dependencies[0].canonical_object == "Microsoft Corporation"
+    microsoft_rows = [row for row in brief.evidence_table if row.canonical_object == "Microsoft Corporation"]
+    assert microsoft_rows
+    assert {row.paragraph_offset for row in microsoft_rows} == {19}
+
+
+def test_evidence_table_truncates_around_object_context() -> None:
+    row = evidence_row(
+        ticker="NVDA",
+        cik="0001045810",
+        subject="NVIDIA Corporation",
+        obj="Taiwan Semiconductor Manufacturing Company Limited",
+        relation_type="foundry_dependency",
+        modality="current_fact",
+        confidence=0.94,
+        accession="0001045810-26-000010",
+        paragraph=12,
+        text=(
+            "Opening boilerplate " + "background " * 80
+            + "We rely on Taiwan Semiconductor Manufacturing Company Limited for wafer fabrication."
+        ),
+    )
+    claim = BriefClaim(
+        claim_id="C001",
+        category="operating_dependency",
+        relation_type="foundry_dependency",
+        object="Taiwan Semiconductor Manufacturing Company Limited",
+        canonical_object="Taiwan Semiconductor Manufacturing Company Limited",
+        object_lei="",
+        modality_mix="current_fact",
+        evidence_count=1,
+        avg_confidence=0.94,
+        forms="10-K",
+        accessions="0001045810-26-000010",
+        first_seen="2026-02-20",
+        last_seen="2026-02-20",
+    )
+    table = build_evidence_table([row], [claim], max_rows=1, max_chars=160)
+    assert "Taiwan Semiconductor Manufacturing Company Limited" in table[0].evidence_text
+    assert "Opening boilerplate" not in table[0].evidence_text
 
 
 def test_current_fact_support_filter_drops_competitor_landscape_relation() -> None:
@@ -458,6 +639,133 @@ def test_strategic_filter_drops_negative_joint_venture_clause() -> None:
     assert [row["object"] for row in selected] == ["OpenAI OpCo, LLC"]
 
 
+def test_risk_display_filter_drops_generic_current_fact_without_risk_context() -> None:
+    rows = [
+        evidence_row(
+            ticker="AMZN",
+            cik="0001018724",
+            subject="Amazon.com Inc.",
+            obj="Facility or geographic exposure class",
+            relation_type="facility_or_geographic_exposure",
+            modality="current_fact",
+            confidence=0.66,
+            accession="0001018724-26-000004",
+            paragraph=3,
+            text="We focus on improving customer experience, lowering prices, and expanding geographic selection.",
+        ),
+        evidence_row(
+            ticker="AMZN",
+            cik="0001018724",
+            subject="Amazon.com Inc.",
+            obj="China",
+            relation_type="facility_or_geographic_exposure",
+            modality="risk_hypothetical",
+            confidence=0.85,
+            accession="0001018724-26-000004",
+            paragraph=7,
+            text="China-based suppliers could be affected by regulatory restrictions, tariff policy, and geopolitical risk.",
+        ),
+    ]
+    filtered = filter_display_risk_evidence(rows)
+    assert [row["object"] for row in filtered] == ["China"]
+
+
+def test_concentration_risk_drops_competitors_without_concentration_marker() -> None:
+    rows = [
+        evidence_row(
+            ticker="NVDA",
+            cik="0001045810",
+            subject="NVIDIA Corporation",
+            obj="competitors",
+            relation_type="concentration_risk",
+            modality="risk_hypothetical",
+            confidence=0.75,
+            accession="0001045810-26-000021",
+            paragraph=1,
+            text="Competitors may introduce products that affect pricing.",
+        ),
+        evidence_row(
+            ticker="NVDA",
+            cik="0001045810",
+            subject="NVIDIA Corporation",
+            obj="Customer A",
+            relation_type="concentration_risk",
+            modality="current_fact",
+            confidence=0.95,
+            accession="0001045810-26-000021",
+            paragraph=2,
+            text="Customer A accounted for 10% or more of revenue.",
+        ),
+    ]
+    filtered = filter_display_risk_evidence(rows)
+    assert [row["object"] for row in filtered] == ["Customer A"]
+
+
+def test_facility_exposure_rejects_non_facility_legal_entity() -> None:
+    rows = [
+        evidence_row(
+            ticker="MSFT",
+            cik="0000789019",
+            subject="Microsoft Corporation",
+            obj="Reprogrammed Interchange LLC",
+            relation_type="facility_or_geographic_exposure",
+            modality="current_fact",
+            confidence=0.71,
+            accession="0000789019-26-000001",
+            paragraph=1,
+            text="Reprogrammed Interchange LLC held an equity interest in Inflection.",
+        ),
+        evidence_row(
+            ticker="MSFT",
+            cik="0000789019",
+            subject="Microsoft Corporation",
+            obj="Asia",
+            relation_type="facility_or_geographic_exposure",
+            modality="risk_hypothetical",
+            confidence=0.8,
+            accession="0000789019-26-000001",
+            paragraph=2,
+            text="Our operations in Asia may be affected by geopolitical risk.",
+        ),
+    ]
+    filtered = filter_display_risk_evidence(rows)
+    assert [row["object"] for row in filtered] == ["Asia"]
+
+
+def test_top_risk_ranks_named_objects_before_generic_classes() -> None:
+    rows = [
+        evidence_row(
+            ticker="AMD",
+            cik="0000002488",
+            subject="Advanced Micro Devices Inc.",
+            obj="third-party manufacturers",
+            relation_type="manufacturing_dependency",
+            modality="risk_hypothetical",
+            confidence=0.92,
+            accession="0000002488-26-000018",
+            paragraph=1,
+            text="We rely on third-party manufacturers, and delays could materially adversely affect us.",
+        ),
+        evidence_row(
+            ticker="AMD",
+            cik="0000002488",
+            subject="Advanced Micro Devices Inc.",
+            obj="Taiwan Semiconductor Manufacturing Company Limited",
+            relation_type="foundry_dependency",
+            modality="risk_hypothetical",
+            confidence=0.85,
+            accession="0000002488-26-000018",
+            paragraph=2,
+            text="We rely on Taiwan Semiconductor Manufacturing Company Limited and supply constraints could affect us.",
+        ),
+    ]
+    claims = select_top_risk_claims(rows, BriefOptions(max_claims_per_section=2))
+    assert [claim.canonical_object for claim in claims] == [
+        "Taiwan Semiconductor Manufacturing Company Limited",
+        "third-party manufacturers",
+    ]
+
+
 def test_uncited_interpretation_items_flags_missing_citations() -> None:
     uncited = uncited_interpretation_items(
         {
@@ -502,6 +810,60 @@ def test_llm_report_writer_repairs_invalid_citations(tmp_path: Path) -> None:
     assert interpretation["citation_repair_attempted"] is True
     assert "citation_warnings" not in interpretation
     assert "S001" not in json.dumps(interpretation)
+
+
+def test_interpretation_support_warns_on_overclaim_from_weak_evidence() -> None:
+    weak_row = evidence_row(
+        ticker="AMZN",
+        cik="0001018724",
+        subject="Amazon.com Inc.",
+        obj="Supplier dependency class",
+        relation_type="supplier_dependency",
+        modality="risk_hypothetical",
+        confidence=0.7,
+        accession="0001018724-26-000004",
+        paragraph=7,
+        text="Supplier disruptions could affect us.",
+    )
+    evidence = evidence_row_from_test_dict(weak_row, "C001", "E000004007SUP70")
+    warnings = validate_interpretation_support(
+        {
+            "one_paragraph_summary": "Supplier dependency class directly limits revenue potential (E000004007SUP70).",
+            "what_this_implies": [],
+            "what_to_monitor": [],
+            "weak_or_missing_evidence": [],
+        },
+        [evidence],
+    )
+    assert warnings == [
+        "one_paragraph_summary: strong wording is not backed by current-fact named-counterparty evidence"
+    ]
+
+
+def test_interpretation_support_allows_current_named_operating_evidence() -> None:
+    strong_row = evidence_row(
+        ticker="NVDA",
+        cik="0001045810",
+        subject="NVIDIA Corporation",
+        obj="Taiwan Semiconductor Manufacturing Company Limited",
+        relation_type="foundry_dependency",
+        modality="current_fact",
+        confidence=0.94,
+        accession="0001045810-26-000010",
+        paragraph=12,
+        text="We rely on Taiwan Semiconductor Manufacturing Company Limited for wafer fabrication.",
+    )
+    evidence = evidence_row_from_test_dict(strong_row, "C001", "E000010012FOU94")
+    warnings = validate_interpretation_support(
+        {
+            "one_paragraph_summary": "NVIDIA production hinges on named foundry evidence (E000010012FOU94).",
+            "what_this_implies": [],
+            "what_to_monitor": [],
+            "weak_or_missing_evidence": [],
+        },
+        [evidence],
+    )
+    assert warnings == []
 
 
 class FakeBriefLLM:
@@ -707,6 +1069,27 @@ def evidence_row(
         "parser_name": "test-parser",
         "parser_version": "0",
     }
+
+
+def evidence_row_from_test_dict(row: dict, claim_id: str, row_id: str) -> EvidenceRow:
+    return EvidenceRow(
+        evidence_id=row_id,
+        claim_id=claim_id,
+        relation_type=row["relation_type"],
+        modality=row["modality"],
+        subject=row["subject"],
+        object=row["object"],
+        canonical_object=row.get("canonical_object") or row["object"],
+        confidence_score=row["confidence_score"],
+        certainty=row["certainty"],
+        form=row["form"],
+        filing_date=row["filing_date"],
+        accession_number=row["accession_number"],
+        section=row["source_section"],
+        paragraph_offset=row["paragraph_offset"],
+        source_document_url=row["source_document_url"],
+        evidence_text=row["evidence_text"],
+    )
 
 
 def write_csv(path: Path, rows: list[dict]) -> None:
