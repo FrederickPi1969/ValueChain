@@ -144,6 +144,20 @@ This writes:
 The LLM selector only chooses among GLEIF candidates or returns `no_match` /
 `ambiguous`; it does not create new LEIs and does not overwrite graph edges.
 
+Generate a company-level dependency brief as a separate reporting layer:
+
+```bash
+python scripts/generate_company_dependency_brief.py \
+  --run-id industry-sec-exhibits-v3 \
+  --company NVDA
+```
+
+This uses `Qwen/Qwen3.6-35B-A3B` by default for the analyst interpretation and
+writes Markdown/JSON under `reports/runs/<run_id>/briefs/`. The deterministic
+brief builder reads existing evidence, graph, filing, and GLEIF-selected entity
+artifacts; it does not mutate the pipeline outputs or Postgres. See
+`docs/company_dependency_brief.md`.
+
 For a focused smoke test:
 
 ```bash
