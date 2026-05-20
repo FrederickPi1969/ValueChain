@@ -102,6 +102,34 @@ OpenAI-compatible endpoint and `qwen3-embed-0.6b`:
 valuechain run --priority 1 --forms 10-K --max-filings-per-company 1 --embedding-merge --embedding-threshold 0.92
 ```
 
+GLEIF-backed entity normalization is available as a resolver candidate queue.
+It does not overwrite graph edges. It takes extracted object strings, queries
+the official GLEIF API for LEI reference data and fuzzy legal-name matches, and
+writes reviewable candidates with confidence, jurisdiction, mapped identifiers,
+and relationship links:
+
+```bash
+valuechain resolve-entities \
+  --run-id industry-sec-exhibits-v3 \
+  --limit-objects 100 \
+  --min-evidence-count 2 \
+  --max-candidates 5
+```
+
+Outputs are written next to the run artifacts:
+
+- `entity_resolution_candidates.csv`
+- `entity_resolution_candidates.jsonl`
+- `entity_resolution_candidates.summary.json`
+
+For a focused smoke test:
+
+```bash
+valuechain resolve-entities \
+  --objects "NVIDIA Corporation,Taiwan Semiconductor Manufacturing Company Limited,Microsoft Corporation" \
+  --output-dir data/processed/gleif_smoke
+```
+
 `VALUECHAIN_HTTP_PROXY` / `VALUECHAIN_HTTPS_PROXY` can be used for SEC and LLM
 HTTP calls when the network path requires `proxy.frederickpi.com`.
 

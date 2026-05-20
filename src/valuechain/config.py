@@ -24,6 +24,7 @@ class Settings:
         "FrederickPi ValueChainPrototype/0.1 contact=unknown@example.com",
     )
     sec_rps: float = float(os.getenv("VALUECHAIN_SEC_RPS", "2.0"))
+    gleif_rps: float = float(os.getenv("VALUECHAIN_GLEIF_RPS", "2.0"))
     http_proxy: str = os.getenv("VALUECHAIN_HTTP_PROXY", "")
     https_proxy: str = os.getenv("VALUECHAIN_HTTPS_PROXY", "")
     llm_base_url: str = os.getenv("VALUECHAIN_LLM_BASE_URL", "http://192.168.50.18:31969/v1")

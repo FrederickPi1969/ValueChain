@@ -57,6 +57,33 @@ local `qwen3-embed-0.6b` embedding model through Endeavor's aggregate endpoint.
 It is intended for alias discovery after deterministic filtering, not as a
 replacement for provenance or manual validation.
 
+## GLEIF Resolver Candidate Queue
+
+GLEIF is now the first external normalization source for legal entities. The
+workflow is deliberately conservative:
+
+```text
+extracted object string
+  -> GLEIF exact / fulltext / fuzzy legal-name search
+  -> LEI candidate records
+  -> name similarity + status/corroboration scoring
+  -> resolver candidate queue
+```
+
+The queue stores:
+
+- canonical candidate name and official legal name;
+- LEI;
+- jurisdiction and legal address country/region/city;
+- legal form, entity status, registration status, corroboration level;
+- mapped identifiers such as BIC, OCID, QCC, and S&P Global id when present;
+- direct/ultimate parent relationship availability or reporting-exception links;
+- resolver confidence and confidence band.
+
+The queue does **not** overwrite `relation_evidence.jsonl` or `graph_edges.csv`.
+It is a review surface for legal-entity normalization, parent/child enrichment,
+foreign issuer cleanup, and future deterministic alias-map updates.
+
 ## Presentation Choice
 
 The first presentation surface is a portfolio-oriented evidence dashboard, not a

@@ -57,8 +57,8 @@ sources:
   gleif:
     category: enrichment
     url: "https://api.gleif.org/api/v1"
-    role: "LEI and legal entity normalization."
-    priority: 3
+    role: "Priority legal entity normalization source: LEI reference data, fuzzy name matching, mapped identifiers, jurisdiction, and ownership/relationship links. Results enter resolver candidate queues before graph overwrite."
+    priority: 1
   opencorporates:
     category: enrichment
     url: "https://api.opencorporates.com/documentation/API-Reference"

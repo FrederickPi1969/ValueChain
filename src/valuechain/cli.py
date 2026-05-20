@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from valuechain.config import Settings, ensure_dirs
+from valuechain.gleif import GLEIFClient, run_gleif_resolution
 from valuechain.io_utils import write_json
 from valuechain.pipeline import PipelineOptions, run_pipeline
 from valuechain.planning import build_execution_plan
@@ -56,6 +57,22 @@ def build_parser() -> argparse.ArgumentParser:
         default=8,
         help="Maximum selected exhibit source documents per filing.",
     )
+
+    resolve = sub.add_parser(
+        "resolve-entities",
+        help="Create a GLEIF-backed resolver candidate queue without modifying graph edges.",
+    )
+    resolve.add_argument("--run-id", default="", help="Run id whose relation_evidence.jsonl objects should be resolved.")
+    resolve.add_argument("--input", default="", help="Explicit relation_evidence JSONL path. Overrides --run-id.")
+    resolve.add_argument("--objects", default="", help="Comma-separated object strings to resolve without reading a run.")
+    resolve.add_argument("--output-dir", default="", help="Output directory. Defaults to the selected run directory.")
+    resolve.add_argument("--output-prefix", default="entity_resolution_candidates")
+    resolve.add_argument("--limit-objects", type=int, default=100, help="Max unique objects to send to GLEIF.")
+    resolve.add_argument("--min-evidence-count", type=int, default=2)
+    resolve.add_argument("--max-candidates", type=int, default=5)
+    resolve.add_argument("--gleif-rps", type=float, default=None, help="GLEIF API requests per second.")
+    resolve.add_argument("--include-class-objects", action="store_true", help="Also send generic class objects to GLEIF.")
+    resolve.add_argument("--include-relationships", action="store_true", help="Fetch available parent relationship records.")
     return parser
 
 
@@ -150,6 +167,39 @@ def main(argv: list[str] | None = None) -> None:
         print(f"graph_edges={len(result.edges)}")
         print(f"dashboard={result.dashboard_path}")
         print(f"frontend_index={result.index_path}")
+        return
+    if args.command == "resolve-entities":
+        settings = Settings()
+        ensure_dirs(settings)
+        objects = parse_csv_arg(args.objects)
+        evidence_path = Path(args.input) if args.input else None
+        if not evidence_path and args.run_id:
+            evidence_path = settings.processed_dir / "runs" / args.run_id / "relation_evidence.jsonl"
+        if not objects and (not evidence_path or not evidence_path.exists()):
+            parser.error("--run-id, --input, or --objects is required; relation_evidence.jsonl must exist for run/input mode.")
+        output_dir = Path(args.output_dir) if args.output_dir else (
+            evidence_path.parent if evidence_path else settings.processed_dir / "entity_resolution"
+        )
+        client = GLEIFClient(
+            requests_per_second=args.gleif_rps if args.gleif_rps is not None else settings.gleif_rps,
+            proxies=settings.proxies,
+        )
+        result = run_gleif_resolution(
+            evidence_path=evidence_path,
+            objects=objects,
+            output_dir=output_dir,
+            client=client,
+            limit_objects=args.limit_objects,
+            min_evidence_count=args.min_evidence_count,
+            max_candidates=args.max_candidates,
+            include_class_objects=args.include_class_objects,
+            include_relationships=args.include_relationships,
+            output_prefix=args.output_prefix,
+        )
+        print(f"objects={len(result['contexts'])}")
+        print(f"candidate_rows={len(result['candidates'])}")
+        for name, path in result["paths"].items():
+            print(f"{name}={path}")
 
 
 def read_filtered_universe(args: argparse.Namespace):
