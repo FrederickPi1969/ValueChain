@@ -39,12 +39,44 @@ GENERIC_OBJECT_TERMS = {
     "capacity class",
     "exposure class",
     "risk class",
+    "industry risks",
+    "risk factors",
     "suppliers",
     "customers",
     "providers",
     "partners",
     "facilities",
     "manufacturing facilities",
+}
+GEOGRAPHY_OBJECTS = {
+    "asia",
+    "australia",
+    "canada",
+    "china",
+    "europe",
+    "germany",
+    "hong kong",
+    "india",
+    "ireland",
+    "israel",
+    "japan",
+    "korea",
+    "macau",
+    "malaysia",
+    "netherlands",
+    "russia",
+    "singapore",
+    "south korea",
+    "taiwan",
+    "united kingdom",
+    "united states",
+}
+HEADING_OBJECTS = {
+    "business risks",
+    "general risks",
+    "industry risks",
+    "item 1a",
+    "risk factors",
 }
 
 
@@ -188,22 +220,14 @@ def generate_company_dependency_brief(
     enriched_evidence = [enrich_evidence_object(row, selected_entities) for row in evidence]
 
     claims = build_claims(enriched_evidence)
-    top_operating = top_claims(
-        [
-            claim
-            for claim in claims
-            if claim.relation_type in OPERATING_RELATION_TYPES and not is_generic_object(claim.canonical_object)
-        ],
-        options.max_claims_per_section,
-    )
-    if len(top_operating) < options.max_claims_per_section:
-        generic_operating = [
-            claim
-            for claim in claims
-            if claim.relation_type in OPERATING_RELATION_TYPES and is_generic_object(claim.canonical_object)
-        ]
-        top_operating = top_claims(top_operating + generic_operating, options.max_claims_per_section)
-
+    current_fact_evidence = [
+        row
+        for row in enriched_evidence
+        if row.get("relation_type") != "subsidiary_or_control"
+        and row.get("modality") == "current_fact"
+        and safe_float(row.get("confidence_score")) >= options.min_current_fact_confidence
+    ]
+    top_operating = select_top_operating_claims(current_fact_evidence, options)
     risk_evidence = [
         row
         for row in enriched_evidence
@@ -213,13 +237,6 @@ def generate_company_dependency_brief(
             or "risk" in str(row.get("modality", ""))
             or "hypothetical" in str(row.get("modality", ""))
         )
-    ]
-    current_fact_evidence = [
-        row
-        for row in enriched_evidence
-        if row.get("relation_type") != "subsidiary_or_control"
-        and row.get("modality") == "current_fact"
-        and safe_float(row.get("confidence_score")) >= options.min_current_fact_confidence
     ]
     strategic_evidence = [
         row
@@ -276,6 +293,33 @@ def generate_company_dependency_brief(
             "selected_entity_count": len(selected_entities),
         },
     )
+
+
+def select_top_operating_claims(
+    current_fact_evidence: list[dict[str, Any]],
+    options: BriefOptions,
+) -> list[BriefClaim]:
+    operating_evidence = [
+        row
+        for row in current_fact_evidence
+        if row.get("relation_type") in OPERATING_RELATION_TYPES
+    ]
+    current_claims = build_claims(operating_evidence)
+    named_claims = [
+        claim
+        for claim in current_claims
+        if not is_low_quality_operating_object(claim.canonical_object)
+    ]
+    if named_claims:
+        return top_claims(named_claims, options.max_claims_per_section)
+    generic_claims = [
+        claim
+        for claim in current_claims
+        if is_generic_object(claim.canonical_object)
+        and not is_geography_object(claim.canonical_object)
+        and not is_heading_object(claim.canonical_object)
+    ]
+    return top_claims(generic_claims, options.max_claims_per_section)
 
 
 def load_brief_inputs(run_dir: Path) -> dict[str, Any]:
@@ -488,10 +532,10 @@ def build_evidence_table(
 
 
 def dedupe_claims(claims: list[BriefClaim]) -> list[BriefClaim]:
-    seen: set[tuple[str, str, str]] = set()
+    seen: set[tuple[str, str]] = set()
     unique = []
     for claim in claims:
-        key = (claim.claim_id[:1], claim.relation_type, normalize_name(claim.canonical_object))
+        key = (claim.relation_type, normalize_name(claim.canonical_object))
         if key in seen:
             continue
         seen.add(key)
@@ -1107,9 +1151,14 @@ def format_relation_counts(counts: dict[str, Any]) -> str:
 def evidence_id(row: dict[str, Any]) -> str:
     accession = str(row.get("accession_number", "")).replace("-", "")[-6:] or "000000"
     paragraph = safe_int(row.get("paragraph_offset"))
-    relation = str(row.get("relation_type", "rel"))[:3].upper()
+    relation = safe_relation_code(row.get("relation_type", "rel"))
     confidence = int(round(safe_float(row.get("confidence_score")) * 100))
     return f"E{accession}{paragraph:03d}{relation}{confidence:02d}"
+
+
+def safe_relation_code(value: Any) -> str:
+    code = re.sub(r"[^A-Z0-9]", "", str(value or "REL").upper())
+    return (code[:3] or "REL").ljust(3, "X")
 
 
 def is_generic_object(value: str) -> bool:
@@ -1119,6 +1168,19 @@ def is_generic_object(value: str) -> bool:
     if normalized.endswith(" class") or " class " in normalized:
         return True
     return any(term in normalized for term in GENERIC_OBJECT_TERMS)
+
+
+def is_low_quality_operating_object(value: str) -> bool:
+    return is_generic_object(value) or is_geography_object(value) or is_heading_object(value)
+
+
+def is_geography_object(value: str) -> bool:
+    return normalize_name(value) in GEOGRAPHY_OBJECTS
+
+
+def is_heading_object(value: str) -> bool:
+    normalized = normalize_name(value)
+    return normalized in HEADING_OBJECTS or normalized.startswith("item ")
 
 
 def normalize_lookup(value: Any) -> str:

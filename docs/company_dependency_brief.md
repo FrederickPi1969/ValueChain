@@ -101,7 +101,11 @@ python scripts/generate_company_dependency_brief.py \
 
 ## Design Notes
 
-- Current operating claims are filtered to `current_fact` and a confidence floor.
+- Top operating claims are filtered to `current_fact` and a confidence floor.
+  Named operating objects are preferred; generic class labels are only used as a
+  fallback when no named current operating claim exists. Heading-like fragments
+  such as `Industry Risks` and standalone geography fragments are excluded from
+  top operating dependencies.
 - Risk-hypothetical language is presented under risk exposure, not current
   operating dependency.
 - Selected GLEIF LLM matches are used only to display canonical object names and

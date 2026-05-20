@@ -1,14 +1,21 @@
 import csv
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from valuechain.company_dependency_brief import (
+    BriefClaim,
     BriefOptions,
+    build_evidence_table,
     enforce_citation_constraints,
+    evidence_id,
     generate_company_dependency_brief,
+    has_evidence_citation,
     invalid_citations,
     parse_lenient_json_content,
+    select_top_operating_claims,
     uncited_interpretation_items,
+    valid_citations,
     write_company_dependency_brief,
 )
 
@@ -27,6 +34,12 @@ def test_generate_company_dependency_brief_with_llm_interpretation(tmp_path: Pat
     assert brief.company_role["brief_role_label"] == "accelerator_compute"
     assert brief.top_operating_dependencies[0].canonical_object == "Taiwan Semiconductor Manufacturing Company Limited"
     assert brief.top_operating_dependencies[0].object_lei == "549300KB6NK5SBD14S87"
+    assert all("current_fact" in claim.modality_mix for claim in brief.top_operating_dependencies)
+    assert all("risk_hypothetical" not in claim.modality_mix for claim in brief.top_operating_dependencies)
+    assert "advanced packaging suppliers" not in {
+        claim.canonical_object
+        for claim in brief.top_operating_dependencies
+    }
     assert any(claim.relation_type == "packaging_or_assembly_dependency" for claim in brief.top_risk_exposures)
     assert any(claim.relation_type == "strategic_partner" for claim in brief.strategic_relations)
     assert brief.analyst_interpretation["model_version"] == "Qwen/Qwen3.6-35B-A3B"
@@ -72,6 +85,102 @@ def test_invalid_citations_flags_claim_ids_and_unknown_evidence_ids() -> None:
         {"E000000002FOU99"},
     )
     assert invalid == ["E000000001FOU99", "S001"]
+
+
+def test_evidence_id_sanitizes_relation_codes_for_citation_regex() -> None:
+    row = evidence_row(
+        ticker="NVDA",
+        cik="0001045810",
+        subject="NVIDIA Corporation",
+        obj="Partner LLC",
+        relation_type="co_investment",
+        modality="strategic",
+        confidence=0.86,
+        accession="0001045810-26-000031",
+        paragraph=31,
+        text="We made a co-investment with Partner LLC.",
+    )
+    eid = evidence_id(row)
+    assert "_" not in eid
+    assert eid == "E000031031COI86"
+    assert has_evidence_citation(eid)
+    assert valid_citations({"one_paragraph_summary": eid}, {eid}) == [eid]
+    assert invalid_citations({"one_paragraph_summary": eid}, {eid}) == []
+
+
+def test_evidence_table_preserves_first_duplicate_claim_mapping() -> None:
+    row = evidence_row(
+        ticker="NVDA",
+        cik="0001045810",
+        subject="NVIDIA Corporation",
+        obj="Microsoft Corporation",
+        relation_type="supplier_dependency",
+        modality="current_fact",
+        confidence=0.9,
+        accession="0001045810-26-000050",
+        paragraph=5,
+        text="We rely on Microsoft Corporation.",
+    )
+    claim = BriefClaim(
+        claim_id="C001",
+        category="operating_dependency",
+        relation_type="supplier_dependency",
+        object="Microsoft Corporation",
+        canonical_object="Microsoft Corporation",
+        object_lei="",
+        modality_mix="current_fact",
+        evidence_count=1,
+        avg_confidence=0.9,
+        forms="10-K",
+        accessions="0001045810-26-000050",
+        first_seen="2026-02-20",
+        last_seen="2026-02-20",
+    )
+    table = build_evidence_table([row], [claim, replace(claim, claim_id="F001")], max_rows=2, max_chars=200)
+    assert table[0].claim_id == "C001"
+
+
+def test_top_operating_excludes_heading_and_geography_fragments() -> None:
+    rows = [
+        evidence_row(
+            ticker="AMZN",
+            cik="0001018724",
+            subject="Amazon.com Inc.",
+            obj="Industry Risks",
+            relation_type="supplier_dependency",
+            modality="current_fact",
+            confidence=0.95,
+            accession="0001018724-26-000001",
+            paragraph=1,
+            text="Item 1A. Risk Factors. Industry risks may affect us.",
+        ),
+        evidence_row(
+            ticker="AMZN",
+            cik="0001018724",
+            subject="Amazon.com Inc.",
+            obj="Australia",
+            relation_type="customer_dependency",
+            modality="current_fact",
+            confidence=0.95,
+            accession="0001018724-26-000001",
+            paragraph=2,
+            text="Australia's National Broadband Network is a customer.",
+        ),
+        evidence_row(
+            ticker="AMZN",
+            cik="0001018724",
+            subject="Amazon.com Inc.",
+            obj="AT&T",
+            relation_type="customer_dependency",
+            modality="current_fact",
+            confidence=0.9,
+            accession="0001018724-26-000001",
+            paragraph=3,
+            text="AT&T is a customer.",
+        ),
+    ]
+    claims = select_top_operating_claims(rows, BriefOptions(max_claims_per_section=4))
+    assert [claim.canonical_object for claim in claims] == ["AT&T"]
 
 
 def test_uncited_interpretation_items_flags_missing_citations() -> None:
