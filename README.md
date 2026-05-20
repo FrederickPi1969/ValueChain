@@ -155,8 +155,9 @@ python scripts/generate_company_dependency_brief.py \
 This uses `Qwen/Qwen3.6-35B-A3B` by default for the analyst interpretation and
 writes Markdown/JSON under `reports/runs/<run_id>/briefs/`. The deterministic
 brief builder reads existing evidence, graph, filing, and GLEIF-selected entity
-artifacts; it does not mutate the pipeline outputs or Postgres. See
-`docs/company_dependency_brief.md`.
+artifacts; it does not mutate the pipeline outputs or Postgres. The report
+writer is multi-round: outline planning, final writing, citation validation, and
+repair when needed. See `docs/company_dependency_brief.md`.
 
 For a focused smoke test:
 

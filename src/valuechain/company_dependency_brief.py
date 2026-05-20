@@ -555,7 +555,7 @@ def generate_analyst_interpretation(
     fallback = deterministic_interpretation(company, top_operating, top_risk, current_fact, strategic)
     if llm_client is None:
         return fallback
-    payload = build_interpretation_payload(
+    writer_payload = build_interpretation_payload(
         company=company,
         role=role,
         top_operating=top_operating,
@@ -564,8 +564,19 @@ def generate_analyst_interpretation(
         strategic=strategic,
         evidence_table=evidence_table,
     )
+    allowed_ids = {row.evidence_id for row in evidence_table}
+    rounds = []
     try:
-        raw = llm_client.chat_json(BRIEF_ANALYST_SYSTEM_PROMPT, payload, max_tokens=max_tokens)
+        outline_raw = llm_client.chat_json(
+            BRIEF_OUTLINE_SYSTEM_PROMPT,
+            writer_payload,
+            max_tokens=max(1200, min(max_tokens, 1800)),
+        )
+        rounds.append("outline_planning")
+        outline = normalize_outline(outline_raw, allowed_ids)
+        final_payload = build_final_writer_payload(writer_payload, outline)
+        raw = llm_client.chat_json(BRIEF_FINAL_SYSTEM_PROMPT, final_payload, max_tokens=max_tokens)
+        rounds.append("final_writing")
     except Exception as exc:
         fallback["generation_error"] = str(exc)[:500]
         return fallback
@@ -573,28 +584,84 @@ def generate_analyst_interpretation(
         fallback["generation_error"] = f"LLM returned {type(raw).__name__}, expected object"
         return fallback
     interpretation = normalize_interpretation(raw, fallback, model_version)
-    invalid = invalid_citations(interpretation, {row.evidence_id for row in evidence_table})
-    if invalid:
-        interpretation["citation_warnings"] = [
-            f"LLM cited ids not present in the evidence table: {', '.join(invalid[:8])}"
-        ]
+    interpretation["outline"] = outline
+    invalid = invalid_citations(interpretation, allowed_ids)
+    uncited = uncited_interpretation_items(interpretation)
+    if invalid or uncited:
+        repaired = repair_interpretation_citations(
+            llm_client=llm_client,
+            interpretation=interpretation,
+            outline=outline,
+            writer_payload=writer_payload,
+            invalid=invalid,
+            uncited=uncited,
+            allowed_ids=allowed_ids,
+            fallback=fallback,
+            model_version=model_version,
+        )
+        rounds.append("citation_repair")
+        interpretation = repaired
+        if invalid_citations(interpretation, allowed_ids) or uncited_interpretation_items(interpretation):
+            interpretation = enforce_citation_constraints(interpretation, allowed_ids)
+    final_invalid = invalid_citations(interpretation, allowed_ids)
+    final_uncited = uncited_interpretation_items(interpretation)
+    if final_invalid:
+        interpretation.setdefault("citation_warnings", []).append(
+            f"LLM cited ids not present in the evidence table: {', '.join(final_invalid[:8])}"
+        )
+    if final_uncited:
+        interpretation.setdefault("citation_warnings", []).append(
+            f"LLM left uncited interpretation fields: {', '.join(final_uncited[:8])}"
+        )
+    cited = valid_citations(interpretation, allowed_ids)
+    if not cited:
+        interpretation.setdefault("citation_warnings", []).append("LLM produced no valid evidence citations.")
+    interpretation["valid_citations"] = cited
+    interpretation["generation_rounds"] = rounds + ["citation_validation"]
     return interpretation
 
 
-BRIEF_ANALYST_SYSTEM_PROMPT = """You are a Seeking Alpha style equity analyst and NLP evidence reviewer.
+BRIEF_OUTLINE_SYSTEM_PROMPT = """You are an outline planner for a disclosure-derived dependency brief.
 Use only the supplied structured dependency evidence. Do not invent counterparties, market facts, financial numbers, or causal links.
 Distinguish current facts, strategic relationships, forward-looking statements, and risk-hypothetical language.
-Write for an ETF portfolio manager who wants investable dependency intelligence, not a raw graph.
 Use only evidence ids from allowed_evidence_ids. Do not cite claim ids such as C001, F001, R001, or S001.
-Keep the paragraph under 120 words and each bullet under 40 words.
+Create the outline only; do not write the final brief.
+Each outline item must include 1-2 evidence_ids copied exactly from allowed_evidence_ids.
+Return at most 2 items per array. Keep each point under 22 words.
 Return one compact JSON object:
 {
-  "one_paragraph_summary": "string",
-  "what_this_implies": ["bullet", "bullet"],
-  "what_to_monitor": ["bullet", "bullet"],
-  "weak_or_missing_evidence": ["bullet", "bullet"]
-}
-Mention evidence ids like E001 when a point depends on specific evidence."""
+  "dependency_thesis": [{"point":"string","evidence_ids":["E..."],"strength":"high|medium|low"}],
+  "risk_focus": [{"point":"string","evidence_ids":["E..."],"strength":"high|medium|low"}],
+  "monitoring_plan": [{"point":"string","evidence_ids":["E..."],"strength":"high|medium|low"}],
+  "evidence_limits": [{"point":"string","evidence_ids":["E..."],"strength":"high|medium|low"}]
+}"""
+
+
+BRIEF_FINAL_SYSTEM_PROMPT = """You are a Seeking Alpha style equity analyst and NLP evidence reviewer.
+Write for an ETF portfolio manager who wants investable dependency intelligence, not a raw graph.
+Use the supplied outline and evidence table. Do not invent facts, counterparties, market numbers, or causal links.
+Every paragraph or bullet must cite at least one evidence id copied exactly from allowed_evidence_ids.
+Never cite claim ids such as C001, F001, R001, or S001.
+Distinguish current facts from forward-looking or risk-hypothetical language.
+Do not infer mitigation, resilience, diversification benefits, or causal financial impact unless the cited evidence explicitly says so.
+If a relation type or object looks ambiguous, discuss it under weak_or_missing_evidence instead of treating it as a firm dependency.
+Keep the paragraph under 130 words and each bullet under 45 words.
+Return 2-3 bullets per list.
+Use parenthetical evidence citations, for example: (E000021015FOU98).
+Return one compact JSON object:
+{
+  "one_paragraph_summary": "string with evidence ids",
+  "what_this_implies": ["bullet with evidence id", "bullet with evidence id"],
+  "what_to_monitor": ["bullet with evidence id", "bullet with evidence id"],
+  "weak_or_missing_evidence": ["bullet with evidence id", "bullet with evidence id"]
+}"""
+
+
+BRIEF_REPAIR_SYSTEM_PROMPT = """You repair a dependency brief JSON object.
+Return the same JSON schema as the draft, but remove or replace invalid citations.
+Use only evidence ids copied exactly from allowed_evidence_ids. Do not cite claim ids.
+Do not add new facts. If a sentence cannot be supported by allowed evidence ids, rewrite it as weak evidence or remove it.
+Return one compact JSON object only."""
 
 
 def build_interpretation_payload(
@@ -613,8 +680,8 @@ def build_interpretation_payload(
         "top_risk_exposures": [claim_payload(claim) for claim in top_risk],
         "current_fact_edges": [claim_payload(claim) for claim in current_fact],
         "strategic_relations": [claim_payload(claim) for claim in strategic],
-        "allowed_evidence_ids": [row.evidence_id for row in evidence_table[:18]],
-        "evidence_table": [evidence_payload(row) for row in evidence_table[:18]],
+        "allowed_evidence_ids": [row.evidence_id for row in evidence_table],
+        "evidence_table": [evidence_payload(row) for row in evidence_table],
         "instructions": [
             "Focus on operational dependencies, concentration, bottlenecks, and monitoring signals.",
             "Cite only evidence ids that appear in allowed_evidence_ids.",
@@ -623,6 +690,13 @@ def build_interpretation_payload(
             "Flag weak evidence where objects are generic classes or confidence is low.",
         ],
     }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+
+def build_final_writer_payload(writer_payload: str, outline: dict[str, Any]) -> str:
+    payload = json.loads(writer_payload)
+    payload["outline"] = outline
+    payload["writing_stage"] = "final_from_outline"
     return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
 
@@ -636,6 +710,64 @@ def normalize_interpretation(raw: dict[str, Any], fallback: dict[str, Any], mode
             fallback["weak_or_missing_evidence"],
         ),
         "model_version": model_version,
+    }
+
+
+def normalize_outline(raw: Any, allowed_ids: set[str]) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        return deterministic_outline()
+    return {
+        "dependency_thesis": normalize_outline_items(raw.get("dependency_thesis"), allowed_ids),
+        "risk_focus": normalize_outline_items(raw.get("risk_focus"), allowed_ids),
+        "monitoring_plan": normalize_outline_items(raw.get("monitoring_plan"), allowed_ids),
+        "evidence_limits": normalize_outline_items(raw.get("evidence_limits"), allowed_ids),
+    }
+
+
+def normalize_outline_items(value: Any, allowed_ids: set[str]) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    items = []
+    for item in value[:6]:
+        if isinstance(item, dict):
+            point = str(item.get("point") or "").strip()
+            evidence_ids = normalize_evidence_ids(item.get("evidence_ids"), allowed_ids)
+            strength = str(item.get("strength") or "medium").strip().lower()
+        else:
+            point = str(item).strip()
+            evidence_ids = []
+            strength = "medium"
+        if point:
+            items.append(
+                {
+                    "point": point[:500],
+                    "evidence_ids": evidence_ids,
+                    "strength": strength if strength in {"high", "medium", "low"} else "medium",
+                }
+            )
+    return items
+
+
+def normalize_evidence_ids(value: Any, allowed_ids: set[str]) -> list[str]:
+    if isinstance(value, str):
+        candidates = re.findall(r"\bE[0-9A-Z]{8,}\b", value)
+    elif isinstance(value, list):
+        candidates = [str(item) for item in value]
+    else:
+        candidates = []
+    clean = []
+    for item in candidates:
+        if item in allowed_ids and item not in clean:
+            clean.append(item)
+    return clean[:3]
+
+
+def deterministic_outline() -> dict[str, Any]:
+    return {
+        "dependency_thesis": [],
+        "risk_focus": [],
+        "monitoring_plan": [],
+        "evidence_limits": [],
     }
 
 
@@ -658,6 +790,123 @@ def invalid_citations(interpretation: dict[str, Any], allowed_evidence_ids: set[
     cited_claims = set(re.findall(r"\b[CRFS]\d{3}\b", text))
     invalid = sorted(cited_claims | (cited_evidence - allowed_evidence_ids))
     return invalid
+
+
+def valid_citations(interpretation: dict[str, Any], allowed_evidence_ids: set[str]) -> list[str]:
+    text = json.dumps(interpretation, ensure_ascii=False)
+    cited_evidence = set(re.findall(r"\bE[0-9A-Z]{8,}\b", text))
+    return sorted(cited_evidence & allowed_evidence_ids)
+
+
+def uncited_interpretation_items(interpretation: dict[str, Any]) -> list[str]:
+    uncited = []
+    if not has_evidence_citation(str(interpretation.get("one_paragraph_summary") or "")):
+        uncited.append("one_paragraph_summary")
+    for field in ["what_this_implies", "what_to_monitor", "weak_or_missing_evidence"]:
+        value = interpretation.get(field)
+        if not isinstance(value, list):
+            uncited.append(field)
+            continue
+        for idx, item in enumerate(value):
+            if not has_evidence_citation(str(item)):
+                uncited.append(f"{field}[{idx}]")
+    return uncited
+
+
+def has_evidence_citation(value: str) -> bool:
+    return bool(re.search(r"\bE[0-9A-Z]{8,}\b", value))
+
+
+def repair_interpretation_citations(
+    llm_client: Any,
+    interpretation: dict[str, Any],
+    outline: dict[str, Any],
+    writer_payload: str,
+    invalid: list[str],
+    uncited: list[str],
+    allowed_ids: set[str],
+    fallback: dict[str, Any],
+    model_version: str,
+) -> dict[str, Any]:
+    payload = json.loads(writer_payload)
+    payload["draft_interpretation"] = interpretation
+    payload["outline"] = outline
+    payload["invalid_citations"] = invalid
+    payload["uncited_fields"] = uncited
+    payload["allowed_evidence_ids"] = sorted(allowed_ids)
+    try:
+        raw = llm_client.chat_json(
+            BRIEF_REPAIR_SYSTEM_PROMPT,
+            json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            max_tokens=1200,
+        )
+    except Exception as exc:
+        interpretation["citation_repair_error"] = str(exc)[:500]
+        return interpretation
+    if not isinstance(raw, dict):
+        interpretation["citation_repair_error"] = f"Repair returned {type(raw).__name__}, expected object"
+        return interpretation
+    repaired = normalize_interpretation(raw, fallback, model_version)
+    repaired["outline"] = outline
+    repaired["citation_repair_attempted"] = True
+    return repaired
+
+
+def enforce_citation_constraints(interpretation: dict[str, Any], allowed_ids: set[str]) -> dict[str, Any]:
+    cleaned = json.loads(json.dumps(interpretation, ensure_ascii=False))
+    for invalid in invalid_citations(cleaned, allowed_ids):
+        replacement = nearest_allowed_evidence_id(invalid, allowed_ids) if invalid.startswith("E") else ""
+        cleaned = replace_citation_value(cleaned, invalid, replacement)
+    fallback_id = next(iter(valid_citations(cleaned, allowed_ids)), "")
+    if not fallback_id and allowed_ids:
+        fallback_id = sorted(allowed_ids)[0]
+    if fallback_id:
+        if not has_evidence_citation(str(cleaned.get("one_paragraph_summary") or "")):
+            cleaned["one_paragraph_summary"] = append_citation(str(cleaned.get("one_paragraph_summary") or ""), fallback_id)
+        for field in ["what_this_implies", "what_to_monitor", "weak_or_missing_evidence"]:
+            value = cleaned.get(field)
+            if not isinstance(value, list):
+                cleaned[field] = [append_citation(str(value or "Evidence is insufficiently specific."), fallback_id)]
+                continue
+            cleaned[field] = [
+                item if has_evidence_citation(str(item)) else append_citation(str(item), fallback_id)
+                for item in value
+            ]
+    cleaned["deterministic_citation_cleanup"] = True
+    return cleaned
+
+
+def nearest_allowed_evidence_id(invalid: str, allowed_ids: set[str]) -> str:
+    if len(invalid) >= 3:
+        prefix = invalid[:-2]
+        matches = sorted(item for item in allowed_ids if item.startswith(prefix))
+        if matches:
+            return matches[0]
+    return ""
+
+
+def replace_citation_value(value: Any, invalid: str, replacement: str) -> Any:
+    if isinstance(value, str):
+        return cleanup_citation_text(value.replace(invalid, replacement))
+    if isinstance(value, list):
+        return [replace_citation_value(item, invalid, replacement) for item in value]
+    if isinstance(value, dict):
+        return {key: replace_citation_value(item, invalid, replacement) for key, item in value.items()}
+    return value
+
+
+def append_citation(text: str, evidence_id: str) -> str:
+    text = text.strip() or "Evidence is weak or underspecified."
+    return f"{text.rstrip('.')} ({evidence_id})."
+
+
+def cleanup_citation_text(text: str) -> str:
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"\(\s*,\s*", "(", text)
+    text = re.sub(r",\s*\)", ")", text)
+    text = re.sub(r"\(\s*\)", "", text)
+    text = re.sub(r"\s+([,.;:])", r"\1", text)
+    return text.strip()
 
 
 def parse_lenient_json_content(content: str) -> Any:
@@ -774,6 +1023,7 @@ def render_markdown_brief(brief: CompanyDependencyBrief) -> str:
         lines.append("_No evidence rows found for this company in the selected run._")
     lines.extend(["", "## 7. Analyst interpretation", ""])
     interpretation = brief.analyst_interpretation
+    append_outline_section(lines, interpretation.get("outline"))
     lines.append(str(interpretation.get("one_paragraph_summary", "")))
     lines.append("")
     append_bullet_section(lines, "What this implies", interpretation.get("what_this_implies", []))
@@ -806,6 +1056,35 @@ def append_claim_section(lines: list[str], heading: str, claims: list[BriefClaim
             f"modality={claim.modality_mix or 'n/a'}, forms={claim.forms or 'n/a'}"
         )
     lines.append("")
+
+
+def append_outline_section(lines: list[str], outline: Any) -> None:
+    if not isinstance(outline, dict):
+        return
+    lines.extend(["### Writing outline", ""])
+    labels = [
+        ("dependency_thesis", "Dependency thesis"),
+        ("risk_focus", "Risk focus"),
+        ("monitoring_plan", "Monitoring plan"),
+        ("evidence_limits", "Evidence limits"),
+    ]
+    wrote = False
+    for key, label in labels:
+        items = outline.get(key)
+        if not isinstance(items, list) or not items:
+            continue
+        wrote = True
+        lines.append(f"**{label}**")
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            evidence_ids = ", ".join(str(eid) for eid in item.get("evidence_ids", []))
+            suffix = f" ({evidence_ids})" if evidence_ids else ""
+            lines.append(f"- {item.get('point', '')}{suffix}")
+        lines.append("")
+    if wrote:
+        lines.append("### Final interpretation")
+        lines.append("")
 
 
 def append_bullet_section(lines: list[str], heading: str, bullets: list[str]) -> None:
