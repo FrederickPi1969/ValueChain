@@ -32,7 +32,7 @@ RISK_RELATION_TYPES = {
     "power_or_utility_dependency",
     "data_center_dependency",
 }
-STRATEGIC_RELATION_TYPES = {"strategic_partner", "co_investment", "licensing_dependency"}
+STRATEGIC_RELATION_TYPES = {"strategic_partner", "co_investment"}
 GENERIC_OBJECT_TERMS = {
     "dependency class",
     "supply class",
@@ -77,6 +77,109 @@ HEADING_OBJECTS = {
     "industry risks",
     "item 1a",
     "risk factors",
+}
+WEAK_OBJECT_PATTERNS = {
+    "alternative production capacity",
+    "largest customer",
+    "limited number of vendors",
+    "partner network",
+    "partner and retail network",
+    "services. customers",
+    "single-sourced",
+    "third parties",
+    "third-party manufacturers",
+    "third-party vendors",
+    "through direct customer",
+}
+RELATION_LOCAL_CUES = {
+    "supplier_dependency": {
+        "component",
+        "components",
+        "manufactur",
+        "procure",
+        "production",
+        "sourc",
+        "suppl",
+    },
+    "customer_dependency": {
+        "customer",
+        "customers",
+        "revenue",
+        "sales",
+        "sell",
+        "signed an agreement",
+    },
+    "manufacturing_dependency": {
+        "contract manufacturer",
+        "fabricat",
+        "manufactur",
+        "production",
+    },
+    "foundry_dependency": {
+        "fabricat",
+        "foundr",
+        "production",
+        "wafer",
+    },
+    "packaging_or_assembly_dependency": {
+        "assembly",
+        "packag",
+        "subcontractor",
+        "test",
+    },
+    "cloud_or_hosting_dependency": {
+        "aws",
+        "azure",
+        "cloud",
+        "hosting",
+        "hosted",
+        "infrastructure services",
+    },
+    "data_center_dependency": {
+        "colocation",
+        "data center",
+        "datacenter",
+        "facility",
+    },
+    "power_or_utility_dependency": {
+        "electricity",
+        "energy",
+        "grid",
+        "power",
+        "renewable",
+        "utility",
+    },
+    "network_or_interconnection_dependency": {
+        "connectivity",
+        "interconnection",
+        "network",
+        "switch",
+    },
+    "distribution_or_channel_dependency": {
+        "channel",
+        "distributor",
+        "partner",
+        "reseller",
+    },
+    "licensing_dependency": {
+        "intellectual property",
+        "ip ",
+        "license",
+        "licensing",
+        "patent",
+    },
+    "strategic_partner": {
+        "collaboration",
+        "partnership",
+        "strategic",
+        "strategic partner",
+    },
+    "co_investment": {
+        "co-invest",
+        "investment",
+        "joint investment",
+        "joint venture",
+    },
 }
 
 
@@ -227,28 +330,26 @@ def generate_company_dependency_brief(
         and row.get("modality") == "current_fact"
         and safe_float(row.get("confidence_score")) >= options.min_current_fact_confidence
     ]
-    top_operating = select_top_operating_claims(current_fact_evidence, options)
+    display_current_fact_evidence = filter_supported_current_fact_evidence(current_fact_evidence)
+    top_operating = select_top_operating_claims(display_current_fact_evidence, options)
     risk_evidence = [
         row
         for row in enriched_evidence
         if row.get("relation_type") != "subsidiary_or_control"
+        and (row.get("modality") != "current_fact" or is_supported_display_relation(row))
         and (
             row.get("relation_type") in RISK_RELATION_TYPES
             or "risk" in str(row.get("modality", ""))
             or "hypothetical" in str(row.get("modality", ""))
         )
     ]
-    strategic_evidence = [
-        row
-        for row in enriched_evidence
-        if row.get("relation_type") in STRATEGIC_RELATION_TYPES or row.get("modality") == "strategic"
-    ]
+    strategic_evidence = select_strategic_evidence(enriched_evidence)
     top_risk = top_claims(
         build_claims(risk_evidence, id_prefix="R"),
         options.max_claims_per_section,
     )
     current_fact = top_claims(
-        build_claims(current_fact_evidence, id_prefix="F"),
+        build_claims(filter_display_current_fact_evidence(display_current_fact_evidence), id_prefix="F"),
         options.max_claims_per_section,
     )
     strategic = top_claims(
@@ -312,6 +413,23 @@ def select_top_operating_claims(
     ]
     if named_claims:
         return top_claims(named_claims, options.max_claims_per_section)
+    weak_descriptive_claims = [
+        claim
+        for claim in current_claims
+        if claim.relation_type
+        in {
+            "supplier_dependency",
+            "manufacturing_dependency",
+            "foundry_dependency",
+            "packaging_or_assembly_dependency",
+        }
+        and matches_weak_object_pattern(claim.canonical_object)
+        and not is_generic_object(claim.canonical_object)
+        and not is_geography_object(claim.canonical_object)
+        and not is_heading_object(claim.canonical_object)
+    ]
+    if weak_descriptive_claims:
+        return top_claims(weak_descriptive_claims, options.max_claims_per_section)
     generic_claims = [
         claim
         for claim in current_claims
@@ -320,6 +438,185 @@ def select_top_operating_claims(
         and not is_heading_object(claim.canonical_object)
     ]
     return top_claims(generic_claims, options.max_claims_per_section)
+
+
+def filter_supported_current_fact_evidence(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    supported = [row for row in evidence if is_supported_display_relation(row)]
+    return supported or evidence
+
+
+def is_supported_display_relation(row: dict[str, Any]) -> bool:
+    relation_type = str(row.get("relation_type") or "")
+    if relation_type not in OPERATING_RELATION_TYPES | STRATEGIC_RELATION_TYPES:
+        return True
+    obj = str(row.get("canonical_object") or row.get("object") or "")
+    if not evidence_mentions_object(row):
+        return is_low_quality_display_object(obj)
+    context = local_object_context(row)
+    if is_negative_strategic_context(context):
+        return False
+    if is_trademark_context(context):
+        return False
+    if row.get("modality") == "current_fact" and is_hypothetical_context(context):
+        return False
+    if is_competition_landscape_context(row, context) and not has_strong_dependency_cue(context):
+        return False
+    if is_list_only_context(context) and not has_strong_dependency_cue(context):
+        return False
+    cues = RELATION_LOCAL_CUES.get(relation_type)
+    if cues and not contains_any(context, cues):
+        return False
+    if relation_type == "supplier_dependency" and not has_strong_dependency_cue(context):
+        return contains_any(context, {"supplier", "supplied by", "supplies", "vendor"})
+    return True
+
+
+def select_strategic_evidence(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = []
+    for row in evidence:
+        relation_type = str(row.get("relation_type") or "")
+        modality = str(row.get("modality") or "")
+        obj = str(row.get("canonical_object") or row.get("object") or "")
+        if is_low_quality_display_object(obj):
+            continue
+        if relation_type in STRATEGIC_RELATION_TYPES or modality == "strategic":
+            if is_supported_display_relation(row):
+                rows.append(row)
+    return rows
+
+
+def filter_display_current_fact_evidence(evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    filtered = [
+        row
+        for row in evidence
+        if not is_low_quality_display_object(str(row.get("canonical_object") or row.get("object") or ""))
+    ]
+    return filtered or evidence
+
+
+def evidence_mentions_object(row: dict[str, Any]) -> bool:
+    text = normalize_name(row.get("evidence_text", ""))
+    return any(variant in text for variant in object_name_variants(row))
+
+
+def local_object_context(row: dict[str, Any], window_chars: int = 220) -> str:
+    text = normalize_name(row.get("evidence_text", ""))
+    for variant in object_name_variants(row):
+        for segment in re.split(r"\s+•\s+", text):
+            if variant in segment:
+                return trim_context_around_variant(segment, variant, window_chars)
+        idx = text.find(variant)
+        if idx >= 0:
+            return trim_context_around_variant(text, variant, window_chars)
+    return text[: window_chars * 2]
+
+
+def trim_context_around_variant(text: str, variant: str, window_chars: int) -> str:
+    idx = text.find(variant)
+    if idx < 0:
+        return text[: window_chars * 2]
+    start = max(0, idx - window_chars)
+    end = min(len(text), idx + len(variant) + window_chars)
+    return text[start:end]
+
+
+def object_name_variants(row: dict[str, Any]) -> list[str]:
+    values = [
+        str(row.get("canonical_object") or ""),
+        str(row.get("object") or ""),
+    ]
+    variants: list[str] = []
+    for value in values:
+        normalized = normalize_name(value)
+        simplified = simplify_legal_name(normalized)
+        for candidate in [normalized, simplified]:
+            if len(candidate) >= 4 and candidate not in variants:
+                variants.append(candidate)
+    return variants
+
+
+def simplify_legal_name(value: str) -> str:
+    cleaned = re.sub(
+        r"\b(corporation|corp|incorporated|inc|company|co|limited|ltd|plc|n v|nv|ag|s a|sa|llc|l l c)\b\.?",
+        "",
+        value,
+    )
+    cleaned = re.sub(r"[^a-z0-9 ]+", " ", cleaned)
+    return " ".join(cleaned.split())
+
+
+def is_negative_strategic_context(context: str) -> bool:
+    return (
+        ("shall not create" in context or "shall not itself create" in context)
+        and ("joint venture" in context or "partnership" in context or "similar association" in context)
+    ) or "not create a joint venture" in context
+
+
+def is_trademark_context(context: str) -> bool:
+    return "trademark" in context and not has_strong_dependency_cue(context)
+
+
+def is_hypothetical_context(context: str) -> bool:
+    hypothetical_cues = {
+        "could materially adversely affect",
+        "if we are unable",
+        "if we fail",
+        "if we lose",
+        "if we otherwise fail",
+        "may be affected",
+        "may not",
+        "would adversely affect",
+    }
+    if contains_any(context, hypothetical_cues) and not starts_with_current_dependency(context):
+        return True
+    early_context = context[:180]
+    return (
+        (early_context.startswith("if ") or " if " in early_context)
+        and contains_any(early_context, {"adversely affect", "did not", "fail", "would"})
+        and not starts_with_current_dependency(context)
+    )
+
+
+def is_competition_landscape_context(row: dict[str, Any], context: str) -> bool:
+    full_text = normalize_name(row.get("evidence_text", ""))
+    competition_cues = {"competition", "competitive", "competitors", "compete with"}
+    list_cues = {"such as", "include such as", "consisting of"}
+    if contains_any(context, competition_cues):
+        return True
+    return contains_any(full_text[:500], competition_cues) and contains_any(context, list_cues)
+
+
+def is_list_only_context(context: str) -> bool:
+    return contains_any(context, {"consisting of", "include such as", "including", "such as"})
+
+
+def starts_with_current_dependency(context: str) -> bool:
+    current_cues = {"we depend", "we rely", "we utilize", "we use", "we engage"}
+    return contains_any(context[:180], current_cues)
+
+
+def has_strong_dependency_cue(context: str) -> bool:
+    strong_cues = {
+        "depend on",
+        "depends on",
+        "engage with",
+        "entered into",
+        "license",
+        "partnership",
+        "procure",
+        "rely on",
+        "relies on",
+        "signed an agreement",
+        "strategic collaboration",
+        "supplied by",
+        "utilize",
+        "we use",
+    }
+    return contains_any(context, strong_cues)
+
+
+def contains_any(value: str, needles: set[str]) -> bool:
+    return any(needle in value for needle in needles)
 
 
 def load_brief_inputs(run_dir: Path) -> dict[str, Any]:
@@ -496,7 +793,11 @@ def build_evidence_table(
         rows_by_key[key].append(row)
     for group in rows_by_key.values():
         group.sort(
-            key=lambda item: (safe_float(item.get("confidence_score")), str(item.get("filing_date", ""))),
+            key=lambda item: (
+                passage_quality_score(item),
+                safe_float(item.get("confidence_score")),
+                str(item.get("filing_date", "")),
+            ),
             reverse=True,
         )
     rows: list[EvidenceRow] = []
@@ -522,13 +823,53 @@ def build_evidence_table(
 
     for row in sorted(
         source_rows,
-        key=lambda item: (safe_float(item.get("confidence_score")), str(item.get("filing_date", ""))),
+        key=lambda item: (
+            passage_quality_score(item),
+            safe_float(item.get("confidence_score")),
+            str(item.get("filing_date", "")),
+        ),
         reverse=True,
     ):
         append_row(row)
         if len(rows) >= max_rows:
             break
     return rows
+
+
+def passage_quality_score(row: dict[str, Any]) -> float:
+    text = normalize_name(row.get("evidence_text", ""))
+    obj = normalize_name(row.get("canonical_object") or row.get("object", ""))
+    section = normalize_name(row.get("source_section", ""))
+    score = 0.0
+    if obj and obj in text:
+        score += 2.0
+    if section_contains_core_disclosure(section):
+        score += 0.8
+    if row.get("modality") == "current_fact":
+        score += 0.4
+    if starts_with_boilerplate(text):
+        score -= 2.0
+    if looks_like_financial_table_fragment(text):
+        score -= 1.0
+    if obj and is_low_quality_display_object(obj):
+        score -= 0.8
+    return score
+
+
+def section_contains_core_disclosure(section: str) -> bool:
+    return any(token in section for token in ["business", "mdna", "risk_factors", "material_contract"])
+
+
+def starts_with_boilerplate(text: str) -> bool:
+    return text.startswith("table of contents") or text.startswith("item 1a risk factors") or text.startswith("please carefully consider")
+
+
+def looks_like_financial_table_fragment(text: str) -> bool:
+    if not text:
+        return False
+    dollar_count = text.count("$")
+    percent_count = text.count("%")
+    return dollar_count + percent_count >= 5
 
 
 def dedupe_claims(claims: list[BriefClaim]) -> list[BriefClaim]:
@@ -1171,7 +1512,16 @@ def is_generic_object(value: str) -> bool:
 
 
 def is_low_quality_operating_object(value: str) -> bool:
-    return is_generic_object(value) or is_geography_object(value) or is_heading_object(value)
+    return is_low_quality_display_object(value)
+
+
+def is_low_quality_display_object(value: str) -> bool:
+    return (
+        is_generic_object(value)
+        or is_geography_object(value)
+        or is_heading_object(value)
+        or matches_weak_object_pattern(value)
+    )
 
 
 def is_geography_object(value: str) -> bool:
@@ -1181,6 +1531,11 @@ def is_geography_object(value: str) -> bool:
 def is_heading_object(value: str) -> bool:
     normalized = normalize_name(value)
     return normalized in HEADING_OBJECTS or normalized.startswith("item ")
+
+
+def matches_weak_object_pattern(value: str) -> bool:
+    normalized = normalize_name(value)
+    return any(pattern in normalized for pattern in WEAK_OBJECT_PATTERNS)
 
 
 def normalize_lookup(value: Any) -> str:

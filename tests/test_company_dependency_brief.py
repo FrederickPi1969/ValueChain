@@ -9,11 +9,15 @@ from valuechain.company_dependency_brief import (
     build_evidence_table,
     enforce_citation_constraints,
     evidence_id,
+    filter_display_current_fact_evidence,
+    filter_supported_current_fact_evidence,
     generate_company_dependency_brief,
     has_evidence_citation,
     invalid_citations,
+    passage_quality_score,
     parse_lenient_json_content,
     select_top_operating_claims,
+    select_strategic_evidence,
     uncited_interpretation_items,
     valid_citations,
     write_company_dependency_brief,
@@ -181,6 +185,277 @@ def test_top_operating_excludes_heading_and_geography_fragments() -> None:
     ]
     claims = select_top_operating_claims(rows, BriefOptions(max_claims_per_section=4))
     assert [claim.canonical_object for claim in claims] == ["AT&T"]
+
+
+def test_low_quality_operating_patterns_are_demoted() -> None:
+    rows = [
+        evidence_row(
+            ticker="ASML",
+            cik="0000000001",
+            subject="ASML Holding N.V.",
+            obj="largest customer",
+            relation_type="customer_dependency",
+            modality="current_fact",
+            confidence=0.98,
+            accession="0000000001-26-000001",
+            paragraph=1,
+            text="The largest customer accounted for revenue.",
+        ),
+        evidence_row(
+            ticker="ASML",
+            cik="0000000001",
+            subject="ASML Holding N.V.",
+            obj="Carl Zeiss SMT",
+            relation_type="supplier_dependency",
+            modality="current_fact",
+            confidence=0.9,
+            accession="0000000001-26-000001",
+            paragraph=2,
+            text="Carl Zeiss SMT supplies critical components.",
+        ),
+    ]
+    claims = select_top_operating_claims(rows, BriefOptions(max_claims_per_section=4))
+    assert [claim.canonical_object for claim in claims] == ["Carl Zeiss SMT"]
+
+
+def test_top_operating_uses_descriptive_weak_objects_before_generic_classes() -> None:
+    rows = [
+        evidence_row(
+            ticker="ASML",
+            cik="0000000001",
+            subject="ASML Holding N.V.",
+            obj="Supplier dependency class",
+            relation_type="supplier_dependency",
+            modality="current_fact",
+            confidence=0.95,
+            accession="0000000001-26-000001",
+            paragraph=1,
+            text="Supplier risk is disclosed.",
+        ),
+        evidence_row(
+            ticker="ASML",
+            cik="0000000001",
+            subject="ASML Holding N.V.",
+            obj="third-party vendors",
+            relation_type="supplier_dependency",
+            modality="current_fact",
+            confidence=0.9,
+            accession="0000000001-26-000001",
+            paragraph=2,
+            text="We depend on third-party vendors for specialized components.",
+        ),
+    ]
+    claims = select_top_operating_claims(rows, BriefOptions(max_claims_per_section=4))
+    assert [claim.canonical_object for claim in claims] == ["third-party vendors"]
+
+
+def test_strategic_relations_do_not_include_plain_licensing_dependencies() -> None:
+    rows = [
+        evidence_row(
+            ticker="MSFT",
+            cik="0000789019",
+            subject="Microsoft Corporation",
+            obj="License Counterparty LLC",
+            relation_type="licensing_dependency",
+            modality="current_fact",
+            confidence=0.9,
+            accession="0000789019-26-000001",
+            paragraph=1,
+            text="Microsoft has a license agreement with License Counterparty LLC.",
+        ),
+        evidence_row(
+            ticker="MSFT",
+            cik="0000789019",
+            subject="Microsoft Corporation",
+            obj="Strategic Partner LLC",
+            relation_type="strategic_partner",
+            modality="strategic",
+            confidence=0.9,
+            accession="0000789019-26-000001",
+            paragraph=2,
+            text="Microsoft announced a strategic partnership with Strategic Partner LLC.",
+        ),
+    ]
+    selected = select_strategic_evidence(rows)
+    assert [row["object"] for row in selected] == ["Strategic Partner LLC"]
+
+
+def test_current_fact_display_filters_generic_classes_when_named_claims_exist() -> None:
+    rows = [
+        evidence_row(
+            ticker="MSFT",
+            cik="0000789019",
+            subject="Microsoft Corporation",
+            obj="Supplier dependency class",
+            relation_type="supplier_dependency",
+            modality="current_fact",
+            confidence=0.95,
+            accession="0000789019-26-000001",
+            paragraph=1,
+            text="We rely on suppliers.",
+        ),
+        evidence_row(
+            ticker="MSFT",
+            cik="0000789019",
+            subject="Microsoft Corporation",
+            obj="Contoso Components LLC",
+            relation_type="supplier_dependency",
+            modality="current_fact",
+            confidence=0.9,
+            accession="0000789019-26-000001",
+            paragraph=2,
+            text="We rely on Contoso Components LLC.",
+        ),
+    ]
+    filtered = filter_display_current_fact_evidence(rows)
+    assert [row["object"] for row in filtered] == ["Contoso Components LLC"]
+
+
+def test_evidence_table_prefers_clean_passage_over_boilerplate() -> None:
+    noisy = evidence_row(
+        ticker="NVDA",
+        cik="0001045810",
+        subject="NVIDIA Corporation",
+        obj="Taiwan Semiconductor Manufacturing Company Limited",
+        relation_type="foundry_dependency",
+        modality="current_fact",
+        confidence=0.99,
+        accession="0001045810-26-000010",
+        paragraph=1,
+        text="Item 1A Risk Factors Please carefully consider the following significant factors and uncertainties.",
+    )
+    clean = evidence_row(
+        ticker="NVDA",
+        cik="0001045810",
+        subject="NVIDIA Corporation",
+        obj="Taiwan Semiconductor Manufacturing Company Limited",
+        relation_type="foundry_dependency",
+        modality="current_fact",
+        confidence=0.9,
+        accession="0001045810-26-000010",
+        paragraph=2,
+        text="We rely on Taiwan Semiconductor Manufacturing Company Limited for wafer fabrication.",
+    )
+    claim = BriefClaim(
+        claim_id="C001",
+        category="operating_dependency",
+        relation_type="foundry_dependency",
+        object="Taiwan Semiconductor Manufacturing Company Limited",
+        canonical_object="Taiwan Semiconductor Manufacturing Company Limited",
+        object_lei="",
+        modality_mix="current_fact",
+        evidence_count=2,
+        avg_confidence=0.945,
+        forms="10-K",
+        accessions="0001045810-26-000010",
+        first_seen="2026-02-20",
+        last_seen="2026-02-20",
+    )
+    assert passage_quality_score(clean) > passage_quality_score(noisy)
+    table = build_evidence_table([noisy, clean], [claim], max_rows=2, max_chars=200)
+    assert table[0].paragraph_offset == 2
+
+
+def test_current_fact_support_filter_drops_competitor_landscape_relation() -> None:
+    rows = [
+        evidence_row(
+            ticker="NVDA",
+            cik="0001045810",
+            subject="NVIDIA Corporation",
+            obj="Microsoft Corporation",
+            relation_type="supplier_dependency",
+            modality="current_fact",
+            confidence=0.82,
+            accession="0001045810-26-000021",
+            paragraph=18,
+            text=(
+                "Competition includes large cloud services companies with internal teams designing hardware, "
+                "such as Amazon and Microsoft Corporation."
+            ),
+        ),
+        evidence_row(
+            ticker="NVDA",
+            cik="0001045810",
+            subject="NVIDIA Corporation",
+            obj="Taiwan Semiconductor Manufacturing Company Limited",
+            relation_type="foundry_dependency",
+            modality="current_fact",
+            confidence=0.95,
+            accession="0001045810-26-000021",
+            paragraph=15,
+            text="We utilize Taiwan Semiconductor Manufacturing Company Limited for wafer production.",
+        ),
+    ]
+    filtered = filter_supported_current_fact_evidence(rows)
+    assert [row["object"] for row in filtered] == ["Taiwan Semiconductor Manufacturing Company Limited"]
+
+
+def test_current_fact_support_filter_drops_hypothetical_current_fact_relation() -> None:
+    rows = [
+        evidence_row(
+            ticker="AMD",
+            cik="0000002488",
+            subject="Advanced Micro Devices Inc.",
+            obj="Microsoft Corporation",
+            relation_type="supplier_dependency",
+            modality="current_fact",
+            confidence=0.82,
+            accession="0000002488-26-000018",
+            paragraph=1,
+            text=(
+                "If we lose Microsoft Corporation's support for our products, "
+                "our ability to sell products could materially adversely affected."
+            ),
+        ),
+        evidence_row(
+            ticker="AMD",
+            cik="0000002488",
+            subject="Advanced Micro Devices Inc.",
+            obj="Taiwan Semiconductor Manufacturing Company Limited",
+            relation_type="supplier_dependency",
+            modality="current_fact",
+            confidence=0.9,
+            accession="0000002488-26-000018",
+            paragraph=17,
+            text="We rely on Taiwan Semiconductor Manufacturing Company Limited for wafer fabrication.",
+        ),
+    ]
+    filtered = filter_supported_current_fact_evidence(rows)
+    assert [row["object"] for row in filtered] == ["Taiwan Semiconductor Manufacturing Company Limited"]
+
+
+def test_strategic_filter_drops_negative_joint_venture_clause() -> None:
+    rows = [
+        evidence_row(
+            ticker="AMD",
+            cik="0000002488",
+            subject="Advanced Micro Devices Inc.",
+            obj="Broadcom Inc.",
+            relation_type="co_investment",
+            modality="current_fact",
+            confidence=0.86,
+            accession="0000002488-26-000018",
+            paragraph=31,
+            text=(
+                "This Agreement shall not itself create or be deemed to create a joint venture, "
+                "partnership or similar association between Broadcom Inc. and AMD."
+            ),
+        ),
+        evidence_row(
+            ticker="AMD",
+            cik="0000002488",
+            subject="Advanced Micro Devices Inc.",
+            obj="OpenAI OpCo, LLC",
+            relation_type="strategic_partner",
+            modality="strategic",
+            confidence=0.9,
+            accession="0000002488-26-000018",
+            paragraph=7,
+            text="AMD entered into a strategic collaboration with OpenAI OpCo, LLC.",
+        ),
+    ]
+    selected = select_strategic_evidence(rows)
+    assert [row["object"] for row in selected] == ["OpenAI OpCo, LLC"]
 
 
 def test_uncited_interpretation_items_flags_missing_citations() -> None:

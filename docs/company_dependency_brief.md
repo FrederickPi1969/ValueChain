@@ -106,12 +106,23 @@ python scripts/generate_company_dependency_brief.py \
   fallback when no named current operating claim exists. Heading-like fragments
   such as `Industry Risks` and standalone geography fragments are excluded from
   top operating dependencies.
+- The brief layer applies a lightweight relation-support verifier before
+  display: it suppresses current-fact claims that come from competitor lists,
+  trademark notices, negative contract clauses, or risk sentences such as
+  `if we lose...` when the local object context does not support the extracted
+  relation type. Raw evidence remains unchanged for audit and later recall work.
 - Risk-hypothetical language is presented under risk exposure, not current
   operating dependency.
+- Strategic relations only include `strategic_partner`, `co_investment`, or
+  evidence explicitly marked strategic, and ordinary licensing dependencies are
+  not promoted into the strategic section.
 - Selected GLEIF LLM matches are used only to display canonical object names and
   LEIs when available.
 - Generic dependency classes are kept as recall signals but ranked below named
   legal entities in operating dependency sections.
+- The evidence table ranks cleaner passages above boilerplate by preferring
+  object-containing core disclosure text and penalizing table-of-contents,
+  financial-table, heading, and generic-object fragments.
 - The writer is instructed not to infer mitigation, resilience, diversification
   benefits, or financial causality unless the cited evidence explicitly supports
   it.
