@@ -122,6 +122,28 @@ Outputs are written next to the run artifacts:
 - `entity_resolution_candidates.jsonl`
 - `entity_resolution_candidates.summary.json`
 
+Add Local LLM adjudication when you want a best-match review layer on top of
+GLEIF candidates:
+
+```bash
+valuechain resolve-entities \
+  --run-id industry-sec-exhibits-v3 \
+  --limit-objects 100 \
+  --min-evidence-count 2 \
+  --max-candidates 5 \
+  --llm-select \
+  --llm-concurrency 4
+```
+
+This writes:
+
+- `entity_resolution_llm_selected.csv`
+- `entity_resolution_llm_selected.jsonl`
+- `entity_resolution_llm_selected.summary.json`
+
+The LLM selector only chooses among GLEIF candidates or returns `no_match` /
+`ambiguous`; it does not create new LEIs and does not overwrite graph edges.
+
 For a focused smoke test:
 
 ```bash

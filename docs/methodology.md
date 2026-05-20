@@ -84,6 +84,21 @@ The queue does **not** overwrite `relation_evidence.jsonl` or `graph_edges.csv`.
 It is a review surface for legal-entity normalization, parent/child enrichment,
 foreign issuer cleanup, and future deterministic alias-map updates.
 
+An optional Local LLM adjudication pass can run after GLEIF retrieval:
+
+```text
+resolver candidate queue
+  -> LLM best-match selector
+  -> select / no_match / ambiguous
+  -> selected-candidate review queue
+```
+
+The LLM receives the extracted object, cleaned search query, SEC context, and
+candidate LEI records. It is constrained to choose one supplied GLEIF candidate
+or return `no_match` / `ambiguous`. This makes it useful for cases such as
+foreign issuer transliterations and parser-prefix cleanup, while preventing it
+from inventing legal entities or directly mutating graph records.
+
 ## Presentation Choice
 
 The first presentation surface is a portfolio-oriented evidence dashboard, not a

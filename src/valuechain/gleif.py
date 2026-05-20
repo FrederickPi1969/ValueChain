@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import re
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
@@ -178,6 +180,34 @@ class GLEIFCandidate:
     source_url: str = ""
     direct_parent_url: str = ""
     ultimate_parent_url: str = ""
+    sample_evidence: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(frozen=True)
+class LLMEntitySelection:
+    query_object: str
+    search_query: str
+    evidence_count: int
+    subject_count: int
+    subjects: str
+    relation_types: str
+    modalities: str
+    forms: str
+    decision: str
+    selected_candidate_rank: int = 0
+    selected_lei: str = ""
+    selected_canonical_name: str = ""
+    selected_jurisdiction: str = ""
+    selected_legal_name: str = ""
+    selected_match_strategy: str = ""
+    selected_resolver_confidence: float = 0.0
+    llm_confidence: float = 0.0
+    llm_reason: str = ""
+    model_version: str = ""
+    candidate_count: int = 0
     sample_evidence: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -514,6 +544,22 @@ def write_candidate_queue(output_dir: Path, candidates: list[GLEIFCandidate], pr
     return {"csv": str(csv_path), "jsonl": str(jsonl_path), "summary": str(summary_path)}
 
 
+def write_llm_selection_queue(
+    output_dir: Path,
+    selections: list[LLMEntitySelection],
+    prefix: str = "entity_resolution_llm_selected",
+) -> dict[str, str]:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    rows = [selection.to_dict() for selection in selections]
+    csv_path = output_dir / f"{prefix}.csv"
+    jsonl_path = output_dir / f"{prefix}.jsonl"
+    summary_path = output_dir / f"{prefix}.summary.json"
+    write_csv(csv_path, rows)
+    write_jsonl(jsonl_path, rows)
+    write_json(summary_path, llm_selection_summary(selections))
+    return {"csv": str(csv_path), "jsonl": str(jsonl_path), "summary": str(summary_path)}
+
+
 def candidate_summary(candidates: list[GLEIFCandidate]) -> dict[str, Any]:
     query_count = len({candidate.query_object for candidate in candidates})
     status_counts = Counter(candidate.resolver_status for candidate in candidates)
@@ -530,6 +576,325 @@ def candidate_summary(candidates: list[GLEIFCandidate]) -> dict[str, Any]:
         "confidence_band_counts": dict(band_counts.most_common()),
         "high_confidence_top_candidates": high_confidence,
     }
+
+
+def llm_selection_summary(selections: list[LLMEntitySelection]) -> dict[str, Any]:
+    decisions = Counter(selection.decision for selection in selections)
+    selected = [selection.to_dict() for selection in selections if selection.decision == "select"][:25]
+    return {
+        "query_object_count": len(selections),
+        "decision_counts": dict(decisions.most_common()),
+        "selected_count": decisions.get("select", 0),
+        "top_selected": selected,
+    }
+
+
+def select_best_matches_with_llm(
+    candidates: list[GLEIFCandidate],
+    llm_client: Any,
+    model_version: str,
+    concurrency: int = 4,
+    max_groups: int = 0,
+) -> list[LLMEntitySelection]:
+    groups = group_candidates(candidates)
+    if max_groups > 0:
+        groups = groups[:max_groups]
+    return asyncio.run(
+        select_best_matches_with_llm_async(
+            groups,
+            llm_client=llm_client,
+            model_version=model_version,
+            concurrency=concurrency,
+        )
+    )
+
+
+async def select_best_matches_with_llm_async(
+    groups: list[list[GLEIFCandidate]],
+    llm_client: Any,
+    model_version: str,
+    concurrency: int = 4,
+) -> list[LLMEntitySelection]:
+    semaphore = asyncio.Semaphore(max(1, concurrency))
+
+    async def select_one(group: list[GLEIFCandidate]) -> LLMEntitySelection:
+        async with semaphore:
+            return await adjudicate_candidate_group(group, llm_client, model_version=model_version)
+
+    try:
+        return await asyncio.gather(*(select_one(group) for group in groups))
+    finally:
+        if hasattr(llm_client, "aclose"):
+            await llm_client.aclose()
+
+
+async def adjudicate_candidate_group(
+    group: list[GLEIFCandidate],
+    llm_client: Any,
+    model_version: str,
+) -> LLMEntitySelection:
+    base = group[0]
+    viable = [candidate for candidate in group if candidate.resolver_status == "candidate" and candidate.candidate_rank > 0]
+    if not viable:
+        return llm_selection_from_decision(
+            base,
+            decision="no_match",
+            candidate=None,
+            llm_confidence=0.95,
+            reason=f"GLEIF resolver status is {base.resolver_status}; no viable candidate was returned.",
+            model_version=model_version,
+            candidate_count=0,
+        )
+    payload = build_llm_selection_payload(base, viable)
+    try:
+        raw = await llm_client.chat_json_async(
+            GLEIF_LLM_SELECTION_SYSTEM_PROMPT,
+            json.dumps(payload, ensure_ascii=False, sort_keys=True),
+            max_tokens=520,
+        )
+    except Exception as exc:
+        return llm_selection_from_decision(
+            base,
+            decision="llm_error",
+            candidate=None,
+            llm_confidence=0.0,
+            reason=str(exc)[:500],
+            model_version=model_version,
+            candidate_count=len(viable),
+        )
+    return normalize_llm_selection(base, viable, raw, model_version=model_version)
+
+
+GLEIF_LLM_SELECTION_SYSTEM_PROMPT = """You are a strict legal-entity resolver for SEC-extracted counterparty strings.
+Use only the supplied query object, SEC context, and GLEIF candidate records.
+You must choose one of three decisions: select, no_match, ambiguous.
+
+Rules:
+- Select only if the GLEIF candidate is the same legal entity as the query/search query.
+- Your job is entity resolution, not relation verification. A SEC subject-company mismatch is not a no_match reason because extracted objects are usually counterparties.
+- Prefer exact legal-name, transliterated-name, or obvious cleaned parser-prefix matches.
+- If the query/search query is a specific legal name and a candidate is an exact or suffix-normalized legal-name match, select it even if the SEC subject company is different. The object is usually a counterparty, not the subject.
+- Use SEC context to reject parser fragments, generic labels, geography, products, funds, and sector stories; do not use SEC context to reject a strong legal-name match.
+- Do not select geography, product category, generic class, ETF/fund, account, plan, currency, or sector matches.
+- Do not select a subsidiary, sales entity, international affiliate, or parent unless the query names that entity.
+- If multiple plausible entities remain, use ambiguous.
+- If candidates are only weak lexical coincidences, use no_match.
+Return one compact JSON object only:
+{"decision":"select|no_match|ambiguous","selected_candidate_rank":1,"confidence":0.0-1.0,"reason":"short reason"}
+Use selected_candidate_rank 0 for no_match or ambiguous."""
+
+
+def build_llm_selection_payload(base: GLEIFCandidate, candidates: list[GLEIFCandidate]) -> dict[str, Any]:
+    return {
+        "query_object": base.query_object,
+        "search_query": base.search_query,
+        "sec_context": {
+            "evidence_count": base.evidence_count,
+            "subject_count": base.subject_count,
+            "subjects": base.subjects,
+            "relation_types": base.relation_types,
+            "modalities": base.modalities,
+            "forms": base.forms,
+            "sample_evidence": base.sample_evidence[:360],
+        },
+        "gleif_candidates": [
+            {
+                "candidate_rank": candidate.candidate_rank,
+                "lei": candidate.lei,
+                "canonical_name": candidate.canonical_name,
+                "legal_name": candidate.legal_name,
+                "transliterated_names": candidate.transliterated_names,
+                "other_names": candidate.other_names,
+                "jurisdiction": candidate.jurisdiction,
+                "legal_country": candidate.legal_country,
+                "entity_status": candidate.entity_status,
+                "registration_status": candidate.registration_status,
+                "match_strategy": candidate.match_strategy,
+                "resolver_confidence": candidate.resolver_confidence,
+                "name_similarity": candidate.name_similarity,
+                "direct_parent_status": candidate.direct_parent_status,
+                "ultimate_parent_status": candidate.ultimate_parent_status,
+            }
+            for candidate in candidates[:6]
+        ],
+    }
+
+
+def normalize_llm_selection(
+    base: GLEIFCandidate,
+    candidates: list[GLEIFCandidate],
+    raw: Any,
+    model_version: str,
+) -> LLMEntitySelection:
+    if not isinstance(raw, dict):
+        return llm_selection_from_decision(
+            base,
+            decision="llm_error",
+            candidate=None,
+            llm_confidence=0.0,
+            reason=f"LLM returned non-object payload: {type(raw).__name__}",
+            model_version=model_version,
+            candidate_count=len(candidates),
+        )
+    decision = str(raw.get("decision", "")).strip().lower()
+    if decision not in {"select", "no_match", "ambiguous"}:
+        decision = "ambiguous"
+    rank = safe_int(raw.get("selected_candidate_rank"))
+    llm_confidence = clamp_float(raw.get("confidence"), 0.0, 1.0)
+    reason = str(raw.get("reason") or "")[:500]
+    selected = next((candidate for candidate in candidates if candidate.candidate_rank == rank), None)
+    guardrail = exact_legal_name_guardrail_candidate(base, candidates)
+    if decision == "select" and selected is None:
+        if guardrail:
+            return llm_selection_from_decision(
+                base,
+                decision="select",
+                candidate=guardrail,
+                llm_confidence=max(llm_confidence, guardrail.resolver_confidence),
+                reason=(
+                    f"Exact legal-name guardrail selected rank {guardrail.candidate_rank}; "
+                    f"LLM selected unavailable candidate rank {rank}: {reason}"
+                )[:500],
+                model_version=model_version,
+                candidate_count=len(candidates),
+            )
+        return llm_selection_from_decision(
+            base,
+            decision="ambiguous",
+            candidate=None,
+            llm_confidence=llm_confidence,
+            reason=f"LLM selected unavailable candidate rank {rank}. {reason}".strip(),
+            model_version=model_version,
+            candidate_count=len(candidates),
+        )
+    if guardrail and (decision != "select" or selected != guardrail):
+        return llm_selection_from_decision(
+            base,
+            decision="select",
+            candidate=guardrail,
+            llm_confidence=max(llm_confidence, guardrail.resolver_confidence),
+            reason=(
+                f"Exact legal-name guardrail selected rank {guardrail.candidate_rank}; "
+                f"LLM returned {decision}: {reason}"
+            )[:500],
+            model_version=model_version,
+            candidate_count=len(candidates),
+        )
+    if decision != "select":
+        selected = None
+    return llm_selection_from_decision(
+        base,
+        decision=decision,
+        candidate=selected,
+        llm_confidence=llm_confidence,
+        reason=reason,
+        model_version=model_version,
+        candidate_count=len(candidates),
+    )
+
+
+def exact_legal_name_guardrail_candidate(
+    base: GLEIFCandidate,
+    candidates: list[GLEIFCandidate],
+) -> GLEIFCandidate | None:
+    """Protect high-confidence exact legal-name matches from LLM false negatives."""
+    query_norm = normalize_legal_name(base.search_query or base.query_object)
+    query_core = strip_legal_suffixes(query_norm)
+    if not query_norm or is_likely_non_entity_object(base.search_query or base.query_object):
+        return None
+    for candidate in sorted(candidates, key=lambda item: item.candidate_rank):
+        if candidate.candidate_rank != 1:
+            return None
+        if candidate.resolver_confidence < 0.95 or candidate.name_similarity < 0.96:
+            return None
+        if candidate.entity_status and candidate.entity_status != "ACTIVE":
+            return None
+        if candidate.registration_status and candidate.registration_status != "ISSUED":
+            return None
+        for name in candidate_resolution_names(candidate):
+            name_norm = normalize_legal_name(name)
+            name_core = strip_legal_suffixes(name_norm)
+            if query_norm == name_norm:
+                return candidate
+            if query_core and query_core == name_core and len(query_core) >= 4:
+                return candidate
+        return None
+    return None
+
+
+def candidate_resolution_names(candidate: GLEIFCandidate) -> list[str]:
+    names = [
+        candidate.legal_name,
+        candidate.canonical_name,
+        candidate.matched_name,
+    ]
+    names.extend(split_candidate_names(candidate.transliterated_names))
+    names.extend(split_candidate_names(candidate.other_names))
+    return [name for name in names if name]
+
+
+def split_candidate_names(value: str) -> list[str]:
+    return [part.strip() for part in re.split(r"\s*;\s*", value or "") if part.strip()]
+
+
+def llm_selection_from_decision(
+    base: GLEIFCandidate,
+    decision: str,
+    candidate: GLEIFCandidate | None,
+    llm_confidence: float,
+    reason: str,
+    model_version: str,
+    candidate_count: int,
+) -> LLMEntitySelection:
+    return LLMEntitySelection(
+        query_object=base.query_object,
+        search_query=base.search_query,
+        evidence_count=base.evidence_count,
+        subject_count=base.subject_count,
+        subjects=base.subjects,
+        relation_types=base.relation_types,
+        modalities=base.modalities,
+        forms=base.forms,
+        decision=decision,
+        selected_candidate_rank=candidate.candidate_rank if candidate else 0,
+        selected_lei=candidate.lei if candidate else "",
+        selected_canonical_name=candidate.canonical_name if candidate else "",
+        selected_jurisdiction=candidate.jurisdiction if candidate else "",
+        selected_legal_name=candidate.legal_name if candidate else "",
+        selected_match_strategy=candidate.match_strategy if candidate else "",
+        selected_resolver_confidence=candidate.resolver_confidence if candidate else 0.0,
+        llm_confidence=round(llm_confidence, 3),
+        llm_reason=reason,
+        model_version=model_version,
+        candidate_count=candidate_count,
+        sample_evidence=base.sample_evidence,
+    )
+
+
+def group_candidates(candidates: list[GLEIFCandidate]) -> list[list[GLEIFCandidate]]:
+    grouped: dict[str, list[GLEIFCandidate]] = defaultdict(list)
+    order: list[str] = []
+    for candidate in candidates:
+        key = candidate.query_object
+        if key not in grouped:
+            order.append(key)
+        grouped[key].append(candidate)
+    return [sorted(grouped[key], key=lambda item: item.candidate_rank) for key in order]
+
+
+def safe_int(value: Any) -> int:
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return 0
+
+
+def clamp_float(value: Any, lower: float, upper: float) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        parsed = lower
+    return min(max(parsed, lower), upper)
 
 
 def best_name_similarity(query: str, record: dict[str, Any]) -> tuple[float, str]:

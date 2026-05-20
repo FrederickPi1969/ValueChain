@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 from valuechain.gleif import (
@@ -6,10 +7,13 @@ from valuechain.gleif import (
     clean_gleif_query_object,
     confidence_band,
     context_from_group,
+    group_candidates,
     is_likely_non_entity_object,
     normalize_legal_name,
     resolve_object_contexts,
+    select_best_matches_with_llm,
     strip_legal_suffixes,
+    write_llm_selection_queue,
     write_candidate_queue,
 )
 
@@ -123,12 +127,116 @@ def test_write_candidate_queue_writes_csv_jsonl_and_summary(tmp_path: Path) -> N
     assert "NVIDIA CORPORATION" in Path(paths["jsonl"]).read_text(encoding="utf-8")
 
 
+def test_llm_selector_selects_candidate_rank(tmp_path: Path) -> None:
+    candidates = build_candidates_for_context(
+        EntityObjectContext(
+            object="NVIDIA Corporation",
+            evidence_count=2,
+            subjects="Advanced Micro Devices Inc.",
+            relation_types="foundry_dependency",
+            sample_evidence="We depend on NVIDIA Corporation for technology.",
+        ),
+        [(nvidia_record(), "exact_legal_name")],
+    )
+    selections = select_best_matches_with_llm(candidates, FakeLLM({"decision": "select", "selected_candidate_rank": 1, "confidence": 0.92, "reason": "Exact legal name match."}), "fake-model")
+    assert len(selections) == 1
+    assert selections[0].decision == "select"
+    assert selections[0].selected_lei == "549300S4KLFTLO7GSQ80"
+    paths = write_llm_selection_queue(tmp_path, selections)
+    assert Path(paths["summary"]).exists()
+
+
+def test_llm_selector_handles_no_match_and_invalid_rank() -> None:
+    candidates = build_candidates_for_context(
+        EntityObjectContext(object="NVIDIA Corporation"),
+        [(nvidia_record(), "exact_legal_name")],
+    )
+    weak_candidates = [
+        replace(
+            candidates[0],
+            query_object="NVIDIA supplier group",
+            search_query="NVIDIA supplier group",
+            normalized_query="nvidia supplier group",
+            match_strategy="fulltext",
+            name_similarity=0.62,
+            resolver_confidence=0.62,
+            confidence_band="low",
+        )
+    ]
+    invalid = select_best_matches_with_llm(
+        weak_candidates,
+        FakeLLM({"decision": "select", "selected_candidate_rank": 99, "confidence": 0.5, "reason": "bad rank"}),
+        "fake-model",
+    )[0]
+    assert invalid.decision == "ambiguous"
+    assert invalid.selected_lei == ""
+
+    no_match = select_best_matches_with_llm(
+        weak_candidates,
+        FakeLLM({"decision": "no_match", "selected_candidate_rank": 0, "confidence": 0.88, "reason": "ETF/fund mismatch."}),
+        "fake-model",
+    )[0]
+    assert no_match.decision == "no_match"
+    assert no_match.selected_candidate_rank == 0
+
+
+def test_llm_selector_guardrail_keeps_exact_legal_name_match() -> None:
+    candidates = build_candidates_for_context(
+        EntityObjectContext(
+            object="Amazon.com Inc.",
+            evidence_count=140,
+            subjects="Snowflake Inc.; Palantir Technologies Inc.; Advanced Micro Devices Inc.",
+            relation_types="cloud_or_hosting_dependency; supplier_dependency",
+            sample_evidence="We rely on Amazon.com Inc. for cloud services.",
+        ),
+        [(amazon_record(), "exact_legal_name")],
+    )
+    selection = select_best_matches_with_llm(
+        candidates,
+        FakeLLM(
+            {
+                "decision": "no_match",
+                "selected_candidate_rank": 0,
+                "confidence": 0.88,
+                "reason": "SEC subject company mismatch.",
+            }
+        ),
+        "fake-model",
+    )[0]
+    assert selection.decision == "select"
+    assert selection.selected_lei == "ZXTILKJKG63JELOEG630"
+    assert "guardrail" in selection.llm_reason
+
+
+def test_group_candidates_preserves_query_order() -> None:
+    first = build_candidates_for_context(EntityObjectContext(object="NVIDIA Corporation"), [(nvidia_record(), "exact_legal_name")])[0]
+    second = build_candidates_for_context(EntityObjectContext(object="Taiwan Semiconductor Manufacturing Company Limited"), [(tsmc_record(), "fulltext")])[0]
+    groups = group_candidates([first, second])
+    assert [group[0].query_object for group in groups] == [
+        "NVIDIA Corporation",
+        "Taiwan Semiconductor Manufacturing Company Limited",
+    ]
+
+
 def test_confidence_band_thresholds() -> None:
     assert confidence_band(0.96) == "very_high"
     assert confidence_band(0.9) == "high"
     assert confidence_band(0.75) == "medium"
     assert confidence_band(0.5) == "low"
     assert confidence_band(0.0) == "none"
+
+
+class FakeLLM:
+    def __init__(self, payload: dict) -> None:
+        self.payload = payload
+        self.calls: list[dict] = []
+
+    async def chat_json_async(self, system: str, user: str, max_tokens: int = 1200):
+        self.calls.append({"system": system, "user": user, "max_tokens": max_tokens})
+        return self.payload
+
+    async def aclose(self) -> None:
+        return None
 
 
 def nvidia_record() -> dict:
@@ -201,4 +309,37 @@ def tsmc_record() -> dict:
         "relationships": {},
         "links": {"self": "https://api.gleif.org/api/v1/lei-records/549300KB6NK5SBD14S87"},
     }
-    clean_gleif_query_object,
+
+
+def amazon_record() -> dict:
+    return {
+        "id": "ZXTILKJKG63JELOEG630",
+        "attributes": {
+            "lei": "ZXTILKJKG63JELOEG630",
+            "entity": {
+                "legalName": {"name": "AMAZON.COM, INC.", "language": "en"},
+                "otherNames": [],
+                "transliteratedOtherNames": [],
+                "legalAddress": {"country": "US", "region": "US-DE", "city": "WILMINGTON"},
+                "headquartersAddress": {"country": "US", "region": "US-WA", "city": "Seattle"},
+                "jurisdiction": "US-DE",
+                "category": "GENERAL",
+                "legalForm": {"id": "XTIQ"},
+                "status": "ACTIVE",
+                "registeredAt": {"id": "RA000602"},
+                "registeredAs": "2620453",
+            },
+            "registration": {
+                "status": "ISSUED",
+                "corroborationLevel": "FULLY_CORROBORATED",
+            },
+            "ocid": "us_de/2620453",
+            "spglobal": ["18749"],
+            "conformityFlag": "CONFORMING",
+        },
+        "relationships": {
+            "direct-parent": {"links": {"reporting-exception": "https://api.gleif.org/direct-parent-exception"}},
+            "ultimate-parent": {"links": {"reporting-exception": "https://api.gleif.org/ultimate-parent-exception"}},
+        },
+        "links": {"self": "https://api.gleif.org/api/v1/lei-records/ZXTILKJKG63JELOEG630"},
+    }

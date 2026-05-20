@@ -5,8 +5,14 @@ import json
 from pathlib import Path
 
 from valuechain.config import Settings, ensure_dirs
-from valuechain.gleif import GLEIFClient, run_gleif_resolution
+from valuechain.gleif import (
+    GLEIFClient,
+    run_gleif_resolution,
+    select_best_matches_with_llm,
+    write_llm_selection_queue,
+)
 from valuechain.io_utils import write_json
+from valuechain.llm_client import LLMConfig, OpenAICompatibleClient
 from valuechain.pipeline import PipelineOptions, run_pipeline
 from valuechain.planning import build_execution_plan
 from valuechain.universe import parse_csv_arg, parse_tickers, read_universe, summarize_universe
@@ -73,6 +79,9 @@ def build_parser() -> argparse.ArgumentParser:
     resolve.add_argument("--gleif-rps", type=float, default=None, help="GLEIF API requests per second.")
     resolve.add_argument("--include-class-objects", action="store_true", help="Also send generic class objects to GLEIF.")
     resolve.add_argument("--include-relationships", action="store_true", help="Fetch available parent relationship records.")
+    resolve.add_argument("--llm-select", action="store_true", help="Use Local LLM to choose best GLEIF candidate per object.")
+    resolve.add_argument("--llm-model", default="", help="Override VALUECHAIN_EXTRACTION_MODEL for LLM candidate selection.")
+    resolve.add_argument("--llm-concurrency", type=int, default=None, help="Concurrent LLM best-match selection requests.")
     return parser
 
 
@@ -200,6 +209,29 @@ def main(argv: list[str] | None = None) -> None:
         print(f"candidate_rows={len(result['candidates'])}")
         for name, path in result["paths"].items():
             print(f"{name}={path}")
+        if args.llm_select:
+            llm_model = args.llm_model or settings.extraction_model
+            llm_client = OpenAICompatibleClient(
+                LLMConfig(
+                    base_url=settings.llm_base_url,
+                    api_key=settings.llm_api_key,
+                    model=llm_model,
+                    report_url="",
+                    proxy_url=settings.https_proxy or settings.http_proxy,
+                    max_connections=max(4, (args.llm_concurrency or settings.llm_concurrency) * 2),
+                    max_keepalive_connections=max(2, args.llm_concurrency or settings.llm_concurrency),
+                )
+            )
+            selections = select_best_matches_with_llm(
+                result["candidates"],
+                llm_client=llm_client,
+                model_version=llm_model,
+                concurrency=args.llm_concurrency or settings.llm_concurrency,
+            )
+            selection_paths = write_llm_selection_queue(output_dir, selections)
+            print(f"llm_selection_rows={len(selections)}")
+            for name, path in selection_paths.items():
+                print(f"llm_{name}={path}")
 
 
 def read_filtered_universe(args: argparse.Namespace):
