@@ -17,28 +17,34 @@ Do not put the Git checkout, container layers, PostgreSQL, or active indexes on 
 HDD. Those workloads generate small random reads and writes, while the corpus is
 mostly sequential and append-only.
 
-## Current Disk Constraint
+## Bulk Disk Filesystem
 
-The 8 TB drive is a 7.3 TiB NTFS filesystem mounted through `ntfs-3g`. This is a
-safe migration target, but it is not the final filesystem for a multi-million-file
-Linux corpus. Before the first full historical backfill, migrate or reformat it as
-XFS or ext4 after separately confirming that its existing Garage marker/data are no
-longer required. Reformatting is destructive and is not part of the initial move.
+The Seagate ST8000DM004 8 TB HDD was reformatted from NTFS/`ntfs-3g` to native
+ext4 on 2026-07-12. It is mounted by label `valuechain-bulk` with `noatime` and
+uses 4 KiB blocks, 256-byte inodes, a 16 KiB bytes-per-inode ratio, 488,374,272
+inodes, and 0.5% reserved blocks. The format intentionally favors a large cold
+corpus containing many small documents rather than a small number of huge files.
 
-Avoid one directory per passage and avoid millions of loose derived files. Keep
-original SEC documents immutable, partition manifests by source/form/year/month,
-and store derived tabular data in bounded Parquet shards. Hashes and provenance
-belong in PostgreSQL; document bytes belong on bulk storage.
+The migration benchmark created and durably synced 20,000 1 KiB files in 1.56
+seconds on ext4, compared with 214.68 seconds on NTFS/`ntfs-3g`. A 1 GiB
+sequential write took 7.53 seconds on ext4, compared with 8.37 seconds on NTFS.
+
+Loose source files are acceptable when they need independent lifecycle or direct
+retrieval, but never place millions of files in one directory. Partition by
+source/date or use hash-prefix fanout. Keep original SEC documents immutable,
+store derived tabular data in bounded Parquet shards, and keep hashes, locations,
+and provenance in PostgreSQL. GDELT and paper collectors may retain independent
+cold source objects while batching normalized text and analytical features.
 
 ## Capacity Boundary
 
 `20,000 companies * 15 years * 20 documents/year` is 6 million documents. At an
-average 1 MiB per retained document, source bytes alone are about 5.7 TiB. The 7.3
-TiB HDD cannot safely hold that source corpus plus exhibits, normalized text,
-Parquet derivatives, indexes, retries, temporary files, and backups.
+average 1 MiB per retained document, source bytes would be about 5.7 TiB. This is
+a planning scenario rather than a required reservation: actual usage depends on
+retention, compression, exhibits, and whether rebuildable derivatives are kept.
 
-Keep at least 15-20% free space. A complete global deployment therefore needs one
-or more of:
+Keep operational headroom as the corpus grows. A deployment that approaches the
+disk boundary will eventually need one or more of:
 
 - larger/multiple bulk disks or S3-compatible object storage;
 - source-specific retention and compression policies;
