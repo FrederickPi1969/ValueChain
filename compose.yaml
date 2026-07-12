@@ -6,11 +6,11 @@ services:
     environment:
       POSTGRES_DB: valuechain
       POSTGRES_USER: valuechain
-      POSTGRES_PASSWORD: valuechain_dev
+      POSTGRES_PASSWORD: ${VALUECHAIN_POSTGRES_PASSWORD:-valuechain_dev}
     ports:
-      - "5433:5432"
+      - "${VALUECHAIN_POSTGRES_BIND:-127.0.0.1}:${VALUECHAIN_POSTGRES_PORT:-5433}:5432"
     volumes:
-      - valuechain_pgdata:/var/lib/postgresql/data
+      - ${VALUECHAIN_POSTGRES_DATA_DIR:-valuechain_pgdata}:/var/lib/postgresql/data
       - ./db/schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U valuechain -d valuechain"]
@@ -23,7 +23,7 @@ services:
     container_name: valuechain-adminer
     restart: unless-stopped
     ports:
-      - "8081:8080"
+      - "${VALUECHAIN_ADMINER_BIND:-127.0.0.1}:${VALUECHAIN_ADMINER_PORT:-8081}:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -35,11 +35,11 @@ services:
     container_name: valuechain-api
     restart: unless-stopped
     environment:
-      VALUECHAIN_DATABASE_URL: postgresql://valuechain:valuechain_dev@postgres:5432/valuechain
+      VALUECHAIN_DATABASE_URL: postgresql://valuechain:${VALUECHAIN_POSTGRES_PASSWORD:-valuechain_dev}@postgres:5432/valuechain
       VALUECHAIN_API_HOST: 0.0.0.0
       VALUECHAIN_API_PORT: 8000
     ports:
-      - "8000:8000"
+      - "${VALUECHAIN_API_BIND:-127.0.0.1}:${VALUECHAIN_API_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy

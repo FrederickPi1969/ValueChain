@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -10,13 +10,31 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _env_path(name: str, default: Path) -> Path:
+    return Path(os.getenv(name, str(default))).expanduser()
+
+
 @dataclass(frozen=True)
 class Settings:
     root_dir: Path = ROOT
-    data_dir: Path = ROOT / "data"
-    raw_dir: Path = ROOT / "data" / "raw"
-    processed_dir: Path = ROOT / "data" / "processed"
-    reports_dir: Path = ROOT / "reports"
+    data_dir: Path = field(
+        default_factory=lambda: _env_path("VALUECHAIN_DATA_DIR", ROOT / "data")
+    )
+    raw_dir: Path = field(
+        default_factory=lambda: _env_path(
+            "VALUECHAIN_RAW_DIR",
+            _env_path("VALUECHAIN_DATA_DIR", ROOT / "data") / "raw",
+        )
+    )
+    processed_dir: Path = field(
+        default_factory=lambda: _env_path(
+            "VALUECHAIN_PROCESSED_DIR",
+            _env_path("VALUECHAIN_DATA_DIR", ROOT / "data") / "processed",
+        )
+    )
+    reports_dir: Path = field(
+        default_factory=lambda: _env_path("VALUECHAIN_REPORTS_DIR", ROOT / "reports")
+    )
     source_registry_path: Path = ROOT / "config" / "source_registry.yaml"
     ontology_path: Path = ROOT / "config" / "ontology.yaml"
     sec_user_agent: str = os.getenv(
