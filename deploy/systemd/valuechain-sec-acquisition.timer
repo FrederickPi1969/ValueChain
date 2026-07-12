@@ -1,0 +1,12 @@
+[Unit]
+Description=Continuously schedule ValueChain SEC acquisition batches
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+AccuracySec=15s
+Persistent=true
+Unit=valuechain-sec-acquisition.service
+
+[Install]
+WantedBy=timers.target

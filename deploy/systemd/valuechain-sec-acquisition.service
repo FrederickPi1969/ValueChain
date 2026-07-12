@@ -1,0 +1,14 @@
+[Unit]
+Description=ValueChain low-concurrency SEC 2026 acquisition batch
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/pi/ValueChain
+EnvironmentFile=/home/pi/ValueChain/.env
+ExecStart=/home/pi/ValueChain/.venv/bin/valuechain-acquire run-batch
+Nice=10
+IOSchedulingClass=idle
+IOSchedulingPriority=7
+TimeoutStartSec=45min

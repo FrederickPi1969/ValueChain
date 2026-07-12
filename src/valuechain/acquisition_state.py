@@ -1,0 +1,285 @@
+from __future__ import annotations
+
+import sqlite3
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Iterable
+
+
+@dataclass(frozen=True)
+class AcquisitionIssuer:
+    cik: str
+    ticker: str
+    company_name: str
+    exchange: str
+    priority: int
+
+
+SCHEMA = """
+PRAGMA journal_mode=WAL;
+PRAGMA synchronous=NORMAL;
+
+CREATE TABLE IF NOT EXISTS issuers (
+    cik TEXT PRIMARY KEY,
+    ticker TEXT NOT NULL,
+    company_name TEXT NOT NULL,
+    exchange TEXT NOT NULL,
+    priority INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TEXT,
+    scanned_at TEXT,
+    last_error TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_issuers_queue
+ON issuers(status, priority, next_attempt_at, scanned_at);
+
+CREATE TABLE IF NOT EXISTS filings (
+    accession_number TEXT PRIMARY KEY,
+    cik TEXT NOT NULL,
+    form TEXT NOT NULL,
+    filing_date TEXT NOT NULL,
+    report_date TEXT,
+    accepted_at TEXT,
+    primary_document TEXT,
+    archive_url TEXT NOT NULL,
+    local_dir TEXT NOT NULL,
+    discovered_at TEXT NOT NULL,
+    status TEXT NOT NULL,
+    last_error TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_filings_cik_date
+ON filings(cik, filing_date);
+
+CREATE TABLE IF NOT EXISTS documents (
+    source_url TEXT PRIMARY KEY,
+    accession_number TEXT NOT NULL,
+    document_kind TEXT NOT NULL,
+    local_path TEXT NOT NULL,
+    content_type TEXT,
+    byte_size INTEGER,
+    sha256 TEXT,
+    retrieved_at TEXT,
+    status TEXT NOT NULL,
+    last_error TEXT
+);
+
+CREATE TABLE IF NOT EXISTS acquisition_runs (
+    run_id TEXT PRIMARY KEY,
+    started_at TEXT NOT NULL,
+    completed_at TEXT,
+    status TEXT NOT NULL,
+    issuer_count INTEGER NOT NULL DEFAULT 0,
+    filing_count INTEGER NOT NULL DEFAULT 0,
+    document_count INTEGER NOT NULL DEFAULT 0,
+    error_count INTEGER NOT NULL DEFAULT 0
+);
+"""
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def iso_now() -> str:
+    return utc_now().isoformat()
+
+
+class AcquisitionState:
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.connection = sqlite3.connect(path)
+        self.connection.row_factory = sqlite3.Row
+        self.connection.executescript(SCHEMA)
+
+    def close(self) -> None:
+        self.connection.close()
+
+    def __enter__(self) -> AcquisitionState:
+        return self
+
+    def __exit__(self, *_args) -> None:
+        self.close()
+
+    def upsert_issuers(self, issuers: Iterable[AcquisitionIssuer]) -> int:
+        rows = list(issuers)
+        self.connection.executemany(
+            """
+            INSERT INTO issuers(cik, ticker, company_name, exchange, priority)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(cik) DO UPDATE SET
+                ticker = excluded.ticker,
+                company_name = excluded.company_name,
+                exchange = excluded.exchange,
+                priority = MIN(issuers.priority, excluded.priority)
+            """,
+            [(row.cik, row.ticker, row.company_name, row.exchange, row.priority) for row in rows],
+        )
+        self.connection.commit()
+        return len(rows)
+
+    def claim_issuers(self, limit: int, rescan_hours: int = 24) -> list[AcquisitionIssuer]:
+        now = utc_now()
+        now_text = now.isoformat()
+        rescan_before = (now - timedelta(hours=rescan_hours)).isoformat()
+        rows = self.connection.execute(
+            """
+            SELECT cik, ticker, company_name, exchange, priority
+            FROM issuers
+            WHERE (status IN ('pending', 'retry') AND (next_attempt_at IS NULL OR next_attempt_at <= ?))
+               OR (status = 'complete' AND scanned_at <= ?)
+               OR status = 'running'
+            ORDER BY
+                CASE status WHEN 'pending' THEN 0 WHEN 'retry' THEN 1 WHEN 'running' THEN 2 ELSE 3 END,
+                priority,
+                COALESCE(scanned_at, ''),
+                ticker
+            LIMIT ?
+            """,
+            (now_text, rescan_before, limit),
+        ).fetchall()
+        issuers = [AcquisitionIssuer(**dict(row)) for row in rows]
+        self.connection.executemany(
+            "UPDATE issuers SET status = 'running', attempts = attempts + 1 WHERE cik = ?",
+            [(issuer.cik,) for issuer in issuers],
+        )
+        self.connection.commit()
+        return issuers
+
+    def complete_issuer(self, cik: str) -> None:
+        self.connection.execute(
+            """
+            UPDATE issuers
+            SET status = 'complete', scanned_at = ?, next_attempt_at = NULL, last_error = NULL
+            WHERE cik = ?
+            """,
+            (iso_now(), cik),
+        )
+        self.connection.commit()
+
+    def fail_issuer(self, cik: str, error: str, retry_minutes: int = 30) -> None:
+        next_attempt = (utc_now() + timedelta(minutes=retry_minutes)).isoformat()
+        self.connection.execute(
+            """
+            UPDATE issuers
+            SET status = 'retry', next_attempt_at = ?, last_error = ?
+            WHERE cik = ?
+            """,
+            (next_attempt, error[:1000], cik),
+        )
+        self.connection.commit()
+
+    def upsert_filing(self, filing: dict, local_dir: Path, status: str, error: str = "") -> None:
+        self.connection.execute(
+            """
+            INSERT INTO filings(
+                accession_number, cik, form, filing_date, report_date, accepted_at,
+                primary_document, archive_url, local_dir, discovered_at, status, last_error
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(accession_number) DO UPDATE SET
+                primary_document = excluded.primary_document,
+                local_dir = excluded.local_dir,
+                status = excluded.status,
+                last_error = excluded.last_error
+            """,
+            (
+                filing["accession_number"],
+                filing["cik"],
+                filing["form"],
+                filing["filing_date"],
+                filing.get("report_date", ""),
+                filing.get("accepted_at", ""),
+                filing.get("primary_document", ""),
+                filing["archive_url"],
+                str(local_dir),
+                iso_now(),
+                status,
+                error[:1000],
+            ),
+        )
+        self.connection.commit()
+
+    def upsert_document(self, document: dict) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO documents(
+                source_url, accession_number, document_kind, local_path, content_type,
+                byte_size, sha256, retrieved_at, status, last_error
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source_url) DO UPDATE SET
+                local_path = excluded.local_path,
+                content_type = excluded.content_type,
+                byte_size = excluded.byte_size,
+                sha256 = excluded.sha256,
+                retrieved_at = excluded.retrieved_at,
+                status = excluded.status,
+                last_error = excluded.last_error
+            """,
+            (
+                document["source_url"],
+                document["accession_number"],
+                document["document_kind"],
+                document["local_path"],
+                document.get("content_type", ""),
+                document.get("byte_size"),
+                document.get("sha256", ""),
+                document.get("retrieved_at", iso_now()),
+                document["status"],
+                document.get("last_error", "")[:1000],
+            ),
+        )
+        self.connection.commit()
+
+    def begin_run(self, run_id: str) -> None:
+        self.connection.execute(
+            "INSERT INTO acquisition_runs(run_id, started_at, status) VALUES (?, ?, 'running')",
+            (run_id, iso_now()),
+        )
+        self.connection.commit()
+
+    def finish_run(self, run_id: str, status: str, counts: dict[str, int]) -> None:
+        self.connection.execute(
+            """
+            UPDATE acquisition_runs
+            SET completed_at = ?, status = ?, issuer_count = ?, filing_count = ?,
+                document_count = ?, error_count = ?
+            WHERE run_id = ?
+            """,
+            (
+                iso_now(),
+                status,
+                counts.get("issuers", 0),
+                counts.get("filings", 0),
+                counts.get("documents", 0),
+                counts.get("errors", 0),
+                run_id,
+            ),
+        )
+        self.connection.commit()
+
+    def stats(self) -> dict[str, object]:
+        issuer_rows = self.connection.execute(
+            "SELECT status, COUNT(*) AS count FROM issuers GROUP BY status ORDER BY status"
+        ).fetchall()
+        totals = self.connection.execute(
+            """
+            SELECT
+              (SELECT COUNT(*) FROM filings) AS filings,
+              (SELECT COUNT(*) FROM documents WHERE status = 'complete') AS documents,
+              (SELECT COALESCE(SUM(byte_size), 0) FROM documents WHERE status = 'complete') AS bytes
+            """
+        ).fetchone()
+        latest_run = self.connection.execute(
+            "SELECT * FROM acquisition_runs ORDER BY started_at DESC LIMIT 1"
+        ).fetchone()
+        return {
+            "issuers": {row["status"]: row["count"] for row in issuer_rows},
+            "filings": totals["filings"],
+            "documents": totals["documents"],
+            "bytes": totals["bytes"],
+            "latest_run": dict(latest_run) if latest_run else None,
+        }

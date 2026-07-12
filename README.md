@@ -296,6 +296,10 @@ The 2026-first global acquisition audit is tracked separately from extraction:
 - `docs/filing_download_plan_2026.md` defines the US-first download and completeness plan;
 - `docs/source_curator_instruction.md` is the source-research assignment and acceptance rubric.
 
+The scheduled SEC acquisition worker is operationally separate from extraction.
+See `docs/acquisition_operations.md` for its proxy, storage, checkpoint, systemd,
+and status procedures.
+
 The graph build separates raw extraction from graph-ready evidence. Raw records
 are written to `relation_evidence_raw.jsonl`; schema-aware denoising
 canonicalizes aliases, removes generic placeholder objects that are not graph
