@@ -1,11 +1,14 @@
 import hashlib
 
+import pytest
+
 from valuechain.sec_acquisition import (
     AcquisitionConfig,
     SecAcquisitionRunner,
     download_atomic,
     parse_company_universe,
     parse_submission_columns,
+    parse_target_years,
 )
 
 
@@ -41,6 +44,37 @@ def test_submission_parser_keeps_2026_tier_a_forms() -> None:
 
     assert [row["accession_number"] for row in rows] == ["0001-26-000001"]
     assert rows[0]["archive_url"].endswith("/1/000126000001/")
+
+
+def test_submission_parser_does_not_mix_backfill_years() -> None:
+    columns = {
+        "accessionNumber": ["0001-26-000001", "0001-25-000002"],
+        "filingDate": ["2026-01-04", "2025-12-31"],
+        "form": ["10-K", "10-K"],
+        "primaryDocument": ["new.htm", "old.htm"],
+    }
+
+    rows = parse_submission_columns(
+        columns,
+        cik="0000000001",
+        start_date="2025-01-01",
+        end_date="2025-12-31",
+    )
+
+    assert [row["accession_number"] for row in rows] == ["0001-25-000002"]
+
+
+def test_target_years_preserve_order_and_reject_duplicates() -> None:
+    assert parse_target_years("2026,2025") == (2026, 2025)
+
+    with pytest.raises(ValueError):
+        parse_target_years("2026,2026")
+
+
+def test_environment_caps_request_concurrency_at_four(monkeypatch) -> None:
+    monkeypatch.setenv("VALUECHAIN_ACQUISITION_CONCURRENCY", "20")
+
+    assert AcquisitionConfig.from_env().request_concurrency == 4
 
 
 class FakeResponse:
@@ -110,6 +144,7 @@ def test_complete_submission_url_preserves_accession_dashes(tmp_path, monkeypatc
     config = AcquisitionConfig(
         raw_root=tmp_path,
         state_path=tmp_path / "state.sqlite3",
+        database_url="postgresql://test:test@127.0.0.1:5432/test",
         proxy_pool_url="https://proxy.example",
         sec_user_agent="test@example.com",
     )

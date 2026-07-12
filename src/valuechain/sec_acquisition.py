@@ -4,6 +4,8 @@ import csv
 import hashlib
 import json
 import os
+import random
+import threading
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -12,7 +14,8 @@ from typing import Any, Iterable
 
 import requests
 
-from valuechain.acquisition_state import AcquisitionIssuer, AcquisitionState, iso_now
+from valuechain.acquisition_state import AcquisitionIssuer, iso_now
+from valuechain.postgres_acquisition_state import PostgresAcquisitionState
 from valuechain.proxy_pool import ProxyEndpoint, ProxyPoolClient
 from valuechain.rate_limit import RateLimiter
 
@@ -40,14 +43,18 @@ US_PRIMARY_EXCHANGES = {"NYSE", "NASDAQ", "CBOE"}
 class AcquisitionConfig:
     raw_root: Path
     state_path: Path
+    database_url: str
     proxy_pool_url: str
     sec_user_agent: str
-    start_date: str = "2026-01-01"
     requests_per_second: float = 1.0
     request_timeout_seconds: int = 60
     request_retries: int = 3
     issuer_limit: int = 3
     rescan_hours: int = 24
+    target_years: tuple[int, ...] = (2026, 2025)
+    request_concurrency: int = 4
+    request_sleep_seconds: float = 0.5
+    request_jitter_seconds: float = 0.5
 
     @classmethod
     def from_env(cls) -> AcquisitionConfig:
@@ -61,6 +68,13 @@ class AcquisitionConfig:
                     "/home/pi/valuechain-state/acquisition.sqlite3",
                 )
             ).expanduser(),
+            database_url=os.getenv(
+                "VALUECHAIN_ACQUISITION_DATABASE_URL",
+                os.getenv(
+                    "VALUECHAIN_DATABASE_URL",
+                    "postgresql://valuechain:valuechain_dev@127.0.0.1:5433/valuechain",
+                ),
+            ),
             proxy_pool_url=os.getenv(
                 "VALUECHAIN_PROXY_POOL_URL", "https://proxy.frederickpi.com"
             ),
@@ -68,7 +82,6 @@ class AcquisitionConfig:
                 "VALUECHAIN_SEC_USER_AGENT",
                 "FrederickPi ValueChain/0.1 contact=frederickpi1969@gmail.com",
             ),
-            start_date=os.getenv("VALUECHAIN_ACQUISITION_START_DATE", "2026-01-01"),
             requests_per_second=float(os.getenv("VALUECHAIN_ACQUISITION_SEC_RPS", "1.0")),
             request_timeout_seconds=int(
                 os.getenv("VALUECHAIN_ACQUISITION_TIMEOUT_SECONDS", "60")
@@ -76,14 +89,38 @@ class AcquisitionConfig:
             request_retries=int(os.getenv("VALUECHAIN_ACQUISITION_RETRIES", "3")),
             issuer_limit=int(os.getenv("VALUECHAIN_ACQUISITION_ISSUER_LIMIT", "3")),
             rescan_hours=int(os.getenv("VALUECHAIN_ACQUISITION_RESCAN_HOURS", "24")),
+            target_years=parse_target_years(
+                os.getenv("VALUECHAIN_ACQUISITION_YEARS", "2026,2025")
+            ),
+            request_concurrency=min(
+                4,
+                max(1, int(os.getenv("VALUECHAIN_ACQUISITION_CONCURRENCY", "4"))),
+            ),
+            request_sleep_seconds=max(
+                0.0,
+                float(os.getenv("VALUECHAIN_ACQUISITION_REQUEST_SLEEP_SECONDS", "0.5")),
+            ),
+            request_jitter_seconds=max(
+                0.0,
+                float(os.getenv("VALUECHAIN_ACQUISITION_REQUEST_JITTER_SECONDS", "0.5")),
+            ),
         )
 
 
 class SecProxySession:
-    def __init__(self, config: AcquisitionConfig, proxy_pool: ProxyPoolClient) -> None:
+    def __init__(
+        self,
+        config: AcquisitionConfig,
+        proxy_pool: ProxyPoolClient,
+        request_semaphore: threading.BoundedSemaphore | None = None,
+        rate_limiter: RateLimiter | None = None,
+    ) -> None:
         self.config = config
         self.proxy_pool = proxy_pool
-        self.rate_limiter = RateLimiter(config.requests_per_second)
+        self.rate_limiter = rate_limiter or RateLimiter(config.requests_per_second)
+        self.request_semaphore = request_semaphore or threading.BoundedSemaphore(
+            config.request_concurrency
+        )
         self.session = requests.Session()
         self.proxy: ProxyEndpoint | None = None
 
@@ -98,18 +135,24 @@ class SecProxySession:
                 self.rotate_proxy()
             proxy_url = self.proxy.url
             self.rate_limiter.wait()
+            delay = self.config.request_sleep_seconds
+            if self.config.request_jitter_seconds:
+                delay += random.uniform(0.0, self.config.request_jitter_seconds)
+            if delay:
+                time.sleep(delay)
             try:
-                response = self.session.get(
-                    url,
-                    headers={
-                        "User-Agent": self.config.sec_user_agent,
-                        "Accept": accept,
-                        "Accept-Encoding": "gzip, deflate",
-                    },
-                    proxies={"http": proxy_url, "https": proxy_url},
-                    timeout=self.config.request_timeout_seconds,
-                    stream=stream,
-                )
+                with self.request_semaphore:
+                    response = self.session.get(
+                        url,
+                        headers={
+                            "User-Agent": self.config.sec_user_agent,
+                            "Accept": accept,
+                            "Accept-Encoding": "gzip, deflate",
+                        },
+                        proxies={"http": proxy_url, "https": proxy_url},
+                        timeout=self.config.request_timeout_seconds,
+                        stream=stream,
+                    )
                 if response.status_code == 429 or response.status_code >= 500:
                     response.close()
                     raise requests.HTTPError(f"retryable status {response.status_code}")
@@ -227,6 +270,17 @@ def parse_company_universe(payload: dict, priority_tickers: dict[str, int]) -> l
     return sorted(issuers.values(), key=lambda row: (row.priority, row.ticker, row.cik))
 
 
+def parse_target_years(value: str) -> tuple[int, ...]:
+    years = tuple(int(part.strip()) for part in value.split(",") if part.strip())
+    if not years:
+        raise ValueError("At least one acquisition year is required")
+    if any(year < 1994 or year > datetime.now(UTC).year for year in years):
+        raise ValueError("Acquisition years must be between 1994 and the current year")
+    if len(years) != len(set(years)):
+        raise ValueError("Acquisition years must be unique")
+    return years
+
+
 def load_priority_tickers(path: Path) -> dict[str, int]:
     if not path.exists():
         return {}
@@ -239,18 +293,38 @@ def load_priority_tickers(path: Path) -> dict[str, int]:
     return priorities
 
 
-def parse_submission_rows(payload: dict, cik: str, start_date: str) -> list[dict[str, str]]:
+def parse_submission_rows(
+    payload: dict,
+    cik: str,
+    start_date: str,
+    end_date: str = "9999-12-31",
+) -> list[dict[str, str]]:
     recent = payload.get("filings", {}).get("recent", {})
-    return parse_submission_columns(recent, cik=cik, start_date=start_date)
+    return parse_submission_columns(
+        recent,
+        cik=cik,
+        start_date=start_date,
+        end_date=end_date,
+    )
 
 
-def parse_submission_columns(columns: dict, cik: str, start_date: str) -> list[dict[str, str]]:
+def parse_submission_columns(
+    columns: dict,
+    cik: str,
+    start_date: str,
+    end_date: str = "9999-12-31",
+) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     accessions = columns.get("accessionNumber", [])
     for index, accession in enumerate(accessions):
         filing_date = column_value(columns, "filingDate", index)
         form = column_value(columns, "form", index)
-        if not accession or filing_date < start_date or form not in TIER_A_FORMS:
+        if (
+            not accession
+            or filing_date < start_date
+            or filing_date > end_date
+            or form not in TIER_A_FORMS
+        ):
             continue
         accession_no_dashes = accession.replace("-", "")
         cik_numeric = str(int(cik))
@@ -283,10 +357,20 @@ class SecAcquisitionRunner:
         self.config = config
         self.repository_root = repository_root
         self.proxy_pool = ProxyPoolClient(config.proxy_pool_url)
+        self.request_semaphore = threading.BoundedSemaphore(config.request_concurrency)
+        self.rate_limiter = RateLimiter(config.requests_per_second)
         self.config.raw_root.mkdir(parents=True, exist_ok=True)
 
-    def refresh_universe(self, state: AcquisitionState) -> int:
-        session = SecProxySession(self.config, self.proxy_pool)
+    def new_session(self) -> SecProxySession:
+        return SecProxySession(
+            self.config,
+            self.proxy_pool,
+            request_semaphore=self.request_semaphore,
+            rate_limiter=self.rate_limiter,
+        )
+
+    def refresh_universe(self, state: PostgresAcquisitionState) -> int:
+        session = self.new_session()
         payload = session.get_json("https://www.sec.gov/files/company_tickers_exchange.json")
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
         catalog_path = (
@@ -300,34 +384,54 @@ class SecAcquisitionRunner:
             self.repository_root / "data" / "universe" / "ai_infra_universe.csv"
         )
         issuers = parse_company_universe(payload, priority_tickers)
-        return state.upsert_issuers(issuers)
+        count = state.upsert_issuers(issuers)
+        state.ensure_scan_years(self.config.target_years)
+        return count
 
     def run_batch(self) -> dict[str, object]:
-        run_id = datetime.now(UTC).strftime("sec-2026-%Y%m%dT%H%M%SZ")
         counts = {"issuers": 0, "filings": 0, "documents": 0, "errors": 0}
-        with AcquisitionState(self.config.state_path) as state:
+        with PostgresAcquisitionState(self.config.database_url) as state:
             stats = state.stats()
             if not stats["issuers"] or self.universe_refresh_due():
                 self.proxy_pool.health()
                 self.refresh_universe(state)
-            state.begin_run(run_id)
+            state.ensure_scan_years(self.config.target_years)
+            filing_year = state.active_backfill_year(self.config.target_years)
+            maintenance = filing_year is None
+            if filing_year is None:
+                filing_year = self.config.target_years[0]
+            mode = "maintenance" if maintenance else "backfill"
+            run_id = datetime.now(UTC).strftime(f"sec-{filing_year}-%Y%m%dT%H%M%SZ")
+            state.begin_run(run_id, filing_year, mode)
             issuers = state.claim_issuers(
                 self.config.issuer_limit,
-                rescan_hours=self.config.rescan_hours,
+                filing_year=filing_year,
+                rescan_hours=self.config.rescan_hours if maintenance else None,
             )
             for issuer in issuers:
                 counts["issuers"] += 1
                 try:
-                    result = self.acquire_issuer(state, issuer)
+                    result = self.acquire_issuer(state, issuer, filing_year)
                     counts["filings"] += result["filings"]
                     counts["documents"] += result["documents"]
-                    state.complete_issuer(issuer.cik)
+                    state.complete_issuer(issuer.cik, filing_year=filing_year)
                 except Exception as exc:
                     counts["errors"] += 1
-                    state.fail_issuer(issuer.cik, f"{type(exc).__name__}: {exc}")
+                    state.fail_issuer(
+                        issuer.cik,
+                        f"{type(exc).__name__}: {exc}",
+                        filing_year=filing_year,
+                    )
             status = "complete" if counts["errors"] == 0 else "partial"
             state.finish_run(run_id, status, counts)
-            return {"run_id": run_id, "status": status, "counts": counts, "state": state.stats()}
+            return {
+                "run_id": run_id,
+                "target_year": filing_year,
+                "mode": mode,
+                "status": status,
+                "counts": counts,
+                "state": state.stats(),
+            }
 
     def universe_refresh_due(self, max_age_hours: int = 24) -> bool:
         catalog_dir = self.config.raw_root / "sec_edgar" / "_catalog"
@@ -337,21 +441,41 @@ class SecAcquisitionRunner:
         newest_mtime = max(path.stat().st_mtime for path in snapshots)
         return time.time() - newest_mtime >= max_age_hours * 3600
 
-    def acquire_issuer(self, state: AcquisitionState, issuer: AcquisitionIssuer) -> dict[str, int]:
-        session = SecProxySession(self.config, self.proxy_pool)
+    def acquire_issuer(
+        self,
+        state: PostgresAcquisitionState,
+        issuer: AcquisitionIssuer,
+        filing_year: int,
+    ) -> dict[str, int]:
+        session = self.new_session()
         session.rotate_proxy()
         payload = session.get_json(f"{SEC_DATA_BASE}/submissions/CIK{issuer.cik}.json")
-        filings = parse_submission_rows(payload, cik=issuer.cik, start_date=self.config.start_date)
+        start_date = f"{filing_year}-01-01"
+        end_date = f"{filing_year}-12-31"
+        filings = parse_submission_rows(
+            payload,
+            cik=issuer.cik,
+            start_date=start_date,
+            end_date=end_date,
+        )
         for history in payload.get("filings", {}).get("files", []):
+            filing_from = str(history.get("filingFrom", ""))
             filing_to = str(history.get("filingTo", ""))
-            if filing_to and filing_to < self.config.start_date:
+            if filing_to and filing_to < start_date:
+                continue
+            if filing_from and filing_from > end_date:
                 continue
             name = str(history.get("name", ""))
             if not name:
                 continue
             historical = session.get_json(f"{SEC_DATA_BASE}/submissions/{name}")
             filings.extend(
-                parse_submission_columns(historical, cik=issuer.cik, start_date=self.config.start_date)
+                parse_submission_columns(
+                    historical,
+                    cik=issuer.cik,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
             )
         unique_filings = {row["accession_number"]: row for row in filings}
         document_count = 0
@@ -361,7 +485,7 @@ class SecAcquisitionRunner:
 
     def acquire_filing(
         self,
-        state: AcquisitionState,
+        state: PostgresAcquisitionState,
         session: SecProxySession,
         filing: dict[str, str],
     ) -> int:

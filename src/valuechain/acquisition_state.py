@@ -36,6 +36,21 @@ CREATE TABLE IF NOT EXISTS issuers (
 CREATE INDEX IF NOT EXISTS idx_issuers_queue
 ON issuers(status, priority, next_attempt_at, scanned_at);
 
+CREATE TABLE IF NOT EXISTS issuer_year_scans (
+    cik TEXT NOT NULL,
+    filing_year INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_attempt_at TEXT,
+    scanned_at TEXT,
+    last_error TEXT,
+    PRIMARY KEY(cik, filing_year),
+    FOREIGN KEY(cik) REFERENCES issuers(cik)
+);
+
+CREATE INDEX IF NOT EXISTS idx_issuer_year_scan_queue
+ON issuer_year_scans(filing_year, status, next_attempt_at, scanned_at);
+
 CREATE TABLE IF NOT EXISTS filings (
     accession_number TEXT PRIMARY KEY,
     cik TEXT NOT NULL,
@@ -122,56 +137,148 @@ class AcquisitionState:
         self.connection.commit()
         return len(rows)
 
-    def claim_issuers(self, limit: int, rescan_hours: int = 24) -> list[AcquisitionIssuer]:
+    def ensure_scan_years(self, years: Iterable[int]) -> None:
+        for year in years:
+            if year == 2026:
+                self.connection.execute(
+                    """
+                    INSERT INTO issuer_year_scans(
+                        cik, filing_year, status, attempts, next_attempt_at, scanned_at, last_error
+                    )
+                    SELECT cik, 2026, status, attempts, next_attempt_at, scanned_at, last_error
+                    FROM issuers
+                    WHERE true
+                    ON CONFLICT(cik, filing_year) DO NOTHING
+                    """
+                )
+            else:
+                self.connection.execute(
+                    """
+                    INSERT INTO issuer_year_scans(cik, filing_year, status)
+                    SELECT cik, ?, 'pending' FROM issuers
+                    WHERE true
+                    ON CONFLICT(cik, filing_year) DO NOTHING
+                    """,
+                    (year,),
+                )
+        self.connection.commit()
+
+    def claim_issuers(
+        self,
+        limit: int,
+        filing_year: int = 2026,
+        rescan_hours: int | None = None,
+    ) -> list[AcquisitionIssuer]:
         now = utc_now()
         now_text = now.isoformat()
-        rescan_before = (now - timedelta(hours=rescan_hours)).isoformat()
+        rescan_before = (
+            (now - timedelta(hours=rescan_hours)).isoformat() if rescan_hours is not None else ""
+        )
         rows = self.connection.execute(
             """
-            SELECT cik, ticker, company_name, exchange, priority
-            FROM issuers
-            WHERE (status IN ('pending', 'retry') AND (next_attempt_at IS NULL OR next_attempt_at <= ?))
-               OR (status = 'complete' AND scanned_at <= ?)
-               OR status = 'running'
+            SELECT i.cik, i.ticker, i.company_name, i.exchange, i.priority
+            FROM issuer_year_scans ys
+            JOIN issuers i ON i.cik = ys.cik
+            WHERE ys.filing_year = ?
+              AND (
+                (ys.status IN ('pending', 'retry') AND (
+                    ys.next_attempt_at IS NULL OR ys.next_attempt_at <= ?
+                ))
+                OR (? IS NOT NULL AND ys.status = 'complete' AND ys.scanned_at <= ?)
+                OR ys.status = 'running'
+              )
             ORDER BY
-                CASE status WHEN 'pending' THEN 0 WHEN 'retry' THEN 1 WHEN 'running' THEN 2 ELSE 3 END,
-                priority,
-                COALESCE(scanned_at, ''),
-                ticker
+                CASE ys.status
+                    WHEN 'pending' THEN 0 WHEN 'retry' THEN 1
+                    WHEN 'running' THEN 2 ELSE 3
+                END,
+                i.priority,
+                COALESCE(ys.scanned_at, ''),
+                i.ticker
             LIMIT ?
             """,
-            (now_text, rescan_before, limit),
+            (filing_year, now_text, rescan_hours, rescan_before, limit),
         ).fetchall()
         issuers = [AcquisitionIssuer(**dict(row)) for row in rows]
         self.connection.executemany(
-            "UPDATE issuers SET status = 'running', attempts = attempts + 1 WHERE cik = ?",
-            [(issuer.cik,) for issuer in issuers],
+            """
+            UPDATE issuer_year_scans
+            SET status = 'running', attempts = attempts + 1
+            WHERE cik = ? AND filing_year = ?
+            """,
+            [(issuer.cik, filing_year) for issuer in issuers],
         )
         self.connection.commit()
         return issuers
 
-    def complete_issuer(self, cik: str) -> None:
+    def complete_issuer(self, cik: str, filing_year: int = 2026) -> None:
         self.connection.execute(
             """
-            UPDATE issuers
+            UPDATE issuer_year_scans
             SET status = 'complete', scanned_at = ?, next_attempt_at = NULL, last_error = NULL
-            WHERE cik = ?
+            WHERE cik = ? AND filing_year = ?
             """,
-            (iso_now(), cik),
+            (iso_now(), cik, filing_year),
         )
+        if filing_year == 2026:
+            self.connection.execute(
+                """
+                UPDATE issuers
+                SET status = 'complete', scanned_at = ?, next_attempt_at = NULL, last_error = NULL
+                WHERE cik = ?
+                """,
+                (iso_now(), cik),
+            )
         self.connection.commit()
 
-    def fail_issuer(self, cik: str, error: str, retry_minutes: int = 30) -> None:
+    def fail_issuer(
+        self,
+        cik: str,
+        error: str,
+        filing_year: int = 2026,
+        retry_minutes: int = 30,
+    ) -> None:
         next_attempt = (utc_now() + timedelta(minutes=retry_minutes)).isoformat()
         self.connection.execute(
             """
-            UPDATE issuers
+            UPDATE issuer_year_scans
             SET status = 'retry', next_attempt_at = ?, last_error = ?
-            WHERE cik = ?
+            WHERE cik = ? AND filing_year = ?
             """,
-            (next_attempt, error[:1000], cik),
+            (next_attempt, error[:1000], cik, filing_year),
         )
+        if filing_year == 2026:
+            self.connection.execute(
+                """
+                UPDATE issuers
+                SET status = 'retry', next_attempt_at = ?, last_error = ?
+                WHERE cik = ?
+                """,
+                (next_attempt, error[:1000], cik),
+            )
         self.connection.commit()
+
+    def year_progress(self, filing_year: int) -> dict[str, int]:
+        rows = self.connection.execute(
+            """
+            SELECT status, COUNT(*) AS count
+            FROM issuer_year_scans
+            WHERE filing_year = ?
+            GROUP BY status ORDER BY status
+            """,
+            (filing_year,),
+        ).fetchall()
+        return {row["status"]: row["count"] for row in rows}
+
+    def active_backfill_year(self, years: Iterable[int]) -> int | None:
+        for year in years:
+            progress = self.year_progress(year)
+            incomplete = sum(
+                count for status, count in progress.items() if status != "complete"
+            )
+            if not progress or incomplete:
+                return year
+        return None
 
     def upsert_filing(self, filing: dict, local_dir: Path, status: str, error: str = "") -> None:
         self.connection.execute(
@@ -236,6 +343,14 @@ class AcquisitionState:
 
     def begin_run(self, run_id: str) -> None:
         self.connection.execute(
+            """
+            UPDATE acquisition_runs
+            SET completed_at = ?, status = 'interrupted'
+            WHERE status = 'running'
+            """,
+            (iso_now(),),
+        )
+        self.connection.execute(
             "INSERT INTO acquisition_runs(run_id, started_at, status) VALUES (?, ?, 'running')",
             (run_id, iso_now()),
         )
@@ -276,10 +391,22 @@ class AcquisitionState:
         latest_run = self.connection.execute(
             "SELECT * FROM acquisition_runs ORDER BY started_at DESC LIMIT 1"
         ).fetchone()
+        year_rows = self.connection.execute(
+            """
+            SELECT filing_year, status, COUNT(*) AS count
+            FROM issuer_year_scans
+            GROUP BY filing_year, status
+            ORDER BY filing_year DESC, status
+            """
+        ).fetchall()
+        years: dict[str, dict[str, int]] = {}
+        for row in year_rows:
+            years.setdefault(str(row["filing_year"]), {})[row["status"]] = row["count"]
         return {
             "issuers": {row["status"]: row["count"] for row in issuer_rows},
             "filings": totals["filings"],
             "documents": totals["documents"],
             "bytes": totals["bytes"],
+            "issuer_years": years,
             "latest_run": dict(latest_run) if latest_run else None,
         }

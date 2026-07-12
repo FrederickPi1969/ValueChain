@@ -3,8 +3,9 @@
 ## Scope
 
 The first scheduled collector inventories the live SEC universe and downloads
-Tier-A filings dated from 2026-01-01. It deliberately does not run parsing,
-relation extraction, embeddings, or LLM calls.
+Tier-A filings in strict year phases: complete the first issuer scan for 2026,
+then begin 2025. It deliberately does not run parsing, relation extraction,
+embeddings, or LLM calls.
 
 Issuer order is:
 
@@ -25,8 +26,11 @@ https://proxy.frederickpi.com/proxy/random/normal
 ```
 
 The worker uses one proxy per issuer, rotates after request failures, has one
-process, and enforces a global SEC rate of one request per second. It never falls
-back to a direct SEC request. Proxy credentials are not logged or persisted.
+active issuer worker, and enforces a global SEC rate of one request per second.
+The request semaphore is hard-capped at four for future bounded parallel work,
+and every request adds a 0.5-second sleep plus up to 0.5 seconds of jitter. It
+never falls back to a direct SEC request. Proxy credentials are not logged or
+persisted.
 
 ## Storage
 
@@ -46,21 +50,32 @@ Files are streamed into `.partial`, flushed, hashed, and atomically renamed.
 Existing non-empty files are treated as cache entries and re-hashed before their
 manifest is rebuilt.
 
-## Checkpoint State
+## Acquisition Metadata
 
-The worker uses this small SQLite database on NVMe:
+PostgreSQL on the Cosmos NVMe is authoritative for acquisition metadata. The
+tables are separate from extraction runs:
 
 ```text
-/home/pi/valuechain-state/acquisition.sqlite3
+acquisition_sources
+acquisition_issuers
+acquisition_issuer_scans
+acquisition_filings
+acquisition_documents
+acquisition_runs
 ```
 
-It is an operational checkpoint, not the final research database. It contains
-issuer queue status, filing/document manifests, retry timing, and batch counts.
-Raw `filing.json` manifests allow a later index to be rebuilt without redownloading
-source bytes.
+Uniqueness on `(source_id, source_filing_id)` and `(source_id, source_url)` makes
+reruns idempotent. Queue claims use row locking with `SKIP LOCKED`, so later
+bounded workers cannot claim the same issuer/year simultaneously. Per-issuer,
+per-year status, retries, hashes, paths, and byte counts remain queryable without
+walking the HDD.
 
-This posture avoids committing prematurely to the final index architecture.
-Likely later layers are:
+The original SQLite checkpoint at
+`/home/pi/valuechain-state/acquisition.sqlite3` is only a migration source for
+the first collected batch. Raw `filing.json` manifests remain the independent
+rebuild path if the metadata database is lost.
+
+This does not commit the project to a final analytics index. Likely later layers are:
 
 ```text
 PostgreSQL on NVMe
@@ -100,15 +115,18 @@ without an interactive SSH session.
 cd /home/pi/ValueChain
 set -a; . ./.env; set +a
 .venv/bin/valuechain-acquire status
+.venv/bin/valuechain-acquire migrate-sqlite
 
 systemctl --user stop valuechain-sec-acquisition.timer
 systemctl --user start valuechain-sec-acquisition.timer
 systemctl --user start valuechain-sec-acquisition.service
 ```
 
-The issuer universe is refreshed from the live SEC endpoint every 24 hours.
-Completed issuers are rescanned after 24 hours so new filings enter the corpus.
-Failed issuers use persistent retry state rather than being silently skipped.
+The issuer universe is refreshed from the live SEC endpoint every 24 hours. The
+2025 phase cannot claim an issuer until every 2026 issuer is complete. After all
+configured historical phases finish, the newest year enters a 24-hour rescan
+cycle so new filings continue to enter the corpus. Failed issuers use persistent
+retry state rather than being silently skipped.
 
 ## Source Management
 
