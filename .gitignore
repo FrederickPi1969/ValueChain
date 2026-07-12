@@ -5,7 +5,7 @@ node_modules/
 frontend/node_modules/
 frontend/dist/
 frontend/public/data/runs.json
-frontend/public/data/runs/
+frontend/public/data/runs
 __pycache__/
 *.py[cod]
 *.egg-info/
