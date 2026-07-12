@@ -290,6 +290,12 @@ network graph. It emphasizes:
 The ontology is intentionally small and editable in `config/ontology.yaml`.
 The source registry is in `config/source_registry.yaml`.
 
+The 2026-first global acquisition audit is tracked separately from extraction:
+
+- `config/filing_sources_2026.yaml` is the ranked machine-readable source queue;
+- `docs/filing_download_plan_2026.md` defines the US-first download and completeness plan;
+- `docs/source_curator_instruction.md` is the source-research assignment and acceptance rubric.
+
 The graph build separates raw extraction from graph-ready evidence. Raw records
 are written to `relation_evidence_raw.jsonl`; schema-aware denoising
 canonicalizes aliases, removes generic placeholder objects that are not graph

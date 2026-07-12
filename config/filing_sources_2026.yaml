@@ -1,0 +1,335 @@
+schema_version: 1
+as_of_date: "2026-07-12"
+
+download_policy:
+  start_date: "2026-01-01"
+  market_order:
+    - US
+    - major_non_us
+    - remaining_markets
+  canonical_source_required: true
+  vendor_only_as_accelerator: true
+  inventory_before_extraction: true
+
+status_definitions:
+  integrated_partial: "Production code exists in ValueChain, but completeness controls are missing."
+  bundle_adapter_candidate: "Adapter exists only in the audited global-company-universe bundle."
+  catalog_only: "Official route is known; no accepted machine acquisition contract exists in ValueChain."
+  credential_required: "Official API exists and an operator-owned credential is required."
+  license_required: "Complete automated acquisition requires a commercial or authority license."
+  policy_blocked: "Public web access exists, but terms prohibit the planned automated database use."
+
+sources:
+  - source_id: sec_edgar
+    rank: 0
+    wave: us_2026
+    jurisdictions: [US]
+    authority: "U.S. Securities and Exchange Commission"
+    official_url: "https://www.sec.gov/edgar/search/"
+    machine_url: "https://data.sec.gov/"
+    access_mode: public_api_and_archive
+    credentials: []
+    repo_status: integrated_partial
+    canonical: true
+    capabilities: [issuer_universe, filing_discovery, historical_index, document_inventory, document_download, structured_facts]
+    missing:
+      - "Full submissions-history pagination beyond filings.recent."
+      - "Daily and quarterly index reconciliation as a completeness denominator."
+      - "Complete-submission .txt and all-attachment inventory/download modes."
+      - "Amendment-aware form normalization and all-form inventory."
+      - "Async downloader with retry, atomic partial files, resume, and persistent job state."
+
+  - source_id: sedar_plus
+    rank: 10
+    wave: major_non_us
+    jurisdictions: [CA]
+    authority: "Canadian Securities Administrators"
+    official_url: "https://www.sedarplus.ca/"
+    access_mode: licensed_or_negotiated
+    credentials: []
+    repo_status: policy_blocked
+    canonical: true
+    capabilities: [issuer_universe, filing_discovery, document_download]
+    missing:
+      - "Licensed database/feed agreement; public-site terms prohibit scraping and database construction."
+      - "Machine-readable issuer denominator and historical document inventory contract."
+
+  - source_id: companies_house
+    rank: 11
+    wave: major_non_us
+    jurisdictions: [GB]
+    authority: "Companies House"
+    official_url: "https://developer-specs.company-information.service.gov.uk/"
+    machine_url: "https://api.company-information.service.gov.uk/"
+    access_mode: api_key
+    credentials: [COMPANIES_HOUSE_API_KEY]
+    repo_status: bundle_adapter_candidate
+    canonical: true
+    capabilities: [entity_universe, filing_discovery, document_download, change_stream]
+    missing:
+      - "Credential and live adapter validation."
+      - "Listed-company mapping; Companies House covers registered companies, not a listed-company universe."
+
+  - source_id: fca_nsm
+    rank: 12
+    wave: major_non_us
+    jurisdictions: [GB]
+    authority: "Financial Conduct Authority"
+    official_url: "https://www.fca.org.uk/markets/primary-markets/regulatory-disclosures/national-storage-mechanism"
+    access_mode: official_search_and_export
+    credentials: []
+    repo_status: catalog_only
+    canonical: true
+    capabilities: [filing_discovery, document_download, regulated_announcements, ixbrl]
+    missing:
+      - "Documented public retrieval API or approved export automation contract."
+      - "Historical denominator across the pre-April-2020 and current NSM systems."
+
+  - source_id: hkexnews
+    rank: 13
+    wave: major_non_us
+    jurisdictions: [HK]
+    authority: "Hong Kong Exchanges and Clearing"
+    official_url: "https://www.hkexnews.hk/"
+    access_mode: official_web
+    credentials: []
+    repo_status: catalog_only
+    canonical: true
+    capabilities: [listed_universe, filing_discovery, document_download]
+    missing:
+      - "Approved machine-query contract for title search and document URLs."
+      - "Stable issuer identifier mapping, pagination, corrections, and delisting coverage."
+
+  - source_id: edinet
+    rank: 14
+    wave: major_non_us
+    jurisdictions: [JP]
+    authority: "Financial Services Agency Japan"
+    official_url: "https://disclosure2.edinet-fsa.go.jp/"
+    machine_url: "https://api.edinet-fsa.go.jp/api/v2/"
+    access_mode: api_key
+    credentials: [EDINET_API_KEY]
+    repo_status: bundle_adapter_candidate
+    canonical: true
+    capabilities: [issuer_codes, filing_discovery, document_download, xbrl, pdf, csv]
+    missing:
+      - "Credential and live 2026 smoke test."
+      - "EDINET-code universe reconciliation against JPX listings."
+
+  - source_id: opendart
+    rank: 15
+    wave: major_non_us
+    jurisdictions: [KR]
+    authority: "Financial Supervisory Service Korea"
+    official_url: "https://opendart.fss.or.kr/"
+    machine_url: "https://opendart.fss.or.kr/api/"
+    access_mode: api_key
+    credentials: [OPENDART_API_KEY]
+    repo_status: bundle_adapter_candidate
+    canonical: true
+    capabilities: [issuer_universe, filing_discovery, original_document_download, xbrl, structured_facts]
+    missing:
+      - "Credential and live 2026 smoke test."
+      - "DART corp-code reconciliation against KRX listed securities."
+
+  - source_id: china_exchange_disclosures
+    rank: 16
+    wave: major_non_us
+    jurisdictions: [CN]
+    authority: "SSE, SZSE, Beijing Stock Exchange, and designated disclosure portals"
+    official_url: "https://www.sse.com.cn/disclosure/listedinfo/announcement/"
+    access_mode: official_web_and_semi_public_endpoints
+    credentials: []
+    repo_status: catalog_only
+    canonical: true
+    capabilities: [listed_universe, filing_discovery, document_download]
+    missing:
+      - "Separate approved contracts for SSE, SZSE, BSE, and CNINFO."
+      - "Stable endpoint, anti-bot, terms, pagination, correction, and delisting research."
+      - "A-share security-to-legal-entity mapping and Chinese document taxonomy."
+
+  - source_id: twse_mops
+    rank: 17
+    wave: major_non_us
+    jurisdictions: [TW]
+    authority: "Taiwan Stock Exchange and Taipei Exchange"
+    official_url: "https://mops.twse.com.tw/mops/"
+    machine_url: "https://openapi.twse.com.tw/v1/"
+    access_mode: mixed_public_api_and_licensed_push
+    credentials: []
+    repo_status: catalog_only
+    canonical: true
+    capabilities: [listed_universe, structured_facts, filing_discovery, document_download, material_events]
+    missing:
+      - "Decision between public MOPS acquisition and licensed Push Server packages."
+      - "Complete document-feed entitlement, XBRL package, and historical coverage terms."
+
+  - source_id: cvm_brazil
+    rank: 18
+    wave: major_non_us
+    jurisdictions: [BR]
+    authority: "Comissao de Valores Mobiliarios"
+    official_url: "https://dados.cvm.gov.br/"
+    access_mode: public_bulk
+    credentials: []
+    repo_status: bundle_adapter_candidate
+    canonical: true
+    capabilities: [issuer_universe, historical_bulk, filing_discovery, document_download, structured_facts]
+    missing:
+      - "Integration into ValueChain and live 2026 DFP/ITR/FRE/IPE inventory validation."
+      - "CVM issuer-code/CNPJ reconciliation against B3 listings."
+
+  - source_id: asx_comnews
+    rank: 19
+    wave: major_non_us
+    jurisdictions: [AU]
+    authority: "Australian Securities Exchange"
+    official_url: "https://www.asx.com.au/connectivity-and-data/information-services/company-news"
+    access_mode: commercial_feed
+    credentials: []
+    repo_status: license_required
+    canonical: true
+    capabilities: [listed_universe, complete_announcements, document_download, metadata_feed]
+    missing:
+      - "ComNews or approved vendor entitlement, pricing, redistribution, and historical archive terms."
+
+  - source_id: sgx_news
+    rank: 20
+    wave: major_non_us
+    jurisdictions: [SG]
+    authority: "Singapore Exchange"
+    official_url: "https://www.sgx.com/data-connectivity/news-corporate-actions"
+    access_mode: commercial_feed
+    credentials: []
+    repo_status: license_required
+    canonical: true
+    capabilities: [listed_universe, complete_announcements, document_download, corporate_actions]
+    missing:
+      - "SGXNews XML entitlement, pricing, retention, redistribution, and history terms."
+
+  - source_id: india_exchange_filings
+    rank: 21
+    wave: major_non_us
+    jurisdictions: [IN]
+    authority: "National Stock Exchange of India and BSE India"
+    official_url: "https://www.nseindia.com/companies-listing/corporate-filings-announcements"
+    access_mode: official_web
+    credentials: []
+    repo_status: catalog_only
+    canonical: true
+    capabilities: [listed_universe, filing_discovery, document_download, ixbrl]
+    missing:
+      - "Approved acquisition contracts for both NSE and BSE."
+      - "Cross-exchange deduplication and SEBI/MCA identifier mapping."
+
+  - source_id: eu_oam_esef
+    rank: 22
+    wave: major_non_us
+    jurisdictions: [EEA]
+    authority: "National Officially Appointed Mechanisms and ESMA"
+    official_url: "https://www.esma.europa.eu/esap"
+    fallback_url: "https://filings.xbrl.org/"
+    access_mode: fragmented_official_sources
+    credentials: []
+    repo_status: catalog_only
+    canonical: true
+    capabilities: [filing_discovery, document_download, esef, ixbrl]
+    missing:
+      - "Country-by-country OAM contracts and completeness denominators."
+      - "ESAP production access and historical-scope validation."
+      - "Germany and Ireland official ESEF acquisition routes."
+    caveat: "filings.xbrl.org is a useful non-canonical fallback and explicitly does not claim completeness."
+
+  - source_id: six_swiss_exchange
+    rank: 30
+    wave: remaining_markets
+    jurisdictions: [CH]
+    authority: "SIX Swiss Exchange"
+    official_url: "https://www.six-group.com/en/products-services/the-swiss-stock-exchange/market-data.html"
+    access_mode: commercial_feed
+    credentials: []
+    repo_status: license_required
+    canonical: true
+    capabilities: [listed_universe, filing_discovery, document_download]
+    missing: ["Machine-feed license, historical coverage, and retention terms."]
+
+  - source_id: jse_sens
+    rank: 31
+    wave: remaining_markets
+    jurisdictions: [ZA]
+    authority: "Johannesburg Stock Exchange"
+    official_url: "https://www.jse.co.za/services/market-data/market-data-products/sens"
+    access_mode: official_web_or_feed
+    credentials: []
+    repo_status: catalog_only
+    canonical: true
+    capabilities: [listed_universe, announcements, document_download]
+    missing: ["Feed/public access contract, history, and issuer denominator."]
+
+  - source_id: saudi_exchange
+    rank: 32
+    wave: remaining_markets
+    jurisdictions: [SA]
+    authority: "Saudi Exchange"
+    official_url: "https://www.saudiexchange.sa/"
+    access_mode: official_web
+    credentials: []
+    repo_status: catalog_only
+    canonical: true
+    capabilities: [listed_universe, filing_discovery, document_download]
+    missing: ["Approved endpoint, Arabic/English document pairing, history, and terms."]
+
+  - source_id: israel_magna
+    rank: 33
+    wave: remaining_markets
+    jurisdictions: [IL]
+    authority: "Israel Securities Authority"
+    official_url: "https://www.magna.isa.gov.il/"
+    access_mode: official_web
+    credentials: []
+    repo_status: catalog_only
+    canonical: true
+    capabilities: [issuer_universe, filing_discovery, document_download]
+    missing: ["Approved machine endpoint, Hebrew taxonomy, history, and issuer mapping."]
+
+  - source_id: turkey_kap
+    rank: 34
+    wave: remaining_markets
+    jurisdictions: [TR]
+    authority: "Public Disclosure Platform Turkey"
+    official_url: "https://www.kap.org.tr/en/"
+    access_mode: official_web
+    credentials: []
+    repo_status: catalog_only
+    canonical: true
+    capabilities: [issuer_universe, filing_discovery, document_download]
+    missing: ["Approved machine endpoint, Turkish/English pairing, history, and taxonomy."]
+
+  - source_id: issuer_ir_fallback
+    rank: 90
+    wave: fallback
+    jurisdictions: [GLOBAL]
+    authority: "Issuer investor-relations websites"
+    official_url: ""
+    access_mode: direct_issuer_documents
+    credentials: []
+    repo_status: catalog_only
+    canonical: false
+    capabilities: [document_download]
+    missing:
+      - "Per-domain terms, robots, URL templates, correction handling, and completeness disclaimer."
+
+  - source_id: earnings_call_transcripts
+    rank: 91
+    wave: licensed_enrichment
+    jurisdictions: [GLOBAL]
+    authority: "No universal regulator source"
+    official_url: ""
+    access_mode: licensed_vendor_required
+    credentials: []
+    repo_status: license_required
+    canonical: false
+    capabilities: [spoken_transcript, prepared_remarks, question_and_answer]
+    missing:
+      - "Vendor selection and rights for storage, NLP processing, derived data, and redistribution."
+      - "Issuer/event identifiers and correction/version semantics."
