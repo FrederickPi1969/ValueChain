@@ -110,8 +110,8 @@ class PostgresAcquisitionState:
                   )
                 ORDER BY
                   CASE ys.status
-                    WHEN 'pending' THEN 0 WHEN 'retry' THEN 1
-                    WHEN 'running' THEN 2 ELSE 3
+                    WHEN 'running' THEN 0 WHEN 'pending' THEN 1
+                    WHEN 'retry' THEN 2 ELSE 3
                   END,
                   i.priority,
                   ys.scanned_at NULLS FIRST,

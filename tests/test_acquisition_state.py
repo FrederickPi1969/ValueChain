@@ -37,7 +37,9 @@ def test_acquisition_state_claims_priority_and_persists_completion(tmp_path) -> 
 
 def test_running_issuer_is_recovered_after_interrupted_process(tmp_path) -> None:
     with AcquisitionState(tmp_path / "state.sqlite3") as state:
-        state.upsert_issuers([issuer("0000000001", "FIRST", 0)])
+        state.upsert_issuers(
+            [issuer("0000000001", "FIRST", 0), issuer("0000000002", "SECOND", 1)]
+        )
         state.ensure_scan_years((2026,))
-        assert state.claim_issuers(limit=1)
+        assert [row.ticker for row in state.claim_issuers(limit=1)] == ["FIRST"]
         assert [row.ticker for row in state.claim_issuers(limit=1)] == ["FIRST"]
