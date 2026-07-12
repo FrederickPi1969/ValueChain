@@ -384,7 +384,7 @@ class SecAcquisitionRunner:
             ),
             (
                 "complete_submission",
-                f"{filing['archive_url']}{filing['accession_no_dashes']}.txt",
+                f"{filing['archive_url']}{filing['accession_number']}.txt",
                 local_dir / "complete_submission.txt",
                 "text/plain,*/*",
             ),
