@@ -74,7 +74,7 @@ must not multiply the configured request rate.
 ```bash
 docker compose up -d postgres api
 docker compose ps
-curl http://100.102.250.107:18018/health
+curl http://100.102.250.107:18018/api/health
 ```
 
 The database is authoritative for manifests, job state, provenance, and resolver
