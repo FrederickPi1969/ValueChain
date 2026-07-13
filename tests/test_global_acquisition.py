@@ -27,6 +27,7 @@ def test_global_acquisition_caps_async_workers_at_four(monkeypatch) -> None:
     assert config.worker_count == 4
     assert config.cninfo_issuer_limit == 16
     assert config.esef_filing_limit == 16
+    assert config.cninfo_rescan_hours == 24
 
 
 def test_global_acquisition_requires_proxy() -> None:

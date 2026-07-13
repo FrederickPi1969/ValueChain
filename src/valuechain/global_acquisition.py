@@ -47,6 +47,7 @@ class GlobalAcquisitionConfig:
     worker_count: int = 4
     cninfo_requests_per_second: float = 2.0
     esef_requests_per_second: float = 4.0
+    cninfo_rescan_hours: int = 24
     discovery_refresh_hours: int = 24
 
     @classmethod
@@ -85,6 +86,9 @@ class GlobalAcquisitionConfig:
             esef_requests_per_second=max(
                 0.25,
                 float(os.getenv("VALUECHAIN_ESEF_REQUESTS_PER_SECOND", "4.0")),
+            ),
+            cninfo_rescan_hours=max(
+                1, int(os.getenv("VALUECHAIN_CNINFO_RESCAN_HOURS", "24"))
             ),
             discovery_refresh_hours=max(
                 1, int(os.getenv("VALUECHAIN_GLOBAL_DISCOVERY_REFRESH_HOURS", "24"))

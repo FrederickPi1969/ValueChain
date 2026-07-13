@@ -158,6 +158,10 @@ at an initial shared rate of four requests per second, and retains the original
 report package, Inline XBRL report, and xBRL-JSON representation. Both queues
 process 2026 before 2025 and retain retry state in PostgreSQL.
 
+After the CNINFO historical phases finish, the newest configured year enters a
+24-hour issuer rescan cycle. ESEF refreshes its filing discovery checkpoints
+every 24 hours, so both lanes continue ingesting newly published disclosures.
+
 GLEIF has no filing year. It refreshes the latest LEI Level 1 (`lei2`), Level 2
 relationship (`rr`), and reporting-exception (`repex`) Golden Copy ZIPs at most
 once per 24 hours. The scheduler only downloads immutable raw files and

@@ -73,16 +73,21 @@ class AsyncGlobalAcquisitionRunner:
         ):
             state.ensure_source(self.definition)
             queue_state.ensure_scan_years(self.config.target_years)
-            year = (
-                queue_state.active_backfill_year(self.config.target_years)
-                or self.config.target_years[0]
-            )
+            year = queue_state.active_backfill_year(self.config.target_years)
+            maintenance = year is None
+            if year is None:
+                year = self.config.target_years[0]
+            mode = "maintenance" if maintenance else "backfill"
             run_id = datetime.now(UTC).strftime(
                 f"cninfo-{year}-%Y%m%dT%H%M%S.%fZ"
             )
-            queue_state.begin_run(run_id, year, "backfill")
+            queue_state.begin_run(run_id, year, mode)
             issuers = queue_state.claim_issuers(
-                self.config.cninfo_issuer_limit, filing_year=year
+                self.config.cninfo_issuer_limit,
+                filing_year=year,
+                rescan_hours=(
+                    self.config.cninfo_rescan_hours if maintenance else None
+                ),
             )
 
         queue: asyncio.Queue[AcquisitionIssuer] = asyncio.Queue()
@@ -108,6 +113,7 @@ class AsyncGlobalAcquisitionRunner:
         return {
             "source_id": CNINFO_SOURCE,
             "target_year": year,
+            "mode": mode,
             "status": status,
             "counts": counts,
             "worker_count": worker_count,
