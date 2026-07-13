@@ -1,14 +1,19 @@
 [Unit]
-Description=ValueChain low-rate CNINFO financial-report acquisition batch
+Description=ValueChain asynchronous CNINFO financial-report acquisition worker
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=oneshot
+Type=simple
 WorkingDirectory=/home/pi/ValueChain
 EnvironmentFile=/home/pi/ValueChain/.env
-ExecStart=/home/pi/ValueChain/.venv/bin/valuechain-global-acquire run-batch --source cninfo
-Nice=10
-IOSchedulingClass=idle
-IOSchedulingPriority=7
-TimeoutStartSec=30min
+ExecStart=/home/pi/ValueChain/.venv/bin/valuechain-global-acquire run-worker --source cninfo
+Restart=on-failure
+RestartSec=15s
+Nice=5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+TimeoutStopSec=2min
+
+[Install]
+WantedBy=default.target

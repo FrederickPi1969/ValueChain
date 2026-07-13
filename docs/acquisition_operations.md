@@ -25,12 +25,12 @@ All SEC requests use a normal proxy obtained from:
 https://proxy.frederickpi.com/proxy/random/normal
 ```
 
-The worker uses one proxy per issuer, rotates after request failures, has one
-active issuer worker, and enforces a global SEC rate of one request per second.
-The request semaphore is hard-capped at four for future bounded parallel work,
-and every request adds a 0.5-second sleep plus up to 0.5 seconds of jitter. It
-never falls back to a direct SEC request. Proxy credentials are not logged or
-persisted.
+The asynchronous worker pool is hard-capped at four workers. Each worker owns
+its proxy and HTTP session, while all workers share one adaptive SEC rate limiter
+that starts at four requests per second. HTTP 429 and retryable 5xx responses
+reduce the shared rate; sustained successful requests gradually restore it.
+The worker rotates proxies after request failures and never falls back to a
+direct SEC request. Proxy credentials are not logged or persisted.
 
 ## Storage
 
@@ -47,8 +47,9 @@ Raw bytes are authoritative and live on the Cosmos HDD:
 ```
 
 Files are streamed into `.partial`, flushed, hashed, and atomically renamed.
-Existing non-empty files are treated as cache entries and re-hashed before their
-manifest is rebuilt.
+Interrupted downloads retain the partial file and use HTTP Range requests when
+the source supports them. Existing non-empty final files are treated as cache
+entries and re-hashed before their manifest is rebuilt.
 
 ## Acquisition Metadata
 
@@ -96,18 +97,19 @@ HDD. Snapshots and rebuildable index exports may be stored there.
 
 ## Scheduler
 
-Cosmos uses a user-level systemd timer. Each service invocation processes a
-bounded issuer batch; systemd never overlaps two invocations of the same unit.
+SEC, CNINFO, and ESEF are long-running user-level systemd services. A worker
+claims 16 records at a time, processes up to four concurrently, waits one second
+between non-empty batches, and uses a longer idle wait only when no work is due.
+Systemd restarts a worker after an unhandled failure. GLEIF remains timer-based
+because its three Golden Copy objects refresh only once per day.
 
 ```bash
-systemctl --user status valuechain-sec-acquisition.timer
-systemctl --user list-timers valuechain-sec-acquisition.timer
+systemctl --user status valuechain-sec-acquisition.service
 journalctl --user -u valuechain-sec-acquisition.service -f
 ```
 
-The timer starts two minutes after boot and schedules the next batch two minutes
-after the prior batch exits. User lingering is enabled on Cosmos, so it continues
-without an interactive SSH session.
+User lingering is enabled on Cosmos, so workers continue without an interactive
+SSH session.
 
 ## Status and Control
 
@@ -117,9 +119,9 @@ set -a; . ./.env; set +a
 .venv/bin/valuechain-acquire status
 .venv/bin/valuechain-acquire migrate-sqlite
 
-systemctl --user stop valuechain-sec-acquisition.timer
-systemctl --user start valuechain-sec-acquisition.timer
-systemctl --user start valuechain-sec-acquisition.service
+systemctl --user restart valuechain-sec-acquisition.service
+systemctl --user restart valuechain-cninfo-acquisition.service
+systemctl --user restart valuechain-esef-acquisition.service
 ```
 
 The issuer universe is refreshed from the live SEC endpoint every 24 hours. The
@@ -137,22 +139,24 @@ in `docs/source_curator_instruction.md` before a source-specific worker is added
 
 ## Parallel Global Lanes
 
-CNINFO, priority-Europe ESEF, and GLEIF run as separate low-rate user services.
-They do not share SEC's request semaphore or rate budget:
+CNINFO, priority-Europe ESEF, and GLEIF run as separate user services. They do
+not share SEC's worker pool or rate budget:
 
 ```bash
-systemctl --user status valuechain-cninfo-acquisition.timer
-systemctl --user status valuechain-esef-acquisition.timer
+systemctl --user status valuechain-cninfo-acquisition.service
+systemctl --user status valuechain-esef-acquisition.service
 systemctl --user status valuechain-gleif-acquisition.timer
 
 .venv/bin/valuechain-global-acquire status
 ```
 
-CNINFO processes two source-local issuers per invocation and downloads full
+CNINFO claims 16 source-local issuers per batch, processes four concurrently at
+an initial shared rate of two requests per second, and downloads full
 annual, semiannual, first-quarter, and third-quarter reports while excluding
-summary-only PDFs. Priority ESEF discovers DE/FR/IT/ES/NL filings and retains
-the original report package, Inline XBRL report, and xBRL-JSON representation.
-Both queues process 2026 before 2025 and retain retry state in PostgreSQL.
+summary-only PDFs. Priority ESEF claims 16 filings, processes four concurrently
+at an initial shared rate of four requests per second, and retains the original
+report package, Inline XBRL report, and xBRL-JSON representation. Both queues
+process 2026 before 2025 and retain retry state in PostgreSQL.
 
 GLEIF has no filing year. It refreshes the latest LEI Level 1 (`lei2`), Level 2
 relationship (`rr`), and reporting-exception (`repex`) Golden Copy ZIPs at most

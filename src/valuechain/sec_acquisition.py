@@ -46,10 +46,10 @@ class AcquisitionConfig:
     database_url: str
     proxy_pool_url: str
     sec_user_agent: str
-    requests_per_second: float = 1.0
+    requests_per_second: float = 4.0
     request_timeout_seconds: int = 60
     request_retries: int = 5
-    issuer_limit: int = 3
+    issuer_limit: int = 16
     rescan_hours: int = 24
     target_years: tuple[int, ...] = (2026, 2025)
     request_concurrency: int = 4
@@ -82,7 +82,10 @@ class AcquisitionConfig:
                 "VALUECHAIN_SEC_USER_AGENT",
                 "FrederickPi ValueChain/0.1 contact=frederickpi1969@gmail.com",
             ),
-            requests_per_second=float(os.getenv("VALUECHAIN_ACQUISITION_SEC_RPS", "1.0")),
+            requests_per_second=min(
+                8.0,
+                max(0.25, float(os.getenv("VALUECHAIN_ACQUISITION_SEC_RPS", "4.0"))),
+            ),
             request_timeout_seconds=int(
                 os.getenv("VALUECHAIN_ACQUISITION_TIMEOUT_SECONDS", "60")
             ),
@@ -90,7 +93,9 @@ class AcquisitionConfig:
                 5,
                 max(0, int(os.getenv("VALUECHAIN_ACQUISITION_RETRIES", "5"))),
             ),
-            issuer_limit=int(os.getenv("VALUECHAIN_ACQUISITION_ISSUER_LIMIT", "3")),
+            issuer_limit=max(
+                1, int(os.getenv("VALUECHAIN_ACQUISITION_ISSUER_LIMIT", "16"))
+            ),
             rescan_hours=int(os.getenv("VALUECHAIN_ACQUISITION_RESCAN_HOURS", "24")),
             target_years=parse_target_years(
                 os.getenv("VALUECHAIN_ACQUISITION_YEARS", "2026,2025")

@@ -42,8 +42,11 @@ class GlobalAcquisitionConfig:
     raw_root: Path
     database_url: str
     target_years: tuple[int, ...] = (2026, 2025)
-    cninfo_issuer_limit: int = 2
-    esef_filing_limit: int = 2
+    cninfo_issuer_limit: int = 16
+    esef_filing_limit: int = 16
+    worker_count: int = 4
+    cninfo_requests_per_second: float = 2.0
+    esef_requests_per_second: float = 4.0
     discovery_refresh_hours: int = 24
 
     @classmethod
@@ -66,10 +69,22 @@ class GlobalAcquisitionConfig:
                 os.getenv("VALUECHAIN_GLOBAL_ACQUISITION_YEARS", "2026,2025")
             ),
             cninfo_issuer_limit=max(
-                1, int(os.getenv("VALUECHAIN_CNINFO_ISSUER_LIMIT", "2"))
+                1, int(os.getenv("VALUECHAIN_CNINFO_ISSUER_LIMIT", "16"))
             ),
             esef_filing_limit=max(
-                1, int(os.getenv("VALUECHAIN_ESEF_FILING_LIMIT", "2"))
+                1, int(os.getenv("VALUECHAIN_ESEF_FILING_LIMIT", "16"))
+            ),
+            worker_count=min(
+                4,
+                max(1, int(os.getenv("VALUECHAIN_GLOBAL_CONCURRENCY", "4"))),
+            ),
+            cninfo_requests_per_second=max(
+                0.25,
+                float(os.getenv("VALUECHAIN_CNINFO_REQUESTS_PER_SECOND", "2.0")),
+            ),
+            esef_requests_per_second=max(
+                0.25,
+                float(os.getenv("VALUECHAIN_ESEF_REQUESTS_PER_SECOND", "4.0")),
             ),
             discovery_refresh_hours=max(
                 1, int(os.getenv("VALUECHAIN_GLOBAL_DISCOVERY_REFRESH_HOURS", "24"))

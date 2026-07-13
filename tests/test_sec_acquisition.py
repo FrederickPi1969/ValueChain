@@ -80,6 +80,16 @@ def test_environment_caps_request_concurrency_at_four(monkeypatch) -> None:
     assert AcquisitionConfig.from_env().request_concurrency == 4
 
 
+def test_async_backfill_defaults_feed_four_workers(monkeypatch) -> None:
+    monkeypatch.delenv("VALUECHAIN_ACQUISITION_ISSUER_LIMIT", raising=False)
+    monkeypatch.delenv("VALUECHAIN_ACQUISITION_SEC_RPS", raising=False)
+
+    config = AcquisitionConfig.from_env()
+
+    assert config.issuer_limit == 16
+    assert config.requests_per_second == 4.0
+
+
 def test_environment_caps_request_retries_at_five(monkeypatch) -> None:
     monkeypatch.setenv("VALUECHAIN_ACQUISITION_RETRIES", "20")
 

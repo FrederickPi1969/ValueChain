@@ -20,11 +20,17 @@ def utc_now() -> datetime:
 
 
 class PostgresAcquisitionState:
-    def __init__(self, database_url: str, source_id: str = SOURCE_ID) -> None:
+    def __init__(
+        self,
+        database_url: str,
+        source_id: str = SOURCE_ID,
+        ensure_schema: bool = True,
+    ) -> None:
         self.database_url = database_url
         self.source_id = source_id
         self.connection = psycopg.connect(database_url, row_factory=dict_row)
-        ensure_acquisition_schema(self.connection)
+        if ensure_schema:
+            ensure_acquisition_schema(self.connection)
 
     def close(self) -> None:
         self.connection.close()

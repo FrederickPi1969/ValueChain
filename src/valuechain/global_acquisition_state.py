@@ -16,10 +16,16 @@ from valuechain.acquisition_schema import ensure_acquisition_schema
 class GlobalSourceAcquisitionState:
     """PostgreSQL queue and provenance state for non-SEC source downloaders."""
 
-    def __init__(self, database_url: str, source_id: str) -> None:
+    def __init__(
+        self,
+        database_url: str,
+        source_id: str,
+        ensure_schema: bool = True,
+    ) -> None:
         self.source_id = source_id
         self.connection = psycopg.connect(database_url, row_factory=dict_row)
-        ensure_acquisition_schema(self.connection)
+        if ensure_schema:
+            ensure_acquisition_schema(self.connection)
 
     def close(self) -> None:
         self.connection.close()
@@ -236,6 +242,19 @@ class GlobalSourceAcquisitionState:
                         [(self.source_id, row["source_filing_id"]) for row in rows],
                     )
         return [dict(row) for row in rows]
+
+    def recover_downloading_filings(self, error: str) -> int:
+        """Return filings left in downloading state by an interrupted worker to retry."""
+        cursor = self.connection.execute(
+            """
+            UPDATE acquisition_filings
+            SET status = 'retry', last_error = %s, next_attempt_at = now()
+            WHERE source_id = %s AND status = 'downloading'
+            """,
+            (error[:1000], self.source_id),
+        )
+        self.connection.commit()
+        return cursor.rowcount
 
     def complete_filing(self, filing_id: str) -> None:
         self.connection.execute(

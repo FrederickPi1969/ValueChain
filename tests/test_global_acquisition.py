@@ -19,6 +19,16 @@ def test_global_acquisition_config_preserves_year_priority(monkeypatch) -> None:
     assert config.target_years == (2026, 2025)
 
 
+def test_global_acquisition_caps_async_workers_at_four(monkeypatch) -> None:
+    monkeypatch.setenv("VALUECHAIN_GLOBAL_CONCURRENCY", "20")
+
+    config = GlobalAcquisitionConfig.from_env()
+
+    assert config.worker_count == 4
+    assert config.cninfo_issuer_limit == 16
+    assert config.esef_filing_limit == 16
+
+
 def test_global_acquisition_requires_proxy() -> None:
     settings = Settings(_env_file=None, proxy_pool_url=None)
 
