@@ -279,14 +279,16 @@ def sync_universe(
     entities = read_entity_csv(input_csv, source_id=source)
     if not entities:
         raise typer.BadParameter("The normalized universe CSV contains zero valid entity rows")
+    definition = _source_definition(source)
+    snapshot_source_url = source_url or str(definition.official_url)
     with GlobalUniverseStore(_database_url(database_url)) as store:
-        store.upsert_source_definition(_source_definition(source))
+        store.upsert_source_definition(definition)
         imported = store.upsert_entities(entities, priority=priority)
         digest = store.record_snapshot(
             source,
             input_csv,
             imported,
-            source_url=source_url,
+            source_url=snapshot_source_url,
             metadata={"import_kind": "normalized_entity_csv"},
         )
         counts = store.source_counts()
@@ -295,6 +297,7 @@ def sync_universe(
             "source_id": source,
             "input_csv": str(input_csv),
             "rows_imported": imported,
+            "source_url": snapshot_source_url,
             "sha256": digest,
             "source_counts": counts,
         },
