@@ -48,7 +48,7 @@ class AcquisitionConfig:
     sec_user_agent: str
     requests_per_second: float = 1.0
     request_timeout_seconds: int = 60
-    request_retries: int = 3
+    request_retries: int = 5
     issuer_limit: int = 3
     rescan_hours: int = 24
     target_years: tuple[int, ...] = (2026, 2025)
@@ -86,7 +86,10 @@ class AcquisitionConfig:
             request_timeout_seconds=int(
                 os.getenv("VALUECHAIN_ACQUISITION_TIMEOUT_SECONDS", "60")
             ),
-            request_retries=int(os.getenv("VALUECHAIN_ACQUISITION_RETRIES", "3")),
+            request_retries=min(
+                5,
+                max(0, int(os.getenv("VALUECHAIN_ACQUISITION_RETRIES", "5"))),
+            ),
             issuer_limit=int(os.getenv("VALUECHAIN_ACQUISITION_ISSUER_LIMIT", "3")),
             rescan_hours=int(os.getenv("VALUECHAIN_ACQUISITION_RESCAN_HOURS", "24")),
             target_years=parse_target_years(
@@ -130,7 +133,7 @@ class SecProxySession:
 
     def get(self, url: str, accept: str, stream: bool = False) -> requests.Response:
         last_error: Exception | None = None
-        for attempt in range(1, self.config.request_retries + 1):
+        for attempt in range(self.config.request_retries + 1):
             if self.proxy is None:
                 self.rotate_proxy()
             proxy_url = self.proxy.url
@@ -160,8 +163,10 @@ class SecProxySession:
                 return response
             except requests.RequestException as exc:
                 last_error = exc
+                if attempt >= self.config.request_retries:
+                    break
                 self.rotate_proxy()
-                time.sleep(min(2**attempt, 8))
+                time.sleep(min(2 ** (attempt + 1), 8))
         raise RuntimeError(f"SEC request failed after proxy retries: {type(last_error).__name__}")
 
     def get_json(self, url: str) -> dict[str, Any]:

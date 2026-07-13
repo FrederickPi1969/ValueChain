@@ -1,10 +1,13 @@
 import hashlib
+from dataclasses import replace
 
 import pytest
+import requests
 
 from valuechain.sec_acquisition import (
     AcquisitionConfig,
     SecAcquisitionRunner,
+    SecProxySession,
     download_atomic,
     parse_company_universe,
     parse_submission_columns,
@@ -75,6 +78,44 @@ def test_environment_caps_request_concurrency_at_four(monkeypatch) -> None:
     monkeypatch.setenv("VALUECHAIN_ACQUISITION_CONCURRENCY", "20")
 
     assert AcquisitionConfig.from_env().request_concurrency == 4
+
+
+def test_environment_caps_request_retries_at_five(monkeypatch) -> None:
+    monkeypatch.setenv("VALUECHAIN_ACQUISITION_RETRIES", "20")
+
+    assert AcquisitionConfig.from_env().request_retries == 5
+
+
+def test_sec_session_makes_initial_attempt_plus_five_retries(monkeypatch) -> None:
+    class Endpoint:
+        url = "http://proxy.example:8080"
+
+    class Pool:
+        def random_normal(self) -> Endpoint:
+            return Endpoint()
+
+    class FailingSession:
+        calls = 0
+
+        def get(self, *_args, **_kwargs):
+            self.calls += 1
+            raise requests.ConnectionError("temporary failure")
+
+    config = replace(
+        AcquisitionConfig.from_env(),
+        request_retries=5,
+        request_sleep_seconds=0,
+        request_jitter_seconds=0,
+    )
+    session = SecProxySession(config, Pool())
+    failing = FailingSession()
+    session.session = failing
+    monkeypatch.setattr("valuechain.sec_acquisition.time.sleep", lambda _seconds: None)
+
+    with pytest.raises(RuntimeError, match="after proxy retries"):
+        session.get("https://example.test", accept="application/json")
+
+    assert failing.calls == 6
 
 
 class FakeResponse:

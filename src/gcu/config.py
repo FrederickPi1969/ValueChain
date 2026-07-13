@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     )
     raw_dir: Path = Field(default=Path("data/raw"), validation_alias="GCU_RAW_DIR")
     http_timeout_seconds: float = Field(default=60.0, validation_alias="GCU_HTTP_TIMEOUT_SECONDS")
-    http_max_retries: int = Field(default=4, validation_alias="GCU_HTTP_MAX_RETRIES")
+    http_max_retries: int = Field(default=5, validation_alias="GCU_HTTP_MAX_RETRIES")
     default_requests_per_second: float = Field(
         default=1.0, validation_alias="GCU_DEFAULT_REQUESTS_PER_SECOND"
     )
@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     def nonnegative_retries(cls, value: int) -> int:
         if value < 0:
             raise ValueError("GCU_HTTP_MAX_RETRIES must be non-negative")
-        return value
+        return min(value, 5)
 
     def credential(self, environment_variable: str | None) -> str | None:
         if not environment_variable:
