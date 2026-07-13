@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import os
 import random
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -118,6 +119,11 @@ def describe_http_error(error: BaseException | None) -> str:
     if isinstance(error, httpx.HTTPStatusError):
         return f"HTTPStatusError(status={error.response.status_code})"
     return type(error).__name__
+
+
+def unsatisfied_range_total(content_range: str) -> int | None:
+    match = re.fullmatch(r"bytes\s+\*/(\d+)", content_range.strip(), re.IGNORECASE)
+    return int(match.group(1)) if match else None
 
 
 class AsyncHttpClient:
@@ -325,7 +331,7 @@ class AsyncHttpClient:
 
         partial = output_path.with_name(f"{output_path.name}.partial")
         last_error: BaseException | None = None
-        initial_partial_size = partial.stat().st_size if partial.exists() else 0
+        successful_resume_from = 0
         for attempt in range(self.max_retries + 1):
             response: httpx.Response | None = None
             resume_from = partial.stat().st_size if partial.exists() else 0
@@ -338,56 +344,88 @@ class AsyncHttpClient:
                 async with self.client.stream(
                     "GET", url, headers=request_headers or None
                 ) as response:
-                    if response.status_code in RETRYABLE_STATUS_CODES:
-                        await self.limiter.throttled()
+                    if response.status_code == 416 and resume_from:
+                        remote_size = unsatisfied_range_total(
+                            response.headers.get("Content-Range", "")
+                        )
+                        if remote_size == resume_from:
+                            first_bytes = await asyncio.to_thread(read_prefix, partial)
+                            media_type = expected_media_type or ""
+                            payload = DownloadedPayload(
+                                temporary_path=partial,
+                                sha256="",
+                                content_length=resume_from,
+                                media_type=media_type or None,
+                                http_status=response.status_code,
+                                final_url=str(response.url),
+                                response_headers=dict(response.headers),
+                                first_bytes=first_bytes,
+                            )
+                            PoliteHttpClient.validate_payload(
+                                payload, expected_media_type, output_path.name
+                            )
+                            final_url = str(response.url)
+                            successful_resume_from = resume_from
+                            await self.limiter.succeeded()
+                        else:
+                            partial.unlink(missing_ok=True)
+                            response.raise_for_status()
+                    else:
+                        if response.status_code in RETRYABLE_STATUS_CODES:
+                            await self.limiter.throttled()
+                            response.raise_for_status()
                         response.raise_for_status()
-                    response.raise_for_status()
-                    append = resume_from > 0 and response.status_code == 206
-                    if resume_from and not append:
-                        resume_from = 0
-                    mode = "ab" if append else "wb"
-                    with partial.open(mode) as handle:
-                        loop = asyncio.get_running_loop()
-                        window_started = loop.time()
-                        window_bytes = 0
-                        async for chunk in response.aiter_bytes(chunk_size=1024 * 1024):
-                            if chunk:
-                                handle.write(chunk)
-                                window_bytes += len(chunk)
-                            elapsed = loop.time() - window_started
-                            if elapsed >= self.throughput_window_seconds:
-                                throughput = window_bytes / max(elapsed, 0.001)
-                                if (
-                                    self.minimum_download_bytes_per_second
-                                    and throughput
-                                    < self.minimum_download_bytes_per_second
-                                ):
-                                    raise SlowTransferError(
-                                        f"download throughput {throughput:.0f} B/s is below "
-                                        f"{self.minimum_download_bytes_per_second:.0f} B/s"
-                                    )
-                                window_started = loop.time()
-                                window_bytes = 0
-                        handle.flush()
-                        await asyncio.to_thread(os.fsync, handle.fileno())
+                        append = resume_from > 0 and response.status_code == 206
+                        if resume_from and not append:
+                            resume_from = 0
+                        successful_resume_from = resume_from if append else 0
+                        mode = "ab" if append else "wb"
+                        with partial.open(mode) as handle:
+                            loop = asyncio.get_running_loop()
+                            window_started = loop.time()
+                            window_bytes = 0
+                            async for chunk in response.aiter_bytes(
+                                chunk_size=1024 * 1024
+                            ):
+                                if chunk:
+                                    handle.write(chunk)
+                                    window_bytes += len(chunk)
+                                elapsed = loop.time() - window_started
+                                if elapsed >= self.throughput_window_seconds:
+                                    throughput = window_bytes / max(elapsed, 0.001)
+                                    if (
+                                        self.minimum_download_bytes_per_second
+                                        and throughput
+                                        < self.minimum_download_bytes_per_second
+                                    ):
+                                        raise SlowTransferError(
+                                            f"download throughput {throughput:.0f} B/s is below "
+                                            f"{self.minimum_download_bytes_per_second:.0f} B/s"
+                                        )
+                                    window_started = loop.time()
+                                    window_bytes = 0
+                            handle.flush()
+                            await asyncio.to_thread(os.fsync, handle.fileno())
 
-                    first_bytes = await asyncio.to_thread(read_prefix, partial)
-                    media_type = response.headers.get("content-type", "").split(";", 1)[0]
-                    payload = DownloadedPayload(
-                        temporary_path=partial,
-                        sha256="",
-                        content_length=partial.stat().st_size,
-                        media_type=media_type or None,
-                        http_status=response.status_code,
-                        final_url=str(response.url),
-                        response_headers=dict(response.headers),
-                        first_bytes=first_bytes,
-                    )
-                    PoliteHttpClient.validate_payload(
-                        payload, expected_media_type, output_path.name
-                    )
-                    final_url = str(response.url)
-                    await self.limiter.succeeded()
+                        first_bytes = await asyncio.to_thread(read_prefix, partial)
+                        media_type = response.headers.get("content-type", "").split(
+                            ";", 1
+                        )[0]
+                        payload = DownloadedPayload(
+                            temporary_path=partial,
+                            sha256="",
+                            content_length=partial.stat().st_size,
+                            media_type=media_type or None,
+                            http_status=response.status_code,
+                            final_url=str(response.url),
+                            response_headers=dict(response.headers),
+                            first_bytes=first_bytes,
+                        )
+                        PoliteHttpClient.validate_payload(
+                            payload, expected_media_type, output_path.name
+                        )
+                        final_url = str(response.url)
+                        await self.limiter.succeeded()
                 os.replace(partial, output_path)
                 return AsyncDownloadResult(
                     source_url=url,
@@ -398,7 +436,7 @@ class AsyncHttpClient:
                     retrieved_at=datetime.now(UTC).isoformat(),
                     status="complete",
                     cached=False,
-                    resumed_from=initial_partial_size,
+                    resumed_from=successful_resume_from,
                     final_url=final_url,
                 ).as_dict()
             except PayloadValidationError as exc:

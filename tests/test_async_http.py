@@ -101,6 +101,87 @@ def test_async_download_resumes_partial_file(tmp_path: Path) -> None:
     assert not partial.exists()
 
 
+def test_async_download_finalizes_complete_partial_after_416(tmp_path: Path) -> None:
+    content = b"%PDF-" + (b"complete" * 100)
+    target = tmp_path / "report.pdf"
+    partial = tmp_path / "report.pdf.partial"
+    partial.write_bytes(content)
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["Range"] == f"bytes={len(content)}-"
+        return httpx.Response(
+            416,
+            headers={"Content-Range": f"bytes */{len(content)}"},
+        )
+
+    async def run() -> dict:
+        client = AsyncHttpClient(
+            limiter=AdaptiveRateLimiter(10_000),
+            user_agent="test",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+        try:
+            return await client.download(
+                "https://example.test/report.pdf",
+                target,
+                expected_media_type="application/pdf",
+            )
+        finally:
+            await client.close()
+
+    result = asyncio.run(run())
+
+    assert target.read_bytes() == content
+    assert result["resumed_from"] == len(content)
+    assert not partial.exists()
+
+
+def test_async_download_restarts_when_416_size_does_not_match(tmp_path: Path) -> None:
+    content = b"%PDF-" + (b"replacement" * 100)
+    target = tmp_path / "report.pdf"
+    partial = tmp_path / "report.pdf.partial"
+    partial.write_bytes(b"%PDF-incomplete")
+    calls = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            assert "Range" in request.headers
+            return httpx.Response(416, headers={"Content-Range": "bytes */999"})
+        assert "Range" not in request.headers
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "application/pdf"},
+            content=content,
+        )
+
+    async def run() -> dict:
+        client = AsyncHttpClient(
+            limiter=AdaptiveRateLimiter(10_000),
+            user_agent="test",
+            max_retries=1,
+            backoff_base_seconds=0,
+            transport=httpx.MockTransport(handler),
+        )
+        try:
+            return await client.download(
+                "https://example.test/report.pdf",
+                target,
+                expected_media_type="application/pdf",
+            )
+        finally:
+            await client.close()
+
+    result = asyncio.run(run())
+
+    assert calls == 2
+    assert target.read_bytes() == content
+    assert result["resumed_from"] == 0
+    assert not partial.exists()
+
+
 def test_adaptive_limiter_reduces_and_recovers_rate() -> None:
     async def run() -> tuple[float, float]:
         limiter = AdaptiveRateLimiter(8, recovery_successes=2)
