@@ -82,3 +82,18 @@ def test_html_is_rejected_when_a_zip_is_expected(tmp_path: Path) -> None:
         assert "expected application/zip" in str(exc)
     else:
         raise AssertionError("Expected an HTML error page to fail ZIP validation")
+
+
+def test_sec_json_body_is_accepted_when_content_type_is_text_html(tmp_path: Path) -> None:
+    payload = DownloadedPayload(
+        temporary_path=tmp_path / "index.json",
+        sha256="abc",
+        content_length=20,
+        media_type="text/html",
+        http_status=200,
+        final_url="https://www.sec.gov/example/index.json",
+        response_headers={},
+        first_bytes=b'{"directory":{"item":[]}}',
+    )
+
+    PoliteHttpClient.validate_payload(payload, "application/json", "index.json")

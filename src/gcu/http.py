@@ -227,6 +227,7 @@ class PoliteHttpClient:
         lowered_type = (payload.media_type or "").lower()
         lowered_expected = (expected_media_type or "").lower()
         expects_html = lowered_expected in {"text/html", "application/xhtml+xml"}
+        expects_json = lowered_expected == "application/json"
         first = payload.first_bytes.lstrip().lower()
         suffix = Path(filename).suffix.lower()
         if expected_media_type and lowered_type:
@@ -240,8 +241,15 @@ class PoliteHttpClient:
                 expected_media_type == "application/pdf"
                 and lowered_type == "application/octet-stream"
             )
+            compatible_mislabeled_json = (
+                expects_json
+                and lowered_type in {"text/html", "text/plain"}
+                and first.startswith((b"{", b"["))
+            )
             if expected_family != actual_family and not (
-                compatible_html or compatible_pdf_stream
+                compatible_html
+                or compatible_pdf_stream
+                or compatible_mislabeled_json
             ):
                 raise PayloadValidationError(
                     f"expected {expected_media_type}, received {payload.media_type}"
