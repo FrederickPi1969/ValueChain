@@ -33,8 +33,8 @@ Loose source files are acceptable when they need independent lifecycle or direct
 retrieval, but never place millions of files in one directory. Partition by
 source/date or use hash-prefix fanout. Keep original SEC documents immutable,
 store derived tabular data in bounded Parquet shards, and keep hashes, locations,
-and provenance in PostgreSQL. GDELT and paper collectors may retain independent
-cold source objects while batching normalized text and analytical features.
+and provenance in PostgreSQL. Non-filing corpora belong in separate projects
+with independent storage and retention policies.
 
 ## Capacity Boundary
 
