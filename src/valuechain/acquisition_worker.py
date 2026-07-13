@@ -16,7 +16,9 @@ BatchCallable = Callable[[], Awaitable[dict[str, Any]]]
 @contextmanager
 def acquisition_process_lock(database_url: str, source_id: str) -> Iterator[None]:
     """Hold a source-scoped PostgreSQL session lock for one coordinator process."""
-    connection = psycopg.connect(database_url)
+    # Session locks outlive transactions; autocommit avoids a permanent idle
+    # transaction that would otherwise retain snapshots and impede vacuum.
+    connection = psycopg.connect(database_url, autocommit=True)
     lock_name = f"valuechain-acquisition:{source_id}"
     try:
         acquired = connection.execute(

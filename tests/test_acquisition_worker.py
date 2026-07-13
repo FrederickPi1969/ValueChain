@@ -35,12 +35,19 @@ def test_batch_work_count_ignores_discovery_metadata() -> None:
 
 def test_acquisition_process_lock_is_source_scoped_and_released(monkeypatch) -> None:
     connection = FakeLockConnection(acquired=True)
-    monkeypatch.setattr(acquisition_worker.psycopg, "connect", lambda _url: connection)
+    connect_args: list[tuple[str, bool]] = []
+
+    def connect(url: str, *, autocommit: bool) -> FakeLockConnection:
+        connect_args.append((url, autocommit))
+        return connection
+
+    monkeypatch.setattr(acquisition_worker.psycopg, "connect", connect)
 
     with acquisition_process_lock("postgresql://test", "sec_edgar"):
         assert not connection.closed
 
     assert connection.closed
+    assert connect_args == [("postgresql://test", True)]
     assert len(connection.queries) == 2
     assert connection.queries[0][1] == ("valuechain-acquisition:sec_edgar",)
     assert "pg_try_advisory_lock" in connection.queries[0][0]
@@ -49,7 +56,11 @@ def test_acquisition_process_lock_is_source_scoped_and_released(monkeypatch) -> 
 
 def test_acquisition_process_lock_rejects_second_coordinator(monkeypatch) -> None:
     connection = FakeLockConnection(acquired=False)
-    monkeypatch.setattr(acquisition_worker.psycopg, "connect", lambda _url: connection)
+    monkeypatch.setattr(
+        acquisition_worker.psycopg,
+        "connect",
+        lambda _url, *, autocommit: connection,
+    )
 
     with pytest.raises(RuntimeError, match="already running for cninfo"):
         with acquisition_process_lock("postgresql://test", "cninfo"):
