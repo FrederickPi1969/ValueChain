@@ -225,14 +225,23 @@ class PoliteHttpClient:
         if payload.content_length == 0:
             raise PayloadValidationError("downloaded payload is empty")
         lowered_type = (payload.media_type or "").lower()
+        lowered_expected = (expected_media_type or "").lower()
+        expects_html = lowered_expected in {"text/html", "application/xhtml+xml"}
         first = payload.first_bytes.lstrip().lower()
         suffix = Path(filename).suffix.lower()
         if expected_media_type and lowered_type:
             expected_family = expected_media_type.split("/", 1)[0]
             actual_family = lowered_type.split("/", 1)[0]
-            if expected_family != actual_family and not (
+            compatible_html = expects_html and lowered_type in {
+                "text/html",
+                "application/xhtml+xml",
+            }
+            compatible_pdf_stream = (
                 expected_media_type == "application/pdf"
                 and lowered_type == "application/octet-stream"
+            )
+            if expected_family != actual_family and not (
+                compatible_html or compatible_pdf_stream
             ):
                 raise PayloadValidationError(
                     f"expected {expected_media_type}, received {payload.media_type}"
@@ -247,7 +256,9 @@ class PoliteHttpClient:
             ".csv.zip",
         } and not payload.first_bytes.startswith(b"PK"):
             raise PayloadValidationError("ZIP-based filename did not contain a ZIP signature")
-        if first.startswith(b"<!doctype html") or first.startswith(b"<html"):
+        if not expects_html and (
+            first.startswith(b"<!doctype html") or first.startswith(b"<html")
+        ):
             raise PayloadValidationError("received HTML instead of the requested document")
 
     @contextmanager
