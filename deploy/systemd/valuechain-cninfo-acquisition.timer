@@ -1,0 +1,12 @@
+[Unit]
+Description=Continuously schedule ValueChain CNINFO acquisition batches
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=3min
+AccuracySec=20s
+Persistent=true
+Unit=valuechain-cninfo-acquisition.service
+
+[Install]
+WantedBy=timers.target

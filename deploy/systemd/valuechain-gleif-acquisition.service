@@ -1,0 +1,14 @@
+[Unit]
+Description=ValueChain GLEIF Golden Copy acquisition batch
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/pi/ValueChain
+EnvironmentFile=/home/pi/ValueChain/.env
+ExecStart=/home/pi/ValueChain/.venv/bin/valuechain-global-acquire run-batch --source gleif_golden_copy
+Nice=10
+IOSchedulingClass=idle
+IOSchedulingPriority=7
+TimeoutStartSec=60min

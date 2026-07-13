@@ -19,6 +19,15 @@ class CninfoAdapter(BaseAdapter):
     MARKET_URLS = {"SSE": UNIVERSE_URL, "SZSE": UNIVERSE_URL, "BSE": UNIVERSE_URL}
     MARKET_COLUMNS = {"SSE": "sse", "SZSE": "szse", "BSE": "bse"}
     MARKET_MICS = {"SSE": "XSHG", "SZSE": "XSHE", "BSE": "XBSE"}
+    MIC_MARKETS = {value: key for key, value in MARKET_MICS.items()}
+    FINANCIAL_REPORT_CATEGORIES = ";".join(
+        (
+            "category_ndbg_szsh",
+            "category_bndbg_szsh",
+            "category_yjdbg_szsh",
+            "category_sjdbg_szsh",
+        )
+    )
     FILING_URL = "https://www.cninfo.com.cn/new/hisAnnouncement/query"
     DOCUMENT_BASE = "https://static.cninfo.com.cn/"
     MIN_UNIVERSE_ROWS = 5_000
@@ -275,7 +284,11 @@ class CninfoAdapter(BaseAdapter):
     ) -> Iterable[FilingRef]:
         selected = [market.upper() for market in (markets or self.MARKET_COLUMNS)]
         if entity and entity.exchange:
-            selected = [entity.exchange.upper()]
+            exchange = entity.exchange.upper()
+            selected = [
+                str(entity.metadata.get("market") or self.MIC_MARKETS.get(exchange) or exchange)
+                .upper()
+            ]
         headers = {
             "Referer": "https://www.cninfo.com.cn/new/commonUrl/pageOfSearch?url=disclosure/list/search",
             "Origin": "https://www.cninfo.com.cn",

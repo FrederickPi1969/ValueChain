@@ -134,3 +134,37 @@ retry state rather than being silently skipped.
 enabled in the scheduler merely because an official webpage has been catalogued.
 It must pass the rights, identifier, discovery, download, and completeness gates
 in `docs/source_curator_instruction.md` before a source-specific worker is added.
+
+## Parallel Global Lanes
+
+CNINFO, priority-Europe ESEF, and GLEIF run as separate low-rate user services.
+They do not share SEC's request semaphore or rate budget:
+
+```bash
+systemctl --user status valuechain-cninfo-acquisition.timer
+systemctl --user status valuechain-esef-acquisition.timer
+systemctl --user status valuechain-gleif-acquisition.timer
+
+.venv/bin/valuechain-global-acquire status
+```
+
+CNINFO processes two source-local issuers per invocation and downloads full
+annual, semiannual, first-quarter, and third-quarter reports while excluding
+summary-only PDFs. Priority ESEF discovers DE/FR/IT/ES/NL filings and retains
+the original report package, Inline XBRL report, and xBRL-JSON representation.
+Both queues process 2026 before 2025 and retain retry state in PostgreSQL.
+
+GLEIF has no filing year. It refreshes the latest LEI Level 1 (`lei2`), Level 2
+relationship (`rr`), and reporting-exception (`repex`) Golden Copy ZIPs at most
+once per 24 hours. The scheduler only downloads immutable raw files and
+manifests; normalization and extraction remain separate jobs.
+
+Raw files are written below:
+
+```text
+/mnt/hdd8tb/valuechain/global-acquisition/
+```
+
+The global lanes use `acquisition_source_checkpoints` for discovery/refresh
+state and `acquisition_source_objects` for non-filing bulk objects. Files still
+flow through `.partial`, fsync, hash validation, and atomic rename.

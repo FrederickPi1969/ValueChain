@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from datetime import date
 from typing import Any
+from urllib.parse import urljoin
 
 from gcu.adapters.base import BaseAdapter
 from gcu.http import NetworkBlockedError
@@ -10,6 +11,7 @@ from gcu.models import DocumentRef, EntityRef, FilingRef, SmokeResult, SmokeStat
 
 
 class FilingsXbrlAdapter(BaseAdapter):
+    BASE_URL = "https://filings.xbrl.org"
     API_BASE = "https://filings.xbrl.org/api"
 
     def smoke(self, *, offline: bool = False) -> SmokeResult:
@@ -67,11 +69,25 @@ class FilingsXbrlAdapter(BaseAdapter):
     def parse_filings(
         cls, payload: dict[str, Any], entity_id: str | None = None
     ) -> Iterable[FilingRef]:
+        included_entities = {
+            str(item.get("id")): item.get("attributes", {})
+            for item in payload.get("included", [])
+            if item.get("type") == "entity"
+        }
         for item in payload.get("data", []):
             attrs = item.get("attributes", {})
-            filing_id = str(item.get("id"))
-            lei = attrs.get("lei") or attrs.get("entity_identifier")
-            canonical_entity = entity_id or (f"lei-{lei}" if lei else f"xbrl-entity-{filing_id}")
+            api_filing_id = str(item.get("id"))
+            relation = item.get("relationships", {}).get("entity", {}).get("data", {})
+            included = included_entities.get(str(relation.get("id")), {})
+            lei = (
+                attrs.get("lei")
+                or attrs.get("entity_identifier")
+                or included.get("identifier")
+            )
+            filing_id = str(attrs.get("fxo_id") or api_filing_id)
+            canonical_entity = entity_id or (
+                f"lei-{lei}" if lei else f"xbrl-entity-{filing_id}"
+            )
             viewer_url = attrs.get("viewer_url") or attrs.get("filing_url")
             yield FilingRef(
                 source_id="filings_xbrl",
@@ -81,12 +97,38 @@ class FilingsXbrlAdapter(BaseAdapter):
                 form=attrs.get("filing_system") or "iXBRL",
                 title=attrs.get("name") or attrs.get("document_type") or filing_id,
                 filed_at=cls._date(attrs.get("date_added") or attrs.get("processed")),
-                period_end=cls._date(attrs.get("report_date")),
-                detail_url=viewer_url,
-                primary_document_url=attrs.get("report_url") or attrs.get("download_url"),
+                period_end=cls._date(attrs.get("period_end") or attrs.get("report_date")),
+                detail_url=urljoin(cls.BASE_URL, viewer_url) if viewer_url else None,
+                primary_document_url=(
+                    urljoin(cls.BASE_URL, attrs["package_url"])
+                    if attrs.get("package_url")
+                    else urljoin(cls.BASE_URL, attrs["report_url"])
+                    if attrs.get("report_url")
+                    else None
+                ),
                 language=attrs.get("language"),
                 amendment=False,
-                metadata=attrs,
+                metadata={
+                    **attrs,
+                    "api_filing_id": api_filing_id,
+                    "entity_identifier": lei,
+                    "entity_name": included.get("name"),
+                    "package_url": (
+                        urljoin(cls.BASE_URL, attrs["package_url"])
+                        if attrs.get("package_url")
+                        else None
+                    ),
+                    "report_url": (
+                        urljoin(cls.BASE_URL, attrs["report_url"])
+                        if attrs.get("report_url")
+                        else None
+                    ),
+                    "json_url": (
+                        urljoin(cls.BASE_URL, attrs["json_url"])
+                        if attrs.get("json_url")
+                        else None
+                    ),
+                },
             )
 
     def list_filings(
@@ -122,8 +164,8 @@ class FilingsXbrlAdapter(BaseAdapter):
 
     def list_documents(self, filing: FilingRef, **_: Any) -> Iterable[DocumentRef]:
         candidates = [
-            ("report", filing.primary_document_url, "primary Inline XBRL report"),
-            ("viewer", filing.detail_url, "filings.xbrl.org viewer"),
+            ("package", filing.metadata.get("package_url"), "original XBRL Report Package"),
+            ("report", filing.metadata.get("report_url"), "primary Inline XBRL report"),
             ("xbrl-json", filing.metadata.get("json_url"), "xBRL-JSON facts"),
         ]
         for suffix, url, kind in candidates:

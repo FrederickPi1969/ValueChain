@@ -1,0 +1,12 @@
+[Unit]
+Description=Continuously schedule ValueChain ESEF acquisition batches
+
+[Timer]
+OnBootSec=4min
+OnUnitInactiveSec=3min
+AccuracySec=20s
+Persistent=true
+Unit=valuechain-esef-acquisition.service
+
+[Install]
+WantedBy=timers.target

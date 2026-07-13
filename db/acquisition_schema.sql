@@ -86,6 +86,9 @@ ON acquisition_filings(source_id, source_issuer_id, filing_date);
 CREATE INDEX IF NOT EXISTS idx_acquisition_filings_status
 ON acquisition_filings(source_id, status, filing_date);
 
+ALTER TABLE acquisition_filings
+ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ;
+
 CREATE TABLE IF NOT EXISTS acquisition_documents (
   document_id BIGSERIAL PRIMARY KEY,
   source_id TEXT NOT NULL REFERENCES acquisition_sources(source_id),
@@ -114,6 +117,45 @@ ON acquisition_documents(sha256) WHERE sha256 IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_acquisition_documents_status
 ON acquisition_documents(source_id, status, retrieved_at);
+
+CREATE TABLE IF NOT EXISTS acquisition_source_checkpoints (
+  source_id TEXT NOT NULL REFERENCES acquisition_sources(source_id),
+  checkpoint_key TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  cursor TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  next_attempt_at TIMESTAMPTZ,
+  last_error TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  PRIMARY KEY (source_id, checkpoint_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_acquisition_source_checkpoints_due
+ON acquisition_source_checkpoints(source_id, status, next_attempt_at, completed_at);
+
+CREATE TABLE IF NOT EXISTS acquisition_source_objects (
+  source_id TEXT NOT NULL REFERENCES acquisition_sources(source_id),
+  object_key TEXT NOT NULL,
+  object_type TEXT NOT NULL,
+  source_url TEXT NOT NULL,
+  local_path TEXT NOT NULL,
+  content_type TEXT,
+  byte_size BIGINT,
+  sha256 TEXT,
+  retrieved_at TIMESTAMPTZ,
+  status TEXT NOT NULL,
+  last_error TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  PRIMARY KEY (source_id, object_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_acquisition_source_objects_status
+ON acquisition_source_objects(source_id, status, retrieved_at);
+
+CREATE INDEX IF NOT EXISTS idx_acquisition_source_objects_hash
+ON acquisition_source_objects(source_id, sha256) WHERE sha256 IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS acquisition_runs (
   run_id TEXT PRIMARY KEY,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 
 from gcu.config import Settings
-from gcu.models import SourceDefinition
+from gcu.models import EntityRef, SourceDefinition
 from gcu_priority_markets.adapters.cninfo import CninfoAdapter
 
 
@@ -113,3 +113,17 @@ def test_cninfo_rotates_proxy_after_partial_universe() -> None:
 
     assert len(rows) == 2
     assert client.rotations == 1
+
+
+def test_cninfo_maps_iso_mic_back_to_query_market() -> None:
+    entity = EntityRef(
+        entity_id="cninfo-a",
+        source_id="cninfo",
+        source_entity_id="gssh1",
+        legal_name="Example",
+        exchange="XSHG",
+        ticker="600001",
+    )
+
+    assert CninfoAdapter.MIC_MARKETS[entity.exchange] == "SSE"
+    assert "category_ndbg_szsh" in CninfoAdapter.FINANCIAL_REPORT_CATEGORIES
