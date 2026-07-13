@@ -4,7 +4,7 @@ import argparse
 import asyncio
 import json
 
-from valuechain.acquisition_worker import run_worker_loop
+from valuechain.acquisition_worker import acquisition_process_lock, run_worker_loop
 from valuechain.async_global_acquisition import AsyncGlobalAcquisitionRunner
 from valuechain.global_acquisition import (
     GLEIF_SOURCE,
@@ -36,14 +36,16 @@ def main(argv: list[str] | None = None) -> None:
     config = GlobalAcquisitionConfig.from_env()
     if args.command == "run-worker":
         runner = AsyncGlobalAcquisitionRunner(args.source, config)
-        asyncio.run(run_worker_loop(runner.run_batch))
+        with acquisition_process_lock(config.database_url, args.source):
+            asyncio.run(run_worker_loop(runner.run_batch))
         return
     if args.command == "run-batch":
-        if args.source == GLEIF_SOURCE:
-            payload = run_source(args.source, config)
-        else:
-            runner = AsyncGlobalAcquisitionRunner(args.source, config)
-            payload = asyncio.run(runner.run_batch())
+        with acquisition_process_lock(config.database_url, args.source):
+            if args.source == GLEIF_SOURCE:
+                payload = run_source(args.source, config)
+            else:
+                runner = AsyncGlobalAcquisitionRunner(args.source, config)
+                payload = asyncio.run(runner.run_batch())
     else:
         sources = (args.source,) if args.source else SUPPORTED_SOURCES
         payload = {source: source_status(source, config) for source in sources}

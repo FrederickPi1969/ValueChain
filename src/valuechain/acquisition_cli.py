@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from valuechain.postgres_acquisition_state import PostgresAcquisitionState
-from valuechain.acquisition_worker import run_worker_loop
+from valuechain.acquisition_worker import acquisition_process_lock, run_worker_loop
 from valuechain.async_sec_acquisition import AsyncSecAcquisitionRunner
 from valuechain.sec_acquisition import AcquisitionConfig
 
@@ -53,7 +53,9 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps({"issuers_upserted": count}, indent=2))
         return
     if args.command == "run-worker":
-        asyncio.run(run_worker_loop(runner.run_batch))
+        with acquisition_process_lock(config.database_url, "sec_edgar"):
+            asyncio.run(run_worker_loop(runner.run_batch))
         return
-    result = asyncio.run(runner.run_batch())
+    with acquisition_process_lock(config.database_url, "sec_edgar"):
+        result = asyncio.run(runner.run_batch())
     print(json.dumps(result, indent=2, sort_keys=True))

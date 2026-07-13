@@ -3,11 +3,39 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
+from contextlib import contextmanager
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Iterator
+
+import psycopg
 
 
 BatchCallable = Callable[[], Awaitable[dict[str, Any]]]
+
+
+@contextmanager
+def acquisition_process_lock(database_url: str, source_id: str) -> Iterator[None]:
+    """Hold a source-scoped PostgreSQL session lock for one coordinator process."""
+    connection = psycopg.connect(database_url)
+    lock_name = f"valuechain-acquisition:{source_id}"
+    try:
+        acquired = connection.execute(
+            "SELECT pg_try_advisory_lock(hashtextextended(%s, 0))",
+            (lock_name,),
+        ).fetchone()[0]
+        if not acquired:
+            raise RuntimeError(
+                f"An acquisition coordinator is already running for {source_id}"
+            )
+        yield
+    finally:
+        try:
+            connection.execute(
+                "SELECT pg_advisory_unlock(hashtextextended(%s, 0))",
+                (lock_name,),
+            )
+        finally:
+            connection.close()
 
 
 def batch_work_count(result: dict[str, Any]) -> int:
