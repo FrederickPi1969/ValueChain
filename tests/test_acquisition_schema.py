@@ -12,3 +12,5 @@ def test_acquisition_schema_has_source_native_uniqueness_and_queue_indexes() -> 
     assert "PRIMARY KEY (source_id, source_issuer_id, filing_year)" in sql
     assert "idx_acquisition_scan_queue" in sql
     assert "idx_acquisition_documents_hash" in sql
+    assert "acquisition_universe_snapshots" in sql
+    assert "UNIQUE (source_id, sha256)" in sql

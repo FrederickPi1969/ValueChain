@@ -300,6 +300,25 @@ The scheduled SEC acquisition worker is operationally separate from extraction.
 See `docs/acquisition_operations.md` for its proxy, storage, checkpoint, systemd,
 and status procedures.
 
+Global company-universe acquisition is exposed separately through
+`valuechain-global`. It combines the migrated base source catalog with the
+priority-market adapters without coupling global issuer discovery to relation
+extraction:
+
+```bash
+valuechain-global doctor
+valuechain-global sources
+valuechain-global smoke --offline
+valuechain-global universe --source cninfo --output-csv /mnt/hdd8tb/valuechain/data/universe/cninfo.csv
+valuechain-global sync-universe --source cninfo --input-csv /mnt/hdd8tb/valuechain/data/universe/cninfo.csv
+valuechain-global database-status
+```
+
+Normalized snapshots remain on HDD. PostgreSQL stores source-local issuer keys,
+identifiers, source definitions, filing discovery state, snapshot hashes, and
+row counts. See `docs/global_universe_acquisition.md` for source coverage,
+acceptance checks, and import operations.
+
 The graph build separates raw extraction from graph-ready evidence. Raw records
 are written to `relation_evidence_raw.jsonl`; schema-aware denoising
 canonicalizes aliases, removes generic placeholder objects that are not graph

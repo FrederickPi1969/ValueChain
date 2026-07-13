@@ -1,0 +1,1339 @@
+schema_version: 1
+generated_at: '2026-07-11T00:00:00Z'
+sources:
+- source_id: sec_edgar
+  name: U.S. Securities and Exchange Commission EDGAR
+  jurisdictions:
+  - US
+  macro_regions:
+  - Americas
+  adapter: gcu.adapters.sec_edgar:SecEdgarAdapter
+  access_mode: public_api
+  official_url: https://www.sec.gov/edgar/search/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_inventory
+  - document_download
+  - structured_facts
+  - historical_index
+  - reconciliation
+  - event_monitoring
+  historical_scope: Company submissions include recent filings plus historical shard files; full/daily master indexes and
+    per-accession archive inventory are supported.
+  status: implemented_and_fixture_tested
+  notes: Requires a truthful declared User-Agent and contact address. Default repository rate is below SEC published ceiling.
+  rate_limit_requests_per_second: 8.0
+  api_base_url: https://data.sec.gov/
+- source_id: edinet
+  name: Financial Services Agency EDINET
+  jurisdictions:
+  - JP
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.edinet:EdinetAdapter
+  access_mode: api_key
+  official_url: https://disclosure2.edinet-fsa.go.jp/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  - structured_facts
+  historical_scope: Daily document list and downloadable XBRL/PDF/CSV packages through EDINET API v2.
+  status: implemented_and_fixture_tested
+  notes: Free API key registration required.
+  rate_limit_requests_per_second: 1.0
+  api_base_url: https://api.edinet-fsa.go.jp/api/v2/
+  credential_env: EDINET_API_KEY
+- source_id: opendart
+  name: Financial Supervisory Service OpenDART
+  jurisdictions:
+  - KR
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.opendart:OpenDartAdapter
+  access_mode: api_key
+  official_url: https://opendart.fss.or.kr/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  - structured_facts
+  historical_scope: Corporation-code master, filing search, original disclosure package, and financial-statement XBRL endpoints.
+  status: implemented_and_fixture_tested
+  notes: Free API key registration required.
+  rate_limit_requests_per_second: 1.0
+  api_base_url: https://opendart.fss.or.kr/api/
+  credential_env: OPENDART_API_KEY
+- source_id: companies_house
+  name: UK Companies House
+  jurisdictions:
+  - GB
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.companies_house:CompaniesHouseAdapter
+  access_mode: api_key
+  official_url: https://developer.company-information.service.gov.uk/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Company profiles, paginated filing history, and document content where available.
+  status: implemented_and_fixture_tested
+  notes: API key is supplied as the HTTP Basic username.
+  rate_limit_requests_per_second: 2.0
+  api_base_url: https://api.company-information.service.gov.uk/
+  credential_env: COMPANIES_HOUSE_API_KEY
+- source_id: filings_xbrl
+  name: filings.xbrl.org global Inline XBRL index
+  jurisdictions:
+  - GLOBAL
+  macro_regions:
+  - Global
+  adapter: gcu.adapters.filings_xbrl:FilingsXbrlAdapter
+  access_mode: public_api
+  official_url: https://filings.xbrl.org/
+  capabilities:
+  - filing_discovery
+  - document_download
+  - structured_facts
+  historical_scope: Cross-jurisdiction index of available Inline XBRL filings; explicitly not an authoritative complete register.
+  status: implemented_and_fixture_tested
+  notes: Useful global secondary discovery channel; reconcile against each jurisdiction authority.
+  rate_limit_requests_per_second: 1.0
+  api_base_url: https://filings.xbrl.org/api/
+- source_id: gleif
+  name: Global Legal Entity Identifier Foundation LEI API
+  jurisdictions:
+  - GLOBAL
+  macro_regions:
+  - Global
+  adapter: gcu.adapters.gleif:GleifAdapter
+  access_mode: public_api
+  official_url: https://www.gleif.org/en/lei-data/gleif-api
+  capabilities:
+  - entity_universe
+  - entity_resolution
+  historical_scope: Current and historical LEI reference data subject to GLEIF API/bulk-data terms.
+  status: implemented_and_fixture_tested
+  notes: Entity resolution source, not a financial-filing authority.
+  rate_limit_requests_per_second: 1.0
+  api_base_url: https://api.gleif.org/api/v1/
+- source_id: twse
+  name: Taiwan Stock Exchange OpenAPI
+  jurisdictions:
+  - TW
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.twse:TwseOpenApiAdapter
+  access_mode: public_api
+  official_url: https://openapi.twse.com.tw/
+  capabilities:
+  - entity_universe
+  historical_scope: Current listed-company reference data through TWSE OpenAPI.
+  status: implemented_and_fixture_tested
+  notes: MOPS remains the primary disclosure channel for company reports.
+  rate_limit_requests_per_second: 1.0
+  api_base_url: https://openapi.twse.com.tw/v1/
+- source_id: cvm_brazil
+  name: Comissão de Valores Mobiliários Open Data
+  jurisdictions:
+  - BR
+  macro_regions:
+  - Americas
+  adapter: gcu.adapters.cvm_brazil:CvmBrazilAdapter
+  access_mode: public_bulk
+  official_url: https://dados.cvm.gov.br/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  - structured_facts
+  - historical_index
+  historical_scope: Public-company registry plus annual DFP, quarterly ITR, and reference-form bulk archives; many series
+    reach 2010 or earlier.
+  status: implemented_api_and_real_snapshot
+  notes: Bulk archives are authoritative and efficient for historical backfill.
+  rate_limit_requests_per_second: 1.0
+  api_base_url: https://dados.cvm.gov.br/dados/
+- source_id: hkex
+  name: Hong Kong Exchanges and Clearing issuer lists and HKEXnews
+  jurisdictions:
+  - HK
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.tabular_universe:HkexUniverseAdapter
+  access_mode: public_bulk
+  official_url: https://www.hkex.com.hk/Market-Data/Securities-Prices/Equities/Equities-Quote?sc_lang=en
+  capabilities:
+  - entity_universe
+  - document_download
+  historical_scope: Current official securities workbook plus public announcement documents; historical search is web-oriented.
+  status: implemented_local_parser_and_real_snapshot
+  notes: No claim of a stable EDGAR-like public filing API; use HKEXnews document seeds or licensed feeds.
+  rate_limit_requests_per_second: 0.5
+- source_id: jpx
+  name: Japan Exchange Group listed-company list
+  jurisdictions:
+  - JP
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.tabular_universe:JpxUniverseAdapter
+  access_mode: public_bulk
+  official_url: https://www.jpx.co.jp/english/markets/statistics-equities/misc/01.html
+  capabilities:
+  - entity_universe
+  historical_scope: Current listed-company workbook; EDINET is the filing authority.
+  status: implemented_local_parser_and_real_snapshot
+  notes: ''
+  rate_limit_requests_per_second: 0.5
+- source_id: asx
+  name: Australian Securities Exchange listed companies and announcements
+  jurisdictions:
+  - AU
+  macro_regions:
+  - Oceania
+  adapter: gcu.adapters.tabular_universe:AsxUniverseAdapter
+  access_mode: public_bulk
+  official_url: https://www.asx.com.au/markets/trade-our-cash-market/directory
+  capabilities:
+  - entity_universe
+  - document_download
+  historical_scope: Listed-company directory and announcement documents; automated historical access requires careful access-policy
+    review.
+  status: implemented_local_parser_and_real_snapshot
+  notes: ''
+  rate_limit_requests_per_second: 0.5
+- source_id: nse_india
+  name: National Stock Exchange of India company list and filings
+  jurisdictions:
+  - IN
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.tabular_universe:NseIndiaUniverseAdapter
+  access_mode: public_bulk
+  official_url: https://www.nseindia.com/companies-listing/corporate-filings-announcements
+  capabilities:
+  - entity_universe
+  - document_download
+  historical_scope: Listed-equity CSV snapshots and exchange disclosure pages.
+  status: implemented_local_parser_access_classified
+  notes: Production web access may require cookies/session controls; do not bypass anti-bot measures.
+  rate_limit_requests_per_second: 0.25
+- source_id: issuer_ir
+  name: Issuer investor-relations sites
+  jurisdictions:
+  - GLOBAL
+  macro_regions:
+  - Global
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: direct_issuer_documents
+  official_url: https://www.microsoft.com/en-us/Investor/annual-reports.aspx
+  capabilities:
+  - document_download
+  historical_scope: Issuer-hosted annual reports are often the cleanest exemplar channel, but discovery and retention differ
+    by issuer.
+  status: access_classified_not_bulk_api
+  notes: Global fallback for verified official document URLs; not an authoritative universe.
+  rate_limit_requests_per_second: 1.0
+- source_id: sedar_plus
+  name: SEDAR+
+  jurisdictions:
+  - CA
+  macro_regions:
+  - Americas
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.sedarplus.ca/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Canadian public filings retained by SEDAR+; public search is official but no unrestricted EDGAR-style
+    bulk API is claimed.
+  status: access_classified_not_bulk_api
+  notes: Use public search/manual seeds or licensed data access.
+  rate_limit_requests_per_second: 1.0
+- source_id: fca_nsm
+  name: Financial Conduct Authority National Storage Mechanism
+  jurisdictions:
+  - GB
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://data.fca.org.uk/#/nsm/nationalstoragemechanism
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: UK regulated information and prospectus documents.
+  status: access_classified_not_bulk_api
+  notes: Official search/download channel; automate only within published terms.
+  rate_limit_requests_per_second: 1.0
+- source_id: krx_kind
+  name: Korea Exchange KIND
+  jurisdictions:
+  - KR
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://kind.krx.co.kr/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Exchange filings and listed-company information.
+  status: access_classified_not_bulk_api
+  notes: OpenDART is preferred for machine API coverage.
+  rate_limit_requests_per_second: 1.0
+- source_id: cninfo
+  name: CNINFO statutory disclosure platform
+  jurisdictions:
+  - CN
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: semi_public_web_endpoint
+  official_url: https://www.cninfo.com.cn/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Mainland listed-company announcements and reports, including direct static document URLs.
+  status: access_classified_not_bulk_api
+  notes: Public web endpoints can change; fixture and seed based adapter is safer than undocumented endpoints.
+  rate_limit_requests_per_second: 1.0
+- source_id: sse
+  name: Shanghai Stock Exchange disclosures
+  jurisdictions:
+  - CN
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.sse.com.cn/disclosure/listedinfo/announcement/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Shanghai-listed issuer announcements.
+  status: access_classified_not_bulk_api
+  notes: Official web search; use exchange-published interfaces under current terms.
+  rate_limit_requests_per_second: 1.0
+- source_id: szse
+  name: Shenzhen Stock Exchange disclosures
+  jurisdictions:
+  - CN
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.szse.cn/disclosure/listed/notice/index.html
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Shenzhen-listed issuer announcements.
+  status: access_classified_not_bulk_api
+  notes: CNINFO is also a statutory disclosure channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: bse_china
+  name: Beijing Stock Exchange disclosures
+  jurisdictions:
+  - CN
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.bse.cn/disclosure/announcement.html
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Beijing-listed issuer announcements.
+  status: access_classified_not_bulk_api
+  notes: Official web search.
+  rate_limit_requests_per_second: 1.0
+- source_id: mops
+  name: Market Observation Post System
+  jurisdictions:
+  - TW
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://mops.twse.com.tw/mops/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Taiwan financial statements, XBRL, material information, ownership, and revenue disclosures.
+  status: access_classified_not_bulk_api
+  notes: Session-oriented official portal; production adapter requires request-policy validation.
+  rate_limit_requests_per_second: 1.0
+- source_id: sgx
+  name: Singapore Exchange issuer announcements
+  jurisdictions:
+  - SG
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: commercial_feed
+  official_url: https://www.sgx.com/securities/company-announcements
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: SGXNet announcements and issuer documents.
+  status: access_classified_not_bulk_api
+  notes: Institutional SGXNews/XML access is a commercial data product; public pages are not represented as a stable bulk
+    API.
+  rate_limit_requests_per_second: 1.0
+- source_id: nzx
+  name: NZX announcements and issuer directory
+  jurisdictions:
+  - NZ
+  macro_regions:
+  - Oceania
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.nzx.com/companies
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: New Zealand listed issuers and announcements.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: bse_india
+  name: BSE India corporate announcements
+  jurisdictions:
+  - IN
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.bseindia.com/corporates/ann.html
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: BSE-listed company announcements and financial results.
+  status: access_classified_not_bulk_api
+  notes: Official web channel with session controls.
+  rate_limit_requests_per_second: 1.0
+- source_id: b3
+  name: B3 listed-company directory
+  jurisdictions:
+  - BR
+  macro_regions:
+  - Americas
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.b3.com.br/en_us/products-and-services/trading/equities/listed-companies.htm
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Brazilian exchange directory and issuer pages.
+  status: access_classified_not_bulk_api
+  notes: CVM bulk data is preferred for filings and historical facts.
+  rate_limit_requests_per_second: 1.0
+- source_id: mexico_cnbv
+  name: Comisión Nacional Bancaria y de Valores issuer information
+  jurisdictions:
+  - MX
+  macro_regions:
+  - Americas
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.gob.mx/cnbv
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Mexican regulated-entity and securities disclosures.
+  status: access_classified_not_bulk_api
+  notes: Official public channels are fragmented.
+  rate_limit_requests_per_second: 1.0
+- source_id: bmv
+  name: Bolsa Mexicana de Valores issuer information
+  jurisdictions:
+  - MX
+  macro_regions:
+  - Americas
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.bmv.com.mx/en/issuers-information
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Mexican listed issuers and filings.
+  status: access_classified_not_bulk_api
+  notes: Official exchange web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: argentina_cnv
+  name: Comisión Nacional de Valores Argentina
+  jurisdictions:
+  - AR
+  macro_regions:
+  - Americas
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.argentina.gob.ar/cnv
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Argentine issuer filings and regulated information.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: chile_cmf
+  name: Comisión para el Mercado Financiero Chile
+  jurisdictions:
+  - CL
+  macro_regions:
+  - Americas
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.cmfchile.cl/portal/principal/613/w3-channel.html
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Chilean issuer financial statements and regulated information.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: colombia_sfc
+  name: Superintendencia Financiera de Colombia
+  jurisdictions:
+  - CO
+  macro_regions:
+  - Americas
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.superfinanciera.gov.co/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Colombian issuer and regulated-market information.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: peru_smv
+  name: Superintendencia del Mercado de Valores Perú
+  jurisdictions:
+  - PE
+  macro_regions:
+  - Americas
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.smv.gob.pe/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Peruvian issuer filings and financial information.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: jse_sens
+  name: Johannesburg Stock Exchange SENS
+  jurisdictions:
+  - ZA
+  macro_regions:
+  - Africa
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.jse.co.za/services/market-data/market-data-products/sens
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: South African issuer announcements.
+  status: access_classified_not_bulk_api
+  notes: Official exchange channel; feed licensing may apply.
+  rate_limit_requests_per_second: 1.0
+- source_id: ngx
+  name: Nigerian Exchange issuer disclosures
+  jurisdictions:
+  - NG
+  macro_regions:
+  - Africa
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://ngxgroup.com/exchange/data/company-filings/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Nigerian listed-company filings.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: egx
+  name: Egyptian Exchange disclosures
+  jurisdictions:
+  - EG
+  macro_regions:
+  - Africa
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.egx.com.eg/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Egyptian listed-company information and disclosures.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: tadawul
+  name: Saudi Exchange issuer announcements
+  jurisdictions:
+  - SA
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.saudiexchange.sa/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Saudi listed-company disclosures.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: dfm
+  name: Dubai Financial Market disclosures
+  jurisdictions:
+  - AE
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.dfm.ae/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Dubai-listed issuer disclosures.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: adx
+  name: Abu Dhabi Securities Exchange disclosures
+  jurisdictions:
+  - AE
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.adx.ae/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Abu Dhabi-listed issuer disclosures.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: qatar_exchange
+  name: Qatar Stock Exchange disclosures
+  jurisdictions:
+  - QA
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.qe.com.qa/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Qatari listed-company disclosures.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: tase_magna
+  name: Israel Securities Authority MAGNA
+  jurisdictions:
+  - IL
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.magna.isa.gov.il/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Israeli public-company filings.
+  status: access_classified_not_bulk_api
+  notes: Official filing portal; Hebrew-first interfaces.
+  rate_limit_requests_per_second: 1.0
+- source_id: kap_turkey
+  name: Public Disclosure Platform Türkiye
+  jurisdictions:
+  - TR
+  macro_regions:
+  - Asia
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.kap.org.tr/en/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Turkish listed-company disclosures.
+  status: access_classified_not_bulk_api
+  notes: Official filing portal.
+  rate_limit_requests_per_second: 1.0
+- source_id: bursa_malaysia
+  name: Bursa Malaysia announcements
+  jurisdictions:
+  - MY
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.bursamalaysia.com/market_information/announcements/company_announcement
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Malaysian listed-company announcements.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: set_thailand
+  name: Stock Exchange of Thailand company disclosures
+  jurisdictions:
+  - TH
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.set.or.th/en/market/product/stock/overview
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Thai listed-company disclosures.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: pse_edge
+  name: Philippine Stock Exchange EDGE
+  jurisdictions:
+  - PH
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://edge.pse.com.ph/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Philippine issuer disclosures.
+  status: access_classified_not_bulk_api
+  notes: Official filing portal.
+  rate_limit_requests_per_second: 1.0
+- source_id: idx_indonesia
+  name: Indonesia Stock Exchange company disclosures
+  jurisdictions:
+  - ID
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.idx.co.id/en/listed-companies/company-profiles/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Indonesian listed-company profiles and reports.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: ho_chi_minh_exchange
+  name: Ho Chi Minh Stock Exchange disclosures
+  jurisdictions:
+  - VN
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.hsx.vn/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Vietnamese listed-company disclosures.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: pakistan_psx
+  name: Pakistan Stock Exchange company information
+  jurisdictions:
+  - PK
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.psx.com.pk/psx/market-summary/market-watch
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Pakistani listed-company information and announcements.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: dse_bangladesh
+  name: Dhaka Stock Exchange company listings
+  jurisdictions:
+  - BD
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.dsebd.org/company_listing.php
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Bangladeshi listed-company information.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: cse_sri_lanka
+  name: Colombo Stock Exchange disclosures
+  jurisdictions:
+  - LK
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.cse.lk/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Sri Lankan listed-company disclosures.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: nse_kenya
+  name: Nairobi Securities Exchange issuer information
+  jurisdictions:
+  - KE
+  macro_regions:
+  - Africa
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.nse.co.ke/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Kenyan listed-company information.
+  status: access_classified_not_bulk_api
+  notes: Official web channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: ammc_morocco
+  name: Autorité Marocaine du Marché des Capitaux
+  jurisdictions:
+  - MA
+  macro_regions:
+  - Africa
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.ammc.ma/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Moroccan regulated issuer information.
+  status: access_classified_not_bulk_api
+  notes: Official regulator channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: gse_ghana
+  name: Ghana Stock Exchange listed companies
+  jurisdictions:
+  - GH
+  macro_regions:
+  - Africa
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://gse.com.gh/listed-companies/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Ghanaian listed-company information.
+  status: access_classified_not_bulk_api
+  notes: Official exchange channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: sem_mauritius
+  name: Stock Exchange of Mauritius disclosures
+  jurisdictions:
+  - MU
+  macro_regions:
+  - Africa
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.stockexchangeofmauritius.com/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Mauritian listed-company information.
+  status: access_classified_not_bulk_api
+  notes: Official exchange channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: six_exchange
+  name: SIX Swiss Exchange issuer information
+  jurisdictions:
+  - CH
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: commercial_feed
+  official_url: https://www.six-group.com/en/products-services/the-swiss-stock-exchange/market-data.html
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Swiss listed-company reference and disclosure information.
+  status: access_classified_not_bulk_api
+  notes: Bulk reference and announcement feeds may require commercial licensing.
+  rate_limit_requests_per_second: 1.0
+- source_id: unternehmensregister
+  name: German Company Register
+  jurisdictions:
+  - DE
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.unternehmensregister.de/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: German company publications and filed financial statements.
+  status: access_classified_not_bulk_api
+  notes: Official portal; some documents/workflows may involve fees or access controls.
+  rate_limit_requests_per_second: 1.0
+- source_id: amf_france
+  name: Autorité des marchés financiers France
+  jurisdictions:
+  - FR
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.amf-france.org/en
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: French regulated information and issuer filings.
+  status: access_classified_not_bulk_api
+  notes: Official regulator channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: consob
+  name: CONSOB Italy issuer information
+  jurisdictions:
+  - IT
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.consob.it/web/consob-and-its-activities/listed-companies
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Italian listed-company regulated information.
+  status: access_classified_not_bulk_api
+  notes: Official regulator channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: cnmv
+  name: Comisión Nacional del Mercado de Valores Spain
+  jurisdictions:
+  - ES
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.cnmv.es/portal/home.aspx
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Spanish issuer financial reports and regulated information.
+  status: access_classified_not_bulk_api
+  notes: Official regulator channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: afm_netherlands
+  name: Authority for the Financial Markets Netherlands
+  jurisdictions:
+  - NL
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.afm.nl/en/sector/registers/meldingenregisters/financiele-verslaggeving
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Dutch financial-reporting register.
+  status: access_classified_not_bulk_api
+  notes: Official regulator channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: oslo_newsweb
+  name: Euronext Oslo NewsWeb
+  jurisdictions:
+  - 'NO'
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://newsweb.oslobors.no/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Norwegian issuer announcements.
+  status: access_classified_not_bulk_api
+  notes: Official exchange channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: fi_sweden
+  name: Finansinspektionen Sweden
+  jurisdictions:
+  - SE
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.fi.se/en/our-registers/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Swedish official registers and regulated information.
+  status: access_classified_not_bulk_api
+  notes: Official regulator channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: dfsa_denmark
+  name: Danish Financial Supervisory Authority
+  jurisdictions:
+  - DK
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.dfsa.dk/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Danish regulated information.
+  status: access_classified_not_bulk_api
+  notes: Official regulator channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: fin_fsa
+  name: Finnish Financial Supervisory Authority
+  jurisdictions:
+  - FI
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.finanssivalvonta.fi/en/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Finnish regulated information.
+  status: access_classified_not_bulk_api
+  notes: Official regulator channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: central_bank_ireland
+  name: Central Bank of Ireland regulated information
+  jurisdictions:
+  - IE
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.centralbank.ie/regulation/industry-market-sectors/securities-markets/regulated-markets
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Irish regulated-market information.
+  status: access_classified_not_bulk_api
+  notes: Official authority channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: fsma_belgium
+  name: Financial Services and Markets Authority Belgium
+  jurisdictions:
+  - BE
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.fsma.be/en
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Belgian regulated information.
+  status: access_classified_not_bulk_api
+  notes: Official regulator channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: oam_austria
+  name: Austrian OAM / Financial Market Authority
+  jurisdictions:
+  - AT
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.fma.gv.at/en/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Austrian regulated information.
+  status: access_classified_not_bulk_api
+  notes: Official regulator channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: knf_poland
+  name: Polish Financial Supervision Authority
+  jurisdictions:
+  - PL
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.knf.gov.pl/en
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Polish regulated information.
+  status: access_classified_not_bulk_api
+  notes: Official regulator channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: cnb_czechia
+  name: Czech National Bank issuer information
+  jurisdictions:
+  - CZ
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.cnb.cz/en/supervision-financial-market/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Czech regulated information.
+  status: access_classified_not_bulk_api
+  notes: Official regulator channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: hcmc_greece
+  name: Hellenic Capital Market Commission
+  jurisdictions:
+  - GR
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.hcmc.gr/en_US/web/portal/home
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Greek regulated information.
+  status: access_classified_not_bulk_api
+  notes: Official regulator channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: cmvm_portugal
+  name: Portuguese Securities Market Commission
+  jurisdictions:
+  - PT
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.cmvm.pt/en/Pages/home.aspx
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Portuguese issuer information.
+  status: access_classified_not_bulk_api
+  notes: Official regulator channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: asf_romania
+  name: Romanian Financial Supervisory Authority
+  jurisdictions:
+  - RO
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://asfromania.ro/en/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Romanian regulated information.
+  status: access_classified_not_bulk_api
+  notes: Official regulator channel.
+  rate_limit_requests_per_second: 1.0
+- source_id: e_disclosure_russia
+  name: Russian issuer disclosure portal
+  jurisdictions:
+  - RU
+  macro_regions:
+  - Europe
+  - Asia
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.e-disclosure.ru/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: Russian issuer disclosures.
+  status: access_classified_not_bulk_api
+  notes: Access, sanctions, language, and provenance controls require separate legal review.
+  rate_limit_requests_per_second: 1.0
+- source_id: europe_esap
+  name: European Single Access Point
+  jurisdictions:
+  - EEA
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: research_required
+  official_url: https://www.esma.europa.eu/esap
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_download
+  historical_scope: EU/EEA public financial and sustainability information as ESAP phases become operational.
+  status: access_classified_not_bulk_api
+  notes: Future/rolling source; do not treat as historically complete today.
+  rate_limit_requests_per_second: 1.0
+- source_id: tpex
+  name: Taipei Exchange OpenAPI
+  jurisdictions:
+  - TW
+  macro_regions:
+  - Asia
+  adapter: gcu.adapters.twse:TpexOpenApiAdapter
+  access_mode: public_api
+  official_url: https://www.tpex.org.tw/openapi/
+  api_base_url: https://www.tpex.org.tw/openapi/v1/
+  capabilities:
+  - entity_universe
+  historical_scope: Current TPEx listed-company reference data from the official OpenAPI.
+  status: implemented_and_fixture_tested
+  notes: GET mopsfin_t187ap03_O returns listed-company basic data.
+  rate_limit_requests_per_second: 1.0
+- source_id: gleif_golden_copy
+  name: GLEIF Golden Copy and Level 1/Level 2 LEI files
+  jurisdictions:
+  - GLOBAL
+  macro_regions:
+  - Global
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: public_bulk
+  official_url: https://www.gleif.org/en/lei-data/gleif-golden-copy/download-the-golden-copy-files
+  capabilities:
+  - entity_universe
+  - entity_resolution
+  historical_scope: Global LEI reference files, relationship records, exceptions and reporting history in bulk formats.
+  status: implemented_bulk_downloader_and_streaming_lei_parser
+  notes: Use gcu gleif-bulk-download for current or delta Golden Copy archives and gcu gleif-normalize for LEI-CDF CSV ZIP normalization; LEI coverage is broad but does not equal every incorporated company worldwide.
+  rate_limit_requests_per_second: 0.5
+- source_id: gleif_ra_list
+  name: GLEIF Registration Authorities List
+  jurisdictions:
+  - GLOBAL
+  macro_regions:
+  - Global
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: public_bulk
+  official_url: https://www.gleif.org/en/lei-data/gleif-registration-authorities-list
+  capabilities:
+  - registry_directory
+  - entity_resolution
+  historical_scope: Directory of business registers and other registration authorities by jurisdiction, with downloadable
+    CSV/XLSX/PDF.
+  status: official_directory_catalogued
+  notes: Routing directory, not a company filing archive.
+  rate_limit_requests_per_second: 0.5
+- source_id: iso_mic
+  name: ISO 10383 Market Identifier Codes
+  jurisdictions:
+  - GLOBAL
+  macro_regions:
+  - Global
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: public_bulk
+  official_url: https://www.iso20022.org/market-identifier-codes
+  capabilities:
+  - market_venue_directory
+  historical_scope: Current and historical Market Identifier Code records for exchanges, trading platforms and market segments.
+  status: official_snapshot_included
+  notes: A downloaded workbook snapshot is bundled under data/snapshots.
+  rate_limit_requests_per_second: 0.5
+- source_id: iosco_members
+  name: IOSCO Members Directory
+  jurisdictions:
+  - GLOBAL
+  macro_regions:
+  - Global
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.iosco.org/about/?subsection=membership
+  capabilities:
+  - registry_directory
+  historical_scope: Directory of securities regulators and self-regulatory organizations by jurisdiction.
+  status: official_directory_catalogued
+  notes: Use to discover the competent securities authority; it is not a filing feed.
+  rate_limit_requests_per_second: 0.5
+- source_id: wfe_members
+  name: World Federation of Exchanges Membership Directory
+  jurisdictions:
+  - GLOBAL
+  macro_regions:
+  - Global
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: official_web
+  official_url: https://www.world-exchanges.org/our-work/membership
+  capabilities:
+  - market_venue_directory
+  historical_scope: Directory of exchanges and clearing houses represented by the World Federation of Exchanges.
+  status: official_directory_catalogued
+  notes: Use with ISO MIC to enumerate market operators and venues.
+  rate_limit_requests_per_second: 0.5

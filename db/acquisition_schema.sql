@@ -43,6 +43,23 @@ ON acquisition_issuer_scans(filing_year, status, next_attempt_at, scanned_at);
 CREATE INDEX IF NOT EXISTS idx_acquisition_issuer_priority
 ON acquisition_issuers(source_id, priority, ticker);
 
+CREATE TABLE IF NOT EXISTS acquisition_universe_snapshots (
+  snapshot_id BIGSERIAL PRIMARY KEY,
+  source_id TEXT NOT NULL REFERENCES acquisition_sources(source_id),
+  source_url TEXT NOT NULL DEFAULT '',
+  local_path TEXT NOT NULL,
+  sha256 TEXT NOT NULL,
+  row_count INTEGER NOT NULL,
+  retrieved_at TIMESTAMPTZ,
+  imported_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  status TEXT NOT NULL DEFAULT 'complete',
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  UNIQUE (source_id, sha256)
+);
+
+CREATE INDEX IF NOT EXISTS idx_acquisition_universe_snapshots_source
+ON acquisition_universe_snapshots(source_id, imported_at DESC);
+
 CREATE TABLE IF NOT EXISTS acquisition_filings (
   source_id TEXT NOT NULL REFERENCES acquisition_sources(source_id),
   source_filing_id TEXT NOT NULL,

@@ -1,0 +1,399 @@
+sources:
+- source_id: cninfo
+  name: CNINFO Mainland China statutory disclosure platform
+  jurisdictions:
+  - CN
+  macro_regions:
+  - Asia
+  adapter: gcu_priority_markets.adapters.cninfo:CninfoAdapter
+  access_mode: semi_public_web_endpoint
+  official_url: https://www.cninfo.com.cn/
+  api_base_url: https://www.cninfo.com.cn/new/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_inventory
+  - document_download
+  - event_monitoring
+  historical_scope: Combined SSE/SZSE/BSE issuer-orgId map plus paginated statutory announcement search.
+  status: implemented_contract_tested_deployment_smoke_required
+  notes: Uses public endpoints consumed by the official site. One combined issuer map is split by market; apply conservative
+    polling and preserve raw responses.
+  rate_limit_requests_per_second: 0.5
+- source_id: nse_india
+  name: National Stock Exchange of India listed securities and corporate filings
+  jurisdictions:
+  - IN
+  macro_regions:
+  - Asia
+  adapter: gcu_priority_markets.adapters.india:NseIndiaAdapter
+  access_mode: semi_public_web_endpoint
+  official_url: https://www.nseindia.com/companies-listing/corporate-filings-announcements
+  api_base_url: https://www.nseindia.com/api/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_inventory
+  - document_download
+  - event_monitoring
+  historical_scope: Main-board and SME security masters plus date-window corporate announcements.
+  status: implemented_contract_tested_deployment_smoke_required
+  notes: Announcement API requires an official-site bootstrap session and browser-compatible headers.
+  rate_limit_requests_per_second: 0.35
+- source_id: bse_india
+  name: BSE India active companies and corporate announcements
+  jurisdictions:
+  - IN
+  macro_regions:
+  - Asia
+  adapter: gcu_priority_markets.adapters.india:BseIndiaAdapter
+  access_mode: semi_public_web_endpoint
+  official_url: https://www.bseindia.com/corporates/List_Scrips.html
+  api_base_url: https://api.bseindia.com/BseIndiaAPI/api/
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_inventory
+  - document_download
+  - event_monitoring
+  historical_scope: BSE company master and date-window corporate-announcement search.
+  status: implemented_contract_tested_deployment_smoke_required
+  notes: Public front-end endpoints are not a licensed market-data feed; rate conservatively and retain evidence.
+  rate_limit_requests_per_second: 0.35
+- source_id: krx_kind
+  name: Korea Exchange KIND listed-company denominator
+  jurisdictions:
+  - KR
+  macro_regions:
+  - Asia
+  adapter: gcu_priority_markets.adapters.krx:KrxKindAdapter
+  access_mode: public_bulk
+  official_url: https://kind.krx.co.kr/corpgeneral/corpList.do?method=loadInitPage
+  api_base_url: https://kind.krx.co.kr/corpgeneral/
+  capabilities:
+  - entity_universe
+  historical_scope: Current KOSPI, KOSDAQ and KONEX company list. Filings remain in deployed OpenDART.
+  status: implemented_contract_tested_deployment_smoke_required
+  notes: Patch intentionally reuses the deployed OpenDART adapter rather than duplicating it.
+  rate_limit_requests_per_second: 0.5
+- source_id: fca_firds_priority
+  name: FCA FIRDS priority-market equity reference files
+  jurisdictions:
+  - GB
+  - DE
+  - FR
+  - IT
+  - ES
+  - NL
+  macro_regions:
+  - Europe
+  adapter: gcu_priority_markets.adapters.firds:FcaFirdsAdapter
+  access_mode: public_bulk
+  official_url: https://www.fca.org.uk/markets/transaction-reporting/financial-instruments-reference-data-system-firds
+  api_base_url: https://api.data.fca.org.uk/
+  capabilities:
+  - entity_universe
+  - historical_index
+  - event_monitoring
+  - reconciliation
+  historical_scope: Full, delta and cancellation instrument-reference files filtered by equity CFI and target MIC.
+  status: implemented_contract_tested_deployment_smoke_required
+  notes: Provides source-local listing denominator, not canonical issuer legal names. Use issuer LEI for resolution.
+  rate_limit_requests_per_second: 0.5
+- source_id: fca_official_list
+  name: FCA Official List export and listings reference
+  jurisdictions:
+  - GB
+  macro_regions:
+  - Europe
+  adapter: gcu_priority_markets.adapters.official_export:OfficialExportAdapter
+  access_mode: official_web
+  official_url: https://data.fca.org.uk/
+  capabilities:
+  - entity_universe
+  - historical_index
+  - event_monitoring
+  - reconciliation
+  historical_scope: FCA Official List search/export used to reconcile LSE and FIRDS equity denominators.
+  status: implemented_import_and_snapshot_monitor
+  notes: Official List includes debt and non-equity securities; apply the contract filters before treating rows as company-equity
+    listings.
+  rate_limit_requests_per_second: 0.25
+- source_id: lse_issuer_list
+  name: London Stock Exchange issuer-list reports
+  jurisdictions:
+  - GB
+  macro_regions:
+  - Europe
+  adapter: gcu_priority_markets.adapters.official_export:OfficialExportAdapter
+  access_mode: official_web
+  official_url: https://www.londonstockexchange.com/reports
+  capabilities:
+  - entity_universe
+  - historical_index
+  - event_monitoring
+  historical_scope: Current issuer-list download plus annual issuer-list archives published by LSE.
+  status: implemented_import_and_snapshot_monitor
+  notes: Operator downloads the official current report or archive; patch normalizes and diffs it without redistributing LSE
+    data.
+  rate_limit_requests_per_second: 0.25
+- source_id: tmx_issuer_lists
+  name: TMX monthly TSX and TSXV issuer lists
+  jurisdictions:
+  - CA
+  macro_regions:
+  - Americas
+  adapter: gcu_priority_markets.adapters.tmx:TmxIssuerAdapter
+  access_mode: public_bulk
+  official_url: https://www.tsx.com/en/listings/current-market-statistics
+  api_base_url: https://www.tsx.com/en/resource/
+  capabilities:
+  - entity_universe
+  - historical_index
+  historical_scope: Current and archived monthly TSX/TSXV issuer workbooks.
+  status: implemented_contract_tested_deployment_smoke_required
+  notes: Current resource identifier can change; discovery parses the official current-market-statistics page.
+  rate_limit_requests_per_second: 0.5
+- source_id: fca_nsm
+  name: FCA National Storage Mechanism official export
+  jurisdictions:
+  - GB
+  macro_regions:
+  - Europe
+  adapter: gcu_priority_markets.adapters.official_export:OfficialExportAdapter
+  access_mode: official_web
+  official_url: https://data.fca.org.uk/#/nsm/nationalstoragemechanism
+  capabilities:
+  - filing_discovery
+  - document_inventory
+  - document_download
+  - event_monitoring
+  historical_scope: Official NSM search/export and tagged annual-financial-report artifacts.
+  status: implemented_import_and_snapshot_monitor
+  notes: No undocumented scraper is enabled. Import the official CSV export; optional browser capture is operator-controlled.
+  rate_limit_requests_per_second: 0.25
+- source_id: sedar_plus
+  name: SEDAR+ public search, exports and email alerts
+  jurisdictions:
+  - CA
+  macro_regions:
+  - Americas
+  adapter: gcu_priority_markets.adapters.official_export:OfficialExportAdapter
+  access_mode: official_web
+  official_url: https://www.sedarplus.ca/csa-party/service/create.html?_locale=en&service=searchDocuments&targetAppCode=csa-party
+  capabilities:
+  - filing_discovery
+  - document_inventory
+  - document_download
+  - event_monitoring
+  historical_scope: Public document search/export, reporting-issuer lists and operator-owned email alerts.
+  status: implemented_policy_compliant_import_and_alert_monitor
+  notes: No public bulk API is assumed; the patch does not bypass the public-user download limit or site terms.
+  rate_limit_requests_per_second: 0.2
+- source_id: priority_eu_esef
+  name: Priority European ESEF incremental index
+  jurisdictions:
+  - DE
+  - FR
+  - IT
+  - ES
+  - NL
+  macro_regions:
+  - Europe
+  adapter: gcu_priority_markets.adapters.esef:PriorityEsefAdapter
+  access_mode: public_api
+  official_url: https://filings.xbrl.org/
+  api_base_url: https://filings.xbrl.org/api/
+  capabilities:
+  - filing_discovery
+  - document_inventory
+  - document_download
+  - event_monitoring
+  historical_scope: Incremental ESEF/iXBRL discovery for target EU countries; national OAM remains the authority.
+  status: implemented_thin_wrapper_over_deployed_adapter
+  notes: Secondary discovery and monitoring channel, not a national completeness denominator.
+  rate_limit_requests_per_second: 0.5
+- source_id: six_exchange
+  name: SIX Swiss Exchange equity issuers and issuer news exports
+  jurisdictions:
+  - CH
+  macro_regions:
+  - Europe
+  adapter: gcu_priority_markets.adapters.official_export:OfficialExportAdapter
+  access_mode: official_web
+  official_url: https://www.six-group.com/en/market-data/shares/companies.html
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_inventory
+  - event_monitoring
+  historical_scope: Official equity-issuer CSV table and issuer-news/notice exports.
+  status: implemented_import_and_snapshot_monitor
+  notes: Reference-data licensing terms remain source-specific; patch stores provenance and does not redistribute licensed
+    feeds.
+  rate_limit_requests_per_second: 0.3
+- source_id: bmv
+  name: Bolsa Mexicana de Valores issuer and disclosure exports
+  jurisdictions:
+  - MX
+  macro_regions:
+  - Americas
+  adapter: gcu_priority_markets.adapters.official_export:OfficialExportAdapter
+  access_mode: official_web
+  official_url: https://www.bmv.com.mx/es/emisoras/informacion-de-emisoras
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_inventory
+  - event_monitoring
+  historical_scope: Public issuer pages and operator exports; scheduled historical/reference feeds are commercial.
+  status: implemented_import_and_snapshot_monitor
+  notes: Commercial FTP/web-service products are not bundled or represented as free bulk access.
+  rate_limit_requests_per_second: 0.25
+- source_id: idx_indonesia
+  name: Indonesia Stock Exchange listed companies and disclosures
+  jurisdictions:
+  - ID
+  macro_regions:
+  - Asia
+  adapter: gcu_priority_markets.adapters.official_export:OfficialExportAdapter
+  access_mode: official_web
+  official_url: https://www.idx.co.id/en/listed-companies/financial-statements-and-annual-report
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_inventory
+  - document_download
+  - event_monitoring
+  historical_scope: Official listed-company, financial-statement, annual-report and announcement exports.
+  status: implemented_import_browser_capture_and_snapshot_monitor
+  notes: The official site can block non-browser requests; use the included operator-controlled capture workflow.
+  rate_limit_requests_per_second: 0.2
+- source_id: tadawul
+  name: Saudi Exchange issuer directory and announcements
+  jurisdictions:
+  - SA
+  macro_regions:
+  - Asia
+  adapter: gcu_priority_markets.adapters.official_export:OfficialExportAdapter
+  access_mode: official_web
+  official_url: https://www.saudiexchange.sa/wps/portal/saudiexchange/trading/participants-directory/issuer-directory
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_inventory
+  - event_monitoring
+  historical_scope: Main Market and Nomu issuer directory, announcements and financial calendars.
+  status: implemented_import_browser_capture_and_snapshot_monitor
+  notes: WebSphere portlet responses are captured only through an operator-controlled official-page session.
+  rate_limit_requests_per_second: 0.2
+- source_id: sgx
+  name: Singapore Exchange securities and SGXNet public announcements
+  jurisdictions:
+  - SG
+  macro_regions:
+  - Asia
+  adapter: gcu_priority_markets.adapters.official_export:OfficialExportAdapter
+  access_mode: official_web
+  official_url: https://www.sgx.com/securities/company-announcements
+  capabilities:
+  - entity_universe
+  - filing_discovery
+  - document_inventory
+  - document_download
+  - event_monitoring
+  historical_scope: Official securities/reference export and SGXNet announcement artifacts.
+  status: implemented_import_and_snapshot_monitor_licensed_feed_optional
+  notes: Public artifacts use links.sgx.com; the institutional XML feed remains a separately licensed integration.
+  rate_limit_requests_per_second: 0.25
+- source_id: unternehmensregister
+  name: German Unternehmensregister OAM export
+  jurisdictions:
+  - DE
+  macro_regions:
+  - Europe
+  adapter: gcu_priority_markets.adapters.official_export:OfficialExportAdapter
+  access_mode: official_web
+  official_url: https://www.unternehmensregister.de/
+  capabilities:
+  - filing_discovery
+  - document_inventory
+  - document_download
+  - reconciliation
+  historical_scope: German OAM/company-register search exports and document manifests.
+  status: implemented_import_and_reconciliation_contract
+  notes: Use as national authority cross-check for ESEF discovery.
+  rate_limit_requests_per_second: 0.2
+- source_id: amf_france
+  name: AMF BDIF and OAM export
+  jurisdictions:
+  - FR
+  macro_regions:
+  - Europe
+  adapter: gcu_priority_markets.adapters.official_export:OfficialExportAdapter
+  access_mode: official_web
+  official_url: https://bdif.amf-france.org/
+  capabilities:
+  - filing_discovery
+  - document_inventory
+  - document_download
+  - reconciliation
+  historical_scope: AMF issuer financial-information search/export.
+  status: implemented_import_and_reconciliation_contract
+  notes: Use as national authority cross-check for ESEF discovery.
+  rate_limit_requests_per_second: 0.2
+- source_id: consob
+  name: CONSOB Italian OAM export
+  jurisdictions:
+  - IT
+  macro_regions:
+  - Europe
+  adapter: gcu_priority_markets.adapters.official_export:OfficialExportAdapter
+  access_mode: official_web
+  official_url: https://www.consob.it/web/area-pubblica/emittenti
+  capabilities:
+  - filing_discovery
+  - document_inventory
+  - document_download
+  - reconciliation
+  historical_scope: CONSOB/OAM issuer disclosure exports.
+  status: implemented_import_and_reconciliation_contract
+  notes: Use as national authority cross-check for ESEF discovery.
+  rate_limit_requests_per_second: 0.2
+- source_id: cnmv
+  name: CNMV Spanish OAM and XBRL export
+  jurisdictions:
+  - ES
+  macro_regions:
+  - Europe
+  adapter: gcu_priority_markets.adapters.official_export:OfficialExportAdapter
+  access_mode: official_web
+  official_url: https://www.cnmv.es/portal/consultas/busqueda.aspx
+  capabilities:
+  - filing_discovery
+  - document_inventory
+  - document_download
+  - structured_facts
+  - reconciliation
+  historical_scope: CNMV regulated information, periodic reports and XBRL exports.
+  status: implemented_import_and_reconciliation_contract
+  notes: Use as national authority cross-check for ESEF discovery.
+  rate_limit_requests_per_second: 0.2
+- source_id: afm_netherlands
+  name: AFM Netherlands OAM public register export
+  jurisdictions:
+  - NL
+  macro_regions:
+  - Europe
+  adapter: gcu_priority_markets.adapters.official_export:OfficialExportAdapter
+  access_mode: official_web
+  official_url: https://www.afm.nl/en/sector/registers/meldingenregisters/financiele-verslaggeving
+  capabilities:
+  - filing_discovery
+  - document_inventory
+  - document_download
+  - reconciliation
+  historical_scope: AFM financial-reporting public-register exports.
+  status: implemented_import_and_reconciliation_contract
+  notes: Use as national authority cross-check for ESEF discovery.
+  rate_limit_requests_per_second: 0.2

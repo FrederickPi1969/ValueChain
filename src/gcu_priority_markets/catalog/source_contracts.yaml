@@ -1,0 +1,654 @@
+contracts:
+  cninfo:
+    filing_url: https://www.cninfo.com.cn/new/hisAnnouncement/query
+    document_base_url: https://static.cninfo.com.cn/
+    authority_page: https://www.cninfo.com.cn/new/index
+    monitoring: poll date windows, paginate, deduplicate by announcementId
+    universe_url: https://www.cninfo.com.cn/new/data/szse_stock.json
+    universe_semantics: Combined Shanghai, Shenzhen and Beijing A-share orgId map; split by explicit market field, orgId prefix,
+      then security-code prefix.
+  nse_india:
+    universe_urls:
+      XNSE: https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv
+      XNSE_SME: https://nsearchives.nseindia.com/emerge/corporates/content/SME_EQUITY_L.csv
+    bootstrap_url: https://www.nseindia.com/companies-listing/corporate-filings-announcements
+    filing_url: https://www.nseindia.com/api/corporate-announcements
+    authority_page: https://www.nseindia.com/companies-listing/corporate-filings-announcements
+    monitoring: bootstrap official-page session, poll short date windows, deduplicate by sequence/attachment
+  bse_india:
+    universe_url: https://www.bseindia.com/downloads1/List_of_companies.csv
+    filing_url: https://api.bseindia.com/BseIndiaAPI/api/AnnGetData/w
+    document_base_url: https://www.bseindia.com/xml-data/corpfiling/AttachLive/
+    authority_page: https://www.bseindia.com/corporates/List_Scrips.html
+    monitoring: poll date windows, deduplicate by NEWSID or attachment name
+  krx_kind:
+    universe_url: https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13
+    authority_page: https://kind.krx.co.kr/corpgeneral/corpList.do?method=loadInitPage
+    filing_dependency: opendart
+    monitoring: use deployed OpenDART adapter and this patch's generic checkpoint monitor
+  fca_firds_priority:
+    file_index_url: https://api.data.fca.org.uk/fca_data_firds_files
+    full_file_type: FULINS
+    delta_file_type: DLTINS
+    cancelled_file_type: FULCAN
+    equity_full_file_prefix: FULINS_E_
+    target_mics:
+      GB:
+      - XLON
+      - AIMX
+      - AQSL
+      - AQSG
+      DE:
+      - XETR
+      - XETA
+      - XETB
+      - XETS
+      - XFRA
+      - FRAA
+      - FRAB
+      - FRAS
+      FR:
+      - XPAR
+      - ALXP
+      - XMLI
+      IT:
+      - XMIL
+      - EXGM
+      ES:
+      - XMAD
+      - GROW
+      - MABX
+      - XMCE
+      - XBIL
+      - XBAR
+      - XVAL
+      NL:
+      - XAMS
+    monitoring: bootstrap from latest full equity files, then apply daily delta/cancellation records
+  tmx_issuer_lists:
+    directory_url: https://www.tsx.com/en/listings/current-market-statistics
+    current_resource_url: https://www.tsx.com/en/resource/571
+    target_exchanges:
+    - TSX
+    - TSXV
+    monitoring: check current-market-statistics page monthly and hash downloaded workbook
+  priority_eu_esef:
+    api_url: https://filings.xbrl.org/api/filings
+    countries:
+    - DE
+    - FR
+    - IT
+    - ES
+    - NL
+    monitoring: sort by processed/date_added, stop when checkpoint horizon is reached
+  fca_nsm:
+    authority_page: https://data.fca.org.uk/#/nsm/nationalstoragemechanism
+    input_kind: filings
+    stable_key_fields:
+    - document_id
+    - filing_date
+    - issuer_name
+    - document_url
+    field_aliases:
+      document_id:
+      - document_id
+      - nsm_id
+      - reference
+      - document reference
+      - document-reference
+      issuer_name:
+      - issuer_name
+      - issuer
+      - company
+      - company name
+      - issuer name
+      issuer_id:
+      - issuer_id
+      - lei
+      - company number
+      - issuer identifier
+      title:
+      - title
+      - document title
+      - headline
+      - description
+      form:
+      - form
+      - document type
+      - type
+      - category
+      filing_date:
+      - filing_date
+      - publication date
+      - date
+      - published
+      document_url:
+      - document_url
+      - url
+      - download url
+      - artefact url
+      - artifact url
+      detail_url:
+      - detail_url
+      - detail url
+      - nsm url
+    monitoring: export official CSV and run snapshot-diff; retain original artifact URL
+  sedar_plus:
+    authority_page: https://www.sedarplus.ca/csa-party/service/create.html?_locale=en&service=searchDocuments&targetAppCode=csa-party
+    input_kind: filings
+    stable_key_fields:
+    - document_id
+    - filing_date
+    - issuer_name
+    - document_url
+    field_aliases:
+      document_id:
+      - document_id
+      - document id
+      - filing number
+      - document number
+      issuer_name:
+      - issuer_name
+      - profile name
+      - issuer
+      - company name
+      issuer_id:
+      - issuer_id
+      - sedar profile number
+      - profile number
+      - legal entity identifier
+      title:
+      - title
+      - document type
+      - document name
+      - description
+      form:
+      - form
+      - document type
+      - filing type
+      filing_date:
+      - filing_date
+      - filing date
+      - submitted date
+      - date
+      document_url:
+      - document_url
+      - document link
+      - download link
+      - url
+      detail_url:
+      - detail_url
+      - profile link
+      - search result link
+    monitoring: official CSV export plus operator-owned email alerts; public download batching remains external
+  six_exchange:
+    authority_page: https://www.six-group.com/en/market-data/shares/companies.html
+    input_kind: auto
+    stable_key_fields:
+    - issuer_name
+    - symbol
+    - isin
+    - exchange
+    field_aliases:
+      issuer_name:
+      - issuer_name
+      - company
+      - company name
+      - issuer
+      - name
+      issuer_id:
+      - issuer_id
+      - lei
+      - valor
+      symbol:
+      - symbol
+      - ticker
+      - trading symbol
+      isin:
+      - isin
+      - isin number
+      exchange:
+      - exchange
+      - market
+      - trading venue
+      title:
+      - title
+      - headline
+      - subject
+      form:
+      - form
+      - type
+      - category
+      filing_date:
+      - filing_date
+      - publication date
+      - date
+      - published
+      document_url:
+      - document_url
+      - url
+      - link
+      - download
+      detail_url:
+      - detail_url
+      - detail url
+    defaults:
+      jurisdiction: CH
+      exchange: XSWX
+    monitoring: download official table as CSV; issuer-news exports use snapshot-diff
+  bmv:
+    authority_page: https://www.bmv.com.mx/es/emisoras/informacion-de-emisoras
+    input_kind: auto
+    stable_key_fields:
+    - issuer_name
+    - symbol
+    - series
+    - isin
+    field_aliases:
+      issuer_name:
+      - issuer_name
+      - emisora
+      - nombre
+      - company
+      - company name
+      issuer_id:
+      - issuer_id
+      - clave emisora
+      - clave
+      symbol:
+      - symbol
+      - clave
+      - ticker
+      series:
+      - series
+      - serie
+      isin:
+      - isin
+      - isin code
+      exchange:
+      - exchange
+      - bolsa
+      title:
+      - title
+      - evento relevante
+      - tipo de informacion
+      - subject
+      form:
+      - form
+      - tipo
+      - category
+      filing_date:
+      - filing_date
+      - fecha
+      - publication date
+      document_url:
+      - document_url
+      - archivo
+      - url
+      - link
+      detail_url:
+      - detail_url
+      - perfil
+      - detail url
+    defaults:
+      jurisdiction: MX
+      exchange: XMEX
+    monitoring: operator export or browser capture; commercial scheduled databases remain outside patch
+  idx_indonesia:
+    authority_page: https://www.idx.co.id/en/listed-companies/financial-statements-and-annual-report
+    input_kind: auto
+    stable_key_fields:
+    - issuer_name
+    - symbol
+    - filing_date
+    - document_url
+    field_aliases:
+      issuer_name:
+      - issuer_name
+      - company name
+      - listed company
+      - stock name
+      - nama emiten
+      issuer_id:
+      - issuer_id
+      - code
+      - company code
+      symbol:
+      - symbol
+      - code
+      - stock code
+      - kode
+      exchange:
+      - exchange
+      - board
+      title:
+      - title
+      - report name
+      - announcement title
+      - document
+      form:
+      - form
+      - period
+      - report type
+      - type
+      filing_date:
+      - filing_date
+      - date
+      - publication date
+      - submitted
+      document_url:
+      - document_url
+      - download
+      - file
+      - link
+      - url
+      detail_url:
+      - detail_url
+      - detail url
+    defaults:
+      jurisdiction: ID
+      exchange: XIDX
+    monitoring: operator-controlled browser capture followed by raw snapshot and diff
+  tadawul:
+    authority_page: https://www.saudiexchange.sa/wps/portal/saudiexchange/trading/participants-directory/issuer-directory
+    input_kind: auto
+    stable_key_fields:
+    - issuer_name
+    - symbol
+    - filing_date
+    - document_url
+    - title
+    field_aliases:
+      issuer_name:
+      - issuer_name
+      - company name
+      - issuer
+      - company
+      issuer_id:
+      - issuer_id
+      - company code
+      - cs
+      symbol:
+      - symbol
+      - security code
+      - trading code
+      exchange:
+      - exchange
+      - market
+      title:
+      - title
+      - announcement title
+      - headline
+      form:
+      - form
+      - announcement category
+      - category
+      filing_date:
+      - filing_date
+      - date and time of broadcast
+      - publication date
+      - date
+      document_url:
+      - document_url
+      - attachment
+      - download
+      - url
+      detail_url:
+      - detail_url
+      - announcement url
+      - detail url
+    defaults:
+      jurisdiction: SA
+      exchange: XSAU
+    monitoring: operator-controlled official-page capture and snapshot-diff
+  sgx:
+    authority_page: https://www.sgx.com/securities/company-announcements
+    input_kind: auto
+    stable_key_fields:
+    - announcement_reference
+    - issuer_name
+    - filing_date
+    - title
+    field_aliases:
+      document_id:
+      - document_id
+      - announcement reference
+      - announcement_reference
+      issuer_name:
+      - issuer_name
+      - issuer/ manager
+      - issuer
+      - company
+      issuer_id:
+      - issuer_id
+      - security isin
+      - isin
+      symbol:
+      - symbol
+      - security code
+      - stock code
+      title:
+      - title
+      - announcement title
+      - announcement sub title
+      form:
+      - form
+      - announcement type
+      - category
+      filing_date:
+      - filing_date
+      - date &time of broadcast
+      - date and time of broadcast
+      - date
+      document_url:
+      - document_url
+      - attachment url
+      - download url
+      - url
+      detail_url:
+      - detail_url
+      - announcement url
+      - detail url
+      announcement_reference:
+      - announcement_reference
+      - announcement reference
+      - reference
+    defaults:
+      jurisdiction: SG
+      exchange: XSES
+    monitoring: official export or public SGXNet artifacts; institutional XML feed is a separate licensed path
+  unternehmensregister:
+    authority_page: https://www.unternehmensregister.de/
+    input_kind: filings
+    stable_key_fields:
+    - issuer_name
+    - filing_date
+    - title
+    - document_url
+    field_aliases: &id001
+      document_id:
+      - document_id
+      - reference
+      - id
+      issuer_name:
+      - issuer_name
+      - issuer
+      - company
+      - entity name
+      issuer_id:
+      - issuer_id
+      - lei
+      - register number
+      title:
+      - title
+      - document title
+      - subject
+      form:
+      - form
+      - type
+      - document type
+      filing_date:
+      - filing_date
+      - publication date
+      - date
+      document_url:
+      - document_url
+      - url
+      - download url
+      detail_url:
+      - detail_url
+      - detail url
+    defaults:
+      jurisdiction: DE
+  amf_france:
+    authority_page: https://bdif.amf-france.org/
+    input_kind: filings
+    stable_key_fields:
+    - issuer_name
+    - filing_date
+    - title
+    - document_url
+    field_aliases: *id001
+    defaults:
+      jurisdiction: FR
+  consob:
+    authority_page: https://www.consob.it/web/area-pubblica/emittenti
+    input_kind: filings
+    stable_key_fields:
+    - issuer_name
+    - filing_date
+    - title
+    - document_url
+    field_aliases: *id001
+    defaults:
+      jurisdiction: IT
+  cnmv:
+    authority_page: https://www.cnmv.es/portal/consultas/busqueda.aspx
+    input_kind: filings
+    stable_key_fields:
+    - issuer_name
+    - filing_date
+    - title
+    - document_url
+    field_aliases: *id001
+    defaults:
+      jurisdiction: ES
+  afm_netherlands:
+    authority_page: https://www.afm.nl/en/sector/registers/meldingenregisters/financiele-verslaggeving
+    input_kind: filings
+    stable_key_fields:
+    - issuer_name
+    - filing_date
+    - title
+    - document_url
+    field_aliases: *id001
+    defaults:
+      jurisdiction: NL
+  lse_issuer_list:
+    authority_page: https://www.londonstockexchange.com/reports
+    input_kind: entities
+    stable_key_fields:
+    - issuer_name
+    - isin
+    - symbol
+    - market
+    - admission_date
+    field_aliases:
+      issuer_name:
+      - issuer_name
+      - issuer name
+      - issuer
+      - company name
+      - name
+      issuer_id:
+      - issuer_id
+      - issuer id
+      - lei
+      - company number
+      symbol:
+      - symbol
+      - tidm
+      - ticker
+      - epic
+      - mnemonic
+      isin:
+      - isin
+      - isin code
+      - international securities identification number
+      exchange:
+      - exchange
+      - market
+      - market name
+      - segment
+      security_name:
+      - security_name
+      - security name
+      - instrument name
+      - description
+      currency:
+      - currency
+      - trading currency
+      - currency code
+      admission_date:
+      - admission_date
+      - admission date
+      - first admission date
+    defaults:
+      jurisdiction: GB
+      exchange: XLON
+    monitoring: download current issuer-list report, retain raw file, compare stable keys and archive hashes
+  fca_official_list:
+    authority_page: https://data.fca.org.uk/
+    input_kind: entities
+    stable_key_fields:
+    - issuer_name
+    - isin
+    - listing_category
+    - admission_date
+    field_aliases:
+      issuer_name:
+      - issuer_name
+      - issuer name
+      - issuer
+      - company name
+      issuer_id:
+      - issuer_id
+      - issuer id
+      - lei
+      - legal entity identifier
+      symbol:
+      - symbol
+      - ticker
+      - tidm
+      isin:
+      - isin
+      - isin code
+      exchange:
+      - exchange
+      - market
+      - trading venue
+      security_name:
+      - security_name
+      - security name
+      - description
+      - instrument
+      listing_category:
+      - listing_category
+      - listing category
+      - category
+      - listing segment
+      admission_date:
+      - admission_date
+      - admission date
+      - date admitted
+      cancellation_date:
+      - cancellation_date
+      - cancellation date
+      - date cancelled
+    defaults:
+      jurisdiction: GB
+    filters:
+      security_family: equity
+      active_only: true
+    monitoring: export Official List results, retain raw export, filter equity categories, snapshot-diff and reconcile against
+      FIRDS/LSE

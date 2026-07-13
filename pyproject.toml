@@ -9,12 +9,16 @@ dependencies = [
   "httpx>=0.27",
   "jinja2>=3.1",
   "numpy>=1.26",
+  "openpyxl>=3.1",
   "pandas>=2.0",
   "psycopg[binary]>=3.2",
   "psycopg-pool>=3.2",
+  "pydantic-settings>=2.4",
   "pyyaml>=6.0",
   "requests>=2.31",
+  "typer>=0.12",
   "uvicorn[standard]>=0.30",
+  "xlrd>=2.0",
   "yfinance>=0.2",
 ]
 
@@ -22,6 +26,13 @@ dependencies = [
 valuechain = "valuechain.cli:main"
 valuechain-api = "valuechain.api:main"
 valuechain-acquire = "valuechain.acquisition_cli:main"
+valuechain-global = "gcu_priority_markets.cli:app"
+
+[project.optional-dependencies]
+browser = ["playwright>=1.50"]
+
+[tool.setuptools.package-data]
+gcu_priority_markets = ["catalog/*.yaml", "catalog/*.csv"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

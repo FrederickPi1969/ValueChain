@@ -1,0 +1,6 @@
+entity_id,legal_name,jurisdiction,market_cap_usd,median_daily_value_usd,etf_core_weight,index_membership_count,value_chain_score,critical_supply_chain
+A,Alpha,CN,1000,100,5,4,0.9,true
+B,Beta,CN,500,50,1,2,0.5,false
+C,Gamma,CN,100,5,0,0,0.1,false
+D,Delta,IN,900,90,4,3,0.8,false
+E,Epsilon,IN,200,10,0,1,0.2,false

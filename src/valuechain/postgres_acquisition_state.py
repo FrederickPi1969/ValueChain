@@ -21,8 +21,9 @@ def utc_now() -> datetime:
 
 
 class PostgresAcquisitionState:
-    def __init__(self, database_url: str) -> None:
+    def __init__(self, database_url: str, source_id: str = SOURCE_ID) -> None:
         self.database_url = database_url
+        self.source_id = source_id
         self.connection = psycopg.connect(database_url, row_factory=dict_row)
         self.connection.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
         self.connection.commit()
@@ -53,7 +54,7 @@ class PostgresAcquisitionState:
                 """,
                 [
                     (
-                        SOURCE_ID,
+                        self.source_id,
                         row.cik,
                         row.ticker,
                         row.company_name,
@@ -78,7 +79,7 @@ class PostgresAcquisitionState:
                 WHERE source_id = %s
                 ON CONFLICT(source_id, source_issuer_id, filing_year) DO NOTHING
                 """,
-                (year, SOURCE_ID),
+                (year, self.source_id),
             )
         self.connection.commit()
 
@@ -119,7 +120,7 @@ class PostgresAcquisitionState:
                 FOR UPDATE OF ys SKIP LOCKED
                 LIMIT %s
                 """,
-                (SOURCE_ID, filing_year, now, rescan_hours, rescan_before, limit),
+                (self.source_id, filing_year, now, rescan_hours, rescan_before, limit),
             ).fetchall()
             if rows:
                 with self.connection.cursor() as cursor:
@@ -129,7 +130,7 @@ class PostgresAcquisitionState:
                         SET status = 'running', attempts = attempts + 1, claimed_at = now()
                         WHERE source_id = %s AND source_issuer_id = %s AND filing_year = %s
                         """,
-                        [(SOURCE_ID, row["cik"], filing_year) for row in rows],
+                        [(self.source_id, row["cik"], filing_year) for row in rows],
                     )
         return [AcquisitionIssuer(**row) for row in rows]
 
@@ -141,7 +142,7 @@ class PostgresAcquisitionState:
                 next_attempt_at = NULL, last_error = NULL
             WHERE source_id = %s AND source_issuer_id = %s AND filing_year = %s
             """,
-            (SOURCE_ID, cik, filing_year),
+            (self.source_id, cik, filing_year),
         )
         self.connection.commit()
 
@@ -160,7 +161,7 @@ class PostgresAcquisitionState:
                 last_error = %s
             WHERE source_id = %s AND source_issuer_id = %s AND filing_year = %s
             """,
-            (retry_minutes, error[:1000], SOURCE_ID, cik, filing_year),
+            (retry_minutes, error[:1000], self.source_id, cik, filing_year),
         )
         self.connection.commit()
 
@@ -172,7 +173,7 @@ class PostgresAcquisitionState:
             WHERE source_id = %s AND filing_year = %s
             GROUP BY status ORDER BY status
             """,
-            (SOURCE_ID, filing_year),
+            (self.source_id, filing_year),
         ).fetchall()
         return {row["status"]: row["count"] for row in rows}
 
@@ -203,7 +204,7 @@ class PostgresAcquisitionState:
               metadata = EXCLUDED.metadata
             """,
             (
-                SOURCE_ID,
+                self.source_id,
                 filing["accession_number"],
                 filing["cik"],
                 filing["form"],
@@ -240,7 +241,7 @@ class PostgresAcquisitionState:
               metadata = EXCLUDED.metadata
             """,
             (
-                SOURCE_ID,
+                self.source_id,
                 document["accession_number"],
                 document["document_kind"],
                 document["source_url"],
@@ -264,14 +265,14 @@ class PostgresAcquisitionState:
             WHERE source_id = %s AND status = 'running'
               AND started_at < now() - interval '45 minutes'
             """,
-            (SOURCE_ID,),
+            (self.source_id,),
         )
         self.connection.execute(
             """
             INSERT INTO acquisition_runs(run_id, source_id, target_year, mode, status)
             VALUES (%s, %s, %s, %s, 'running')
             """,
-            (run_id, SOURCE_ID, target_year, mode),
+            (run_id, self.source_id, target_year, mode),
         )
         self.connection.commit()
 
@@ -303,7 +304,7 @@ class PostgresAcquisitionState:
             GROUP BY filing_year, status
             ORDER BY filing_year DESC, status
             """,
-            (SOURCE_ID,),
+            (self.source_id,),
         ).fetchall()
         years: dict[str, dict[str, int]] = {}
         for row in year_rows:
@@ -318,7 +319,7 @@ class PostgresAcquisitionState:
               (SELECT COALESCE(SUM(byte_size), 0)::bigint FROM acquisition_documents
                  WHERE source_id = %s AND status = 'complete') AS bytes
             """,
-            (SOURCE_ID, SOURCE_ID, SOURCE_ID, SOURCE_ID),
+            (self.source_id, self.source_id, self.source_id, self.source_id),
         ).fetchone()
         latest_run = self.connection.execute(
             """
@@ -328,7 +329,7 @@ class PostgresAcquisitionState:
             WHERE source_id = %s
             ORDER BY started_at DESC LIMIT 1
             """,
-            (SOURCE_ID,),
+            (self.source_id,),
         ).fetchone()
         return {
             "issuers": totals["issuers"],
@@ -381,7 +382,7 @@ class PostgresAcquisitionState:
                             row["next_attempt_at"] or "",
                             row["scanned_at"] or "",
                             row["last_error"],
-                            SOURCE_ID,
+                            self.source_id,
                             row["cik"],
                             row["filing_year"],
                         )
