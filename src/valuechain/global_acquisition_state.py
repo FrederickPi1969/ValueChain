@@ -12,6 +12,26 @@ from gcu.models import EntityRef, FilingRef, SourceDefinition
 from valuechain.acquisition_schema import ensure_acquisition_schema
 
 
+def filing_local_dir(
+    raw_root: Path,
+    source_id: str,
+    filing_year: int,
+    source_entity_id: str,
+    filing_id: str,
+) -> Path:
+    """Return the canonical on-disk directory recorded in acquisition metadata."""
+    safe_filing_id = filing_id.replace("/", "_").replace("\\", "_")
+    if source_id == "cninfo":
+        safe_entity_id = source_entity_id.replace("/", "_").replace("\\", "_")
+        return (
+            raw_root
+            / source_id
+            / str(filing_year)
+            / safe_entity_id
+            / safe_filing_id
+        )
+    return raw_root / source_id / str(filing_year) / safe_filing_id
+
 
 class GlobalSourceAcquisitionState:
     """PostgreSQL queue and provenance state for non-SEC source downloaders."""
@@ -189,7 +209,13 @@ class GlobalSourceAcquisitionState:
 
     def _filing_values(self, filing: FilingRef, raw_root: Path) -> tuple[Any, ...]:
         year = filing.filed_at.year
-        local_dir = raw_root / self.source_id / str(year) / filing.filing_id.replace("/", "_")
+        local_dir = filing_local_dir(
+            raw_root,
+            self.source_id,
+            year,
+            filing.source_entity_id,
+            filing.filing_id,
+        )
         primary_name = (
             filing.primary_document_url.split("?", 1)[0].rsplit("/", 1)[-1]
             if filing.primary_document_url

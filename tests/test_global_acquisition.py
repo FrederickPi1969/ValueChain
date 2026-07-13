@@ -9,6 +9,7 @@ from valuechain.global_acquisition import (
     require_proxy,
     safe_filename,
 )
+from valuechain.global_acquisition_state import filing_local_dir
 
 
 def test_global_acquisition_config_preserves_year_priority(monkeypatch) -> None:
@@ -48,6 +49,18 @@ def test_safe_filename_removes_paths_and_unsafe_characters() -> None:
         "report_20one.pdf"
     )
     assert Path(safe_filename("https://example.test/", "fallback.bin")).name == "fallback.bin"
+
+
+def test_cninfo_filing_directory_includes_issuer_partition(tmp_path: Path) -> None:
+    assert filing_local_dir(tmp_path, "cninfo", 2026, "issuer/1", "filing/2") == (
+        tmp_path / "cninfo" / "2026" / "issuer_1" / "filing_2"
+    )
+
+
+def test_esef_filing_directory_uses_filing_partition(tmp_path: Path) -> None:
+    assert filing_local_dir(
+        tmp_path, "priority_eu_esef", 2026, "issuer", "filing/2"
+    ) == (tmp_path / "priority_eu_esef" / "2026" / "filing_2")
 
 
 def test_xhtml_is_valid_for_an_expected_html_report(tmp_path: Path) -> None:

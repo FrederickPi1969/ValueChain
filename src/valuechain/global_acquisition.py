@@ -17,7 +17,10 @@ from gcu.registry import SourceRegistry
 from gcu_priority_markets.adapters.cninfo import CninfoAdapter
 from gcu_priority_markets.registry import PatchRegistry
 from valuechain.acquisition_state import AcquisitionIssuer
-from valuechain.global_acquisition_state import GlobalSourceAcquisitionState
+from valuechain.global_acquisition_state import (
+    GlobalSourceAcquisitionState,
+    filing_local_dir,
+)
 from valuechain.postgres_acquisition_state import PostgresAcquisitionState
 from valuechain.sec_acquisition import hash_file, parse_target_years
 
@@ -228,7 +231,13 @@ class CninfoAcquisitionRunner:
         client: PoliteHttpClient,
         filing: FilingRef,
     ) -> int:
-        local_dir = self.config.raw_root / CNINFO_SOURCE / str(filing.filed_at.year) / filing.source_entity_id / filing.filing_id
+        local_dir = filing_local_dir(
+            self.config.raw_root,
+            CNINFO_SOURCE,
+            filing.filed_at.year,
+            filing.source_entity_id,
+            filing.filing_id,
+        )
         manifest: list[dict[str, Any]] = []
         try:
             for document in adapter.list_documents(filing):

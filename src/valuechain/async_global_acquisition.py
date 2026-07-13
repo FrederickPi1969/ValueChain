@@ -20,7 +20,10 @@ from valuechain.global_acquisition import (
     safe_filename,
     write_manifest,
 )
-from valuechain.global_acquisition_state import GlobalSourceAcquisitionState
+from valuechain.global_acquisition_state import (
+    GlobalSourceAcquisitionState,
+    filing_local_dir,
+)
 from valuechain.postgres_acquisition_state import PostgresAcquisitionState
 from valuechain.proxy_pool import ProxyPoolClient
 
@@ -252,12 +255,12 @@ class AsyncGlobalAcquisitionRunner:
         client: AsyncHttpClient,
         filing: FilingRef,
     ) -> int:
-        local_dir = (
-            self.config.raw_root
-            / CNINFO_SOURCE
-            / str(filing.filed_at.year)
-            / filing.source_entity_id
-            / filing.filing_id
+        local_dir = filing_local_dir(
+            self.config.raw_root,
+            CNINFO_SOURCE,
+            filing.filed_at.year,
+            filing.source_entity_id,
+            filing.filing_id,
         )
         documents: list[dict[str, Any]] = []
         try:
