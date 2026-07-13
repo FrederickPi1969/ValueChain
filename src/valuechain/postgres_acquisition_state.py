@@ -10,9 +10,8 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from valuechain.acquisition_state import AcquisitionIssuer
+from valuechain.acquisition_schema import ensure_acquisition_schema
 
-
-SCHEMA_PATH = Path(__file__).resolve().parents[2] / "db" / "acquisition_schema.sql"
 SOURCE_ID = "sec_edgar"
 
 
@@ -25,8 +24,7 @@ class PostgresAcquisitionState:
         self.database_url = database_url
         self.source_id = source_id
         self.connection = psycopg.connect(database_url, row_factory=dict_row)
-        self.connection.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
-        self.connection.commit()
+        ensure_acquisition_schema(self.connection)
 
     def close(self) -> None:
         self.connection.close()

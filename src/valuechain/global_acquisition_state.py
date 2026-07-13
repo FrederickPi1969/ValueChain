@@ -9,9 +9,8 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from gcu.models import EntityRef, FilingRef, SourceDefinition
+from valuechain.acquisition_schema import ensure_acquisition_schema
 
-
-SCHEMA_PATH = Path(__file__).resolve().parents[2] / "db" / "acquisition_schema.sql"
 
 
 class GlobalSourceAcquisitionState:
@@ -20,8 +19,7 @@ class GlobalSourceAcquisitionState:
     def __init__(self, database_url: str, source_id: str) -> None:
         self.source_id = source_id
         self.connection = psycopg.connect(database_url, row_factory=dict_row)
-        self.connection.execute(SCHEMA_PATH.read_text(encoding="utf-8"))
-        self.connection.commit()
+        ensure_acquisition_schema(self.connection)
 
     def close(self) -> None:
         self.connection.close()
