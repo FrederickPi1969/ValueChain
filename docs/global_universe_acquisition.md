@@ -74,7 +74,9 @@ valuechain-global sync-filings \
    and other non-operating-company products.
 5. CNINFO records normalize venue labels to ISO MIC values (`XSHG`, `XSHE`, `XBSE`).
 6. Every imported snapshot has a SHA-256 and row count.
-7. Raw/normalized files are never committed to Git.
+7. Exact duplicate source keys are collapsed with an audit count; conflicting
+   companies sharing one source key fail the import.
+8. Raw/normalized files are never committed to Git.
 
 Live endpoints can change without notice. A passing parser test establishes
 contract compatibility, not permanent source availability; monitor row-count

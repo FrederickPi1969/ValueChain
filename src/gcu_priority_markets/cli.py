@@ -35,6 +35,8 @@ from gcu_priority_markets.serialization import (
 from gcu_priority_markets.tiering import tier_csv
 from valuechain.global_universe_store import (
     GlobalUniverseStore,
+    csv_data_row_count,
+    deduplicate_entities,
     read_entity_csv,
     read_filing_jsonl,
 )
@@ -246,13 +248,16 @@ def universe(
             kwargs["jurisdictions"] = jurisdiction
         if auto_download:
             kwargs["auto_download"] = True
-        entities = list(adapter.list_entities(**kwargs))
+        raw_entities = list(adapter.list_entities(**kwargs))
+        entities = deduplicate_entities(raw_entities)
         if not entities:
             raise RuntimeError(f"{source} universe returned zero rows")
         count = write_models_csv(output_csv, entities, ENTITY_FIELDS)
         payload = {
             "source_id": source,
             "rows": count,
+            "input_rows": len(raw_entities),
+            "duplicate_rows_collapsed": len(raw_entities) - count,
             "output_csv": str(output_csv),
             "jurisdiction_counts": {},
             "exchange_counts": {},
@@ -276,6 +281,7 @@ def sync_universe(
     priority: Annotated[int, typer.Option("--priority", min=0)] = 500,
     report: Annotated[Path | None, typer.Option("--report")] = None,
 ) -> None:
+    input_rows = csv_data_row_count(input_csv)
     entities = read_entity_csv(input_csv, source_id=source)
     if not entities:
         raise typer.BadParameter("The normalized universe CSV contains zero valid entity rows")
@@ -289,7 +295,12 @@ def sync_universe(
             input_csv,
             imported,
             source_url=snapshot_source_url,
-            metadata={"import_kind": "normalized_entity_csv"},
+            metadata={
+                "import_kind": "normalized_entity_csv",
+                "input_row_count": input_rows,
+                "unique_entity_count": imported,
+                "duplicate_rows_collapsed": input_rows - imported,
+            },
         )
         counts = store.source_counts()
     _emit(
@@ -297,6 +308,8 @@ def sync_universe(
             "source_id": source,
             "input_csv": str(input_csv),
             "rows_imported": imported,
+            "input_rows": input_rows,
+            "duplicate_rows_collapsed": input_rows - imported,
             "source_url": snapshot_source_url,
             "sha256": digest,
             "source_counts": counts,

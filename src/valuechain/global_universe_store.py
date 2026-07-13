@@ -35,6 +35,34 @@ def _json_value(value: str | None, fallback: Any) -> Any:
         return fallback
 
 
+def deduplicate_entities(entities: Iterable[EntityRef]) -> list[EntityRef]:
+    """Collapse exact source-key duplicates and reject ambiguous key collisions."""
+    unique: dict[tuple[str, str], EntityRef] = {}
+    for entity in entities:
+        key = (entity.source_id, entity.source_entity_id)
+        previous = unique.get(key)
+        if previous is None:
+            unique[key] = entity.model_copy(deep=True)
+            continue
+        identity = (entity.legal_name, entity.ticker, entity.exchange)
+        previous_identity = (previous.legal_name, previous.ticker, previous.exchange)
+        if identity != previous_identity:
+            raise ValueError(
+                f"Conflicting entities share source key {key!r}: "
+                f"{previous_identity!r} != {identity!r}"
+            )
+        previous.metadata["duplicate_source_rows"] = (
+            int(previous.metadata.get("duplicate_source_rows", 1)) + 1
+        )
+        previous.aliases = sorted(set(previous.aliases) | set(entity.aliases))
+    return list(unique.values())
+
+
+def csv_data_row_count(path: Path) -> int:
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        return sum(1 for _ in csv.DictReader(handle))
+
+
 def read_entity_csv(path: Path, source_id: str | None = None) -> list[EntityRef]:
     entities: list[EntityRef] = []
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
@@ -66,7 +94,7 @@ def read_entity_csv(path: Path, source_id: str | None = None) -> list[EntityRef]
                     metadata=metadata,
                 )
             )
-    return entities
+    return deduplicate_entities(entities)
 
 
 def read_filing_jsonl(path: Path, source_id: str | None = None) -> list[FilingRef]:
@@ -134,7 +162,7 @@ class GlobalUniverseStore:
         )
 
     def upsert_entities(self, entities: Iterable[EntityRef], priority: int = 500) -> int:
-        rows = list(entities)
+        rows = deduplicate_entities(entities)
         if not rows:
             return 0
         source_ids = {row.source_id for row in rows}

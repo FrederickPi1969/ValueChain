@@ -3,7 +3,13 @@ from pathlib import Path
 
 from gcu.registry import SourceRegistry
 from gcu_priority_markets.cli import _source_definition
-from valuechain.global_universe_store import file_sha256, read_entity_csv, read_filing_jsonl
+from valuechain.global_universe_store import (
+    deduplicate_entities,
+    file_sha256,
+    read_entity_csv,
+    read_filing_jsonl,
+)
+from gcu.models import EntityRef
 
 
 def test_read_entity_csv_preserves_global_identifiers(tmp_path: Path) -> None:
@@ -52,3 +58,51 @@ def test_every_base_catalog_adapter_is_importable() -> None:
         module_name, class_name = source.adapter.rsplit(":", 1)
         module = importlib.import_module(module_name)
         assert getattr(module, class_name)
+
+
+def test_exact_source_key_duplicates_are_collapsed() -> None:
+    rows = [
+        EntityRef(
+            entity_id="one",
+            source_id="example",
+            source_entity_id="1",
+            legal_name="Example Inc.",
+            ticker="EX",
+        ),
+        EntityRef(
+            entity_id="one-copy",
+            source_id="example",
+            source_entity_id="1",
+            legal_name="Example Inc.",
+            ticker="EX",
+        ),
+    ]
+
+    result = deduplicate_entities(rows)
+
+    assert len(result) == 1
+    assert result[0].metadata["duplicate_source_rows"] == 2
+
+
+def test_conflicting_source_key_duplicates_are_rejected() -> None:
+    rows = [
+        EntityRef(
+            entity_id="one",
+            source_id="example",
+            source_entity_id="1",
+            legal_name="First Inc.",
+        ),
+        EntityRef(
+            entity_id="two",
+            source_id="example",
+            source_entity_id="1",
+            legal_name="Second Inc.",
+        ),
+    ]
+
+    try:
+        deduplicate_entities(rows)
+    except ValueError as exc:
+        assert "Conflicting entities share source key" in str(exc)
+    else:
+        raise AssertionError("Expected a source-key conflict")
