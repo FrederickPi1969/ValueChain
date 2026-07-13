@@ -33,3 +33,4 @@ def test_worker_loop_continues_after_transient_failure(capsys) -> None:
     assert calls == 2
     assert "worker_batch_failed" in output
     assert '"issuers": 4' in output
+    assert '"elapsed_seconds"' in output

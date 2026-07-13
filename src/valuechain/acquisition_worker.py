@@ -30,8 +30,12 @@ async def run_worker_loop(
 ) -> None:
     batches = 0
     while max_batches is None or batches < max_batches:
+        started_at = asyncio.get_running_loop().time()
         try:
             result = await run_batch()
+            result["elapsed_seconds"] = round(
+                asyncio.get_running_loop().time() - started_at, 3
+            )
             print(json.dumps(result, ensure_ascii=False, default=str, sort_keys=True), flush=True)
             delay = (
                 active_sleep_seconds
