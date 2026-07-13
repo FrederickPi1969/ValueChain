@@ -438,9 +438,10 @@ class AsyncGlobalAcquisitionRunner:
                         break
                     counts["filings"] += 1
                     try:
-                        counts["documents"] += await self._download_esef_filing(
+                        document_count = await self._download_esef_filing(
                             state, client, filing
                         )
+                        counts["documents"] += document_count
                     except Exception as exc:  # noqa: BLE001
                         counts["errors"] += 1
                         await asyncio.to_thread(
