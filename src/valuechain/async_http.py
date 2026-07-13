@@ -112,6 +112,14 @@ def read_prefix(path: Path, length: int = 64) -> bytes:
         return handle.read(length)
 
 
+def describe_http_error(error: BaseException | None) -> str:
+    if error is None:
+        return "unknown error"
+    if isinstance(error, httpx.HTTPStatusError):
+        return f"HTTPStatusError(status={error.response.status_code})"
+    return type(error).__name__
+
+
 class AsyncHttpClient:
     """One-worker async transport with shared rate limiting and resumable downloads."""
 
@@ -256,7 +264,7 @@ class AsyncHttpClient:
                 await self._retry_wait(attempt, response)
         raise AsyncHttpError(
             f"Request failed after retries: {method} {PoliteHttpClient._safe_url(url)}: "
-            f"{type(last_error).__name__}"
+            f"{describe_http_error(last_error)}"
         ) from last_error
 
     async def get_json(
@@ -404,5 +412,5 @@ class AsyncHttpClient:
             await self._retry_wait(attempt, response)
         raise AsyncHttpError(
             f"Download failed after retries: {PoliteHttpClient._safe_url(url)}: "
-            f"{type(last_error).__name__}"
+            f"{describe_http_error(last_error)}"
         ) from last_error

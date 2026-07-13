@@ -37,6 +37,26 @@ def test_async_request_retries_and_recovers() -> None:
     assert calls == 2
 
 
+def test_async_request_error_includes_http_status() -> None:
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404)
+
+    async def run() -> None:
+        client = AsyncHttpClient(
+            limiter=AdaptiveRateLimiter(10_000),
+            user_agent="test",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+        )
+        try:
+            with pytest.raises(AsyncHttpError, match=r"HTTPStatusError\(status=404\)"):
+                await client.request("GET", "https://example.test/missing")
+        finally:
+            await client.close()
+
+    asyncio.run(run())
+
+
 def test_async_download_resumes_partial_file(tmp_path: Path) -> None:
     content = b"%PDF-" + (b"payload" * 100)
     target = tmp_path / "report.pdf"

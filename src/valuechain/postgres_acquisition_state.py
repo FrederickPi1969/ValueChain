@@ -115,8 +115,8 @@ class PostgresAcquisitionState:
                   )
                 ORDER BY
                   CASE ys.status
-                    WHEN 'running' THEN 0 WHEN 'pending' THEN 1
-                    WHEN 'retry' THEN 2 ELSE 3
+                    WHEN 'running' THEN 0 WHEN 'retry' THEN 1
+                    WHEN 'pending' THEN 2 ELSE 3
                   END,
                   i.priority,
                   ys.scanned_at NULLS FIRST,
@@ -262,12 +262,13 @@ class PostgresAcquisitionState:
         self.connection.commit()
 
     def begin_run(self, run_id: str, target_year: int, mode: str) -> None:
+        # Each source has one long-running worker service. Any open predecessor
+        # therefore belongs to an interrupted batch, including recent deploys.
         self.connection.execute(
             """
             UPDATE acquisition_runs
             SET completed_at = now(), status = 'interrupted'
             WHERE source_id = %s AND status = 'running'
-              AND started_at < now() - interval '45 minutes'
             """,
             (self.source_id,),
         )
