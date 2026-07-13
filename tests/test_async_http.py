@@ -2,8 +2,9 @@ import asyncio
 from pathlib import Path
 
 import httpx
+import pytest
 
-from valuechain.async_http import AdaptiveRateLimiter, AsyncHttpClient
+from valuechain.async_http import AdaptiveRateLimiter, AsyncHttpClient, AsyncHttpError
 
 
 def test_async_request_retries_and_recovers() -> None:
@@ -95,3 +96,30 @@ def test_adaptive_limiter_reduces_and_recovers_rate() -> None:
 
     assert throttled_rate == 4
     assert recovered_rate == 5
+
+
+def test_slow_download_keeps_partial_file_for_next_worker(tmp_path: Path) -> None:
+    target = tmp_path / "large.bin"
+
+    async def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"x" * (1024 * 1024))
+
+    async def run() -> None:
+        client = AsyncHttpClient(
+            limiter=AdaptiveRateLimiter(10_000),
+            user_agent="test",
+            max_retries=0,
+            minimum_download_bytes_per_second=10**20,
+            throughput_window_seconds=0,
+            transport=httpx.MockTransport(handler),
+        )
+        try:
+            with pytest.raises(AsyncHttpError, match="SlowTransferError"):
+                await client.download("https://example.test/large.bin", target)
+        finally:
+            await client.close()
+
+    asyncio.run(run())
+
+    assert not target.exists()
+    assert (tmp_path / "large.bin.partial").stat().st_size > 0

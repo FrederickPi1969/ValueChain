@@ -22,6 +22,10 @@ class AsyncHttpError(RuntimeError):
     pass
 
 
+class SlowTransferError(AsyncHttpError):
+    pass
+
+
 class AdaptiveRateLimiter:
     """Reserve globally spaced request slots and back off after source throttling."""
 
@@ -123,6 +127,8 @@ class AsyncHttpClient:
         proxy_url: str | None = None,
         verify_tls: bool = True,
         backoff_base_seconds: float = 0.5,
+        minimum_download_bytes_per_second: float = 64 * 1024,
+        throughput_window_seconds: float = 15.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.limiter = limiter
@@ -134,6 +140,10 @@ class AsyncHttpClient:
         self.proxy_url = proxy_url
         self.verify_tls = verify_tls
         self.backoff_base_seconds = max(0.0, backoff_base_seconds)
+        self.minimum_download_bytes_per_second = max(
+            0.0, minimum_download_bytes_per_second
+        )
+        self.throughput_window_seconds = max(0.0, throughput_window_seconds)
         self.transport = transport
         self.client = self._build_client()
 
@@ -329,9 +339,27 @@ class AsyncHttpClient:
                         resume_from = 0
                     mode = "ab" if append else "wb"
                     with partial.open(mode) as handle:
+                        loop = asyncio.get_running_loop()
+                        window_started = loop.time()
+                        window_bytes = 0
                         async for chunk in response.aiter_bytes(chunk_size=1024 * 1024):
                             if chunk:
                                 handle.write(chunk)
+                                window_bytes += len(chunk)
+                            elapsed = loop.time() - window_started
+                            if elapsed >= self.throughput_window_seconds:
+                                throughput = window_bytes / max(elapsed, 0.001)
+                                if (
+                                    self.minimum_download_bytes_per_second
+                                    and throughput
+                                    < self.minimum_download_bytes_per_second
+                                ):
+                                    raise SlowTransferError(
+                                        f"download throughput {throughput:.0f} B/s is below "
+                                        f"{self.minimum_download_bytes_per_second:.0f} B/s"
+                                    )
+                                window_started = loop.time()
+                                window_bytes = 0
                         handle.flush()
                         await asyncio.to_thread(os.fsync, handle.fileno())
 
@@ -368,7 +396,7 @@ class AsyncHttpClient:
             except PayloadValidationError as exc:
                 last_error = exc
                 partial.unlink(missing_ok=True)
-            except (httpx.HTTPError, OSError) as exc:
+            except (httpx.HTTPError, OSError, SlowTransferError) as exc:
                 last_error = exc
             if attempt >= self.max_retries:
                 break
