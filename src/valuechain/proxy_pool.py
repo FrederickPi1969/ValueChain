@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from urllib.parse import quote
 
@@ -45,9 +46,17 @@ def parse_normal_proxy(value: str) -> ProxyEndpoint:
 
 
 class ProxyPoolClient:
-    def __init__(self, base_url: str, timeout_seconds: float = 10.0) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        timeout_seconds: float = 10.0,
+        max_retries: int = 5,
+        backoff_seconds: float = 0.5,
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
+        self.max_retries = min(5, max(0, max_retries))
+        self.backoff_seconds = max(0.0, backoff_seconds)
         self.session = requests.Session()
 
     def health(self) -> dict:
@@ -61,15 +70,23 @@ class ProxyPoolClient:
         return parse_normal_proxy(value)
 
     def _get_json(self, path: str) -> dict:
-        try:
-            response = self.session.get(
-                f"{self.base_url}{path}",
-                timeout=self.timeout_seconds,
-            )
-            response.raise_for_status()
-            payload = response.json()
-        except (requests.RequestException, ValueError) as exc:
-            raise ProxyPoolError(f"Proxy pool request failed: {type(exc).__name__}") from exc
-        if not isinstance(payload, dict):
-            raise ProxyPoolError("Proxy pool returned a non-object response")
-        return payload
+        last_error: BaseException | None = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = self.session.get(
+                    f"{self.base_url}{path}",
+                    timeout=self.timeout_seconds,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise ValueError("proxy pool returned a non-object response")
+                return payload
+            except (requests.RequestException, ValueError) as exc:
+                last_error = exc
+                if attempt >= self.max_retries:
+                    break
+                time.sleep(min(self.backoff_seconds * (2**attempt), 8.0))
+        raise ProxyPoolError(
+            f"Proxy pool request failed after retries: {type(last_error).__name__}"
+        ) from last_error
