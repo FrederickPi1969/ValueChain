@@ -28,6 +28,15 @@ GLEIF_SOURCE = "gleif_golden_copy"
 SUPPORTED_SOURCES = (CNINFO_SOURCE, ESEF_SOURCE, GLEIF_SOURCE)
 
 
+def require_proxy(settings: Settings) -> Settings:
+    """Fail closed so scheduled acquisition never silently uses a direct connection."""
+    if not settings.proxy_pool_url:
+        raise RuntimeError(
+            "VALUECHAIN_PROXY_POOL_URL is required for global acquisition"
+        )
+    return settings
+
+
 @dataclass(frozen=True)
 class GlobalAcquisitionConfig:
     raw_root: Path
@@ -121,7 +130,7 @@ def write_manifest(path: Path, payload: dict[str, Any]) -> None:
 class CninfoAcquisitionRunner:
     def __init__(self, config: GlobalAcquisitionConfig) -> None:
         self.config = config
-        self.settings = Settings()
+        self.settings = require_proxy(Settings())
         self.definition = PatchRegistry().get(CNINFO_SOURCE)
 
     def run_batch(self) -> dict[str, Any]:
@@ -219,7 +228,7 @@ class CninfoAcquisitionRunner:
 class EsefAcquisitionRunner:
     def __init__(self, config: GlobalAcquisitionConfig) -> None:
         self.config = config
-        self.settings = Settings()
+        self.settings = require_proxy(Settings())
         self.definition = PatchRegistry().get(ESEF_SOURCE)
 
     def run_batch(self) -> dict[str, Any]:
@@ -334,7 +343,7 @@ class GleifAcquisitionRunner:
 
     def __init__(self, config: GlobalAcquisitionConfig) -> None:
         self.config = config
-        self.settings = Settings()
+        self.settings = require_proxy(Settings())
         self.definition = SourceRegistry.load(
             Path(__file__).resolve().parents[2] / "config" / "global_sources_base.yaml"
         ).get(GLEIF_SOURCE)

@@ -1,7 +1,14 @@
 from pathlib import Path
 
+import pytest
+
+from gcu.config import Settings
 from gcu.http import DownloadedPayload, PoliteHttpClient
-from valuechain.global_acquisition import GlobalAcquisitionConfig, safe_filename
+from valuechain.global_acquisition import (
+    GlobalAcquisitionConfig,
+    require_proxy,
+    safe_filename,
+)
 
 
 def test_global_acquisition_config_preserves_year_priority(monkeypatch) -> None:
@@ -10,6 +17,19 @@ def test_global_acquisition_config_preserves_year_priority(monkeypatch) -> None:
     config = GlobalAcquisitionConfig.from_env()
 
     assert config.target_years == (2026, 2025)
+
+
+def test_global_acquisition_requires_proxy() -> None:
+    settings = Settings(_env_file=None, proxy_pool_url=None)
+
+    with pytest.raises(RuntimeError, match="VALUECHAIN_PROXY_POOL_URL is required"):
+        require_proxy(settings)
+
+
+def test_global_acquisition_accepts_configured_proxy() -> None:
+    settings = Settings(_env_file=None, proxy_pool_url="https://proxy.example")
+
+    assert require_proxy(settings) is settings
 
 
 def test_safe_filename_removes_paths_and_unsafe_characters() -> None:
