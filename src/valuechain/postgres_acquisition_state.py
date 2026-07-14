@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Iterable
 
@@ -10,6 +10,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from valuechain.acquisition_state import AcquisitionIssuer
+from valuechain.acquisition_schedule import rescan_window_start
 from valuechain.acquisition_schema import ensure_acquisition_schema
 
 SOURCE_ID = "sec_edgar"
@@ -94,7 +95,11 @@ class PostgresAcquisitionState:
         rescan_hours: int | None = None,
     ) -> list[AcquisitionIssuer]:
         now = utc_now()
-        rescan_before = now - timedelta(hours=rescan_hours or 0)
+        rescan_before = (
+            rescan_window_start(now, rescan_hours)
+            if rescan_hours is not None
+            else now
+        )
         with self.connection.transaction():
             rows = self.connection.execute(
                 """
@@ -192,6 +197,7 @@ class PostgresAcquisitionState:
         return None
 
     def rescan_due(self, filing_year: int, rescan_hours: int) -> bool:
+        cutoff = rescan_window_start(utc_now(), rescan_hours)
         row = self.connection.execute(
             """
             SELECT EXISTS (
@@ -203,12 +209,12 @@ class PostgresAcquisitionState:
                 ))
                 OR (status = 'complete' AND (
                   scanned_at IS NULL
-                  OR scanned_at <= now() - (%s * interval '1 hour')
+                  OR scanned_at < %s
                 ))
               )
             ) AS due
             """,
-            (self.source_id, filing_year, rescan_hours),
+            (self.source_id, filing_year, cutoff),
         ).fetchone()
         return bool(row["due"])
 

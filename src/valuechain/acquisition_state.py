@@ -6,6 +6,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Iterable
 
+from valuechain.acquisition_schedule import rescan_window_start
+
 
 @dataclass(frozen=True)
 class AcquisitionIssuer:
@@ -172,7 +174,9 @@ class AcquisitionState:
         now = utc_now()
         now_text = now.isoformat()
         rescan_before = (
-            (now - timedelta(hours=rescan_hours)).isoformat() if rescan_hours is not None else ""
+            rescan_window_start(now, rescan_hours).isoformat()
+            if rescan_hours is not None
+            else ""
         )
         rows = self.connection.execute(
             """
@@ -281,7 +285,7 @@ class AcquisitionState:
         return None
 
     def rescan_due(self, filing_year: int, rescan_hours: int) -> bool:
-        cutoff = datetime.now(UTC) - timedelta(hours=rescan_hours)
+        cutoff = rescan_window_start(datetime.now(UTC), rescan_hours)
         row = self.connection.execute(
             """
             SELECT 1 FROM issuer_year_scans

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from valuechain.acquisition_schedule import (
     choose_issuer_scan_plan,
+    rescan_window_start,
     years_with_current,
 )
 
@@ -28,6 +31,15 @@ def test_years_with_current_rolls_forward_without_duplicates() -> None:
         2024,
     )
     assert years_with_current((2026, 2025), 2026) == (2026, 2025)
+
+
+def test_daily_rescan_uses_stable_utc_window() -> None:
+    assert rescan_window_start(
+        datetime(2026, 7, 14, 19, 42, tzinfo=UTC), 24
+    ) == datetime(2026, 7, 14, 0, 0, tzinfo=UTC)
+    assert rescan_window_start(
+        datetime(2026, 7, 14, 5, 42, tzinfo=UTC), 6
+    ) == datetime(2026, 7, 14, 0, 0, tzinfo=UTC)
 
 
 def test_current_year_backfill_finishes_before_incremental_rescans() -> None:
