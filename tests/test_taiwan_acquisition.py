@@ -41,6 +41,32 @@ def test_material_event_identifier_is_stable_and_source_scoped() -> None:
     assert event_identifier("twse", row) != event_identifier("tpex", row)
 
 
+def test_tpex_aliases_and_twse_whitespace_keys_are_normalized() -> None:
+    tpex = {
+        "SecuritiesCompanyCode": "6875",
+        "CompanyName": "國邑*",
+        "Date": "1150714",
+        "主旨": "合作夥伴提出臨床試驗申請",
+        "說明": "依雙方合約由合作夥伴負擔臨床試驗經費。",
+    }
+    twse = {
+        "公司代號": "2330",
+        "公司名稱": "台積電",
+        "發言日期": "1150714",
+        "主旨 ": "取得先進製程設備",
+        "說明": "擴充產能。",
+    }
+
+    tpex_filing = events_to_filings("tpex", [tpex], "https://example.test/tpex")[0]
+    twse_filing = events_to_filings("twse", [twse], "https://example.test/twse")[0]
+
+    assert tpex_filing.source_entity_id == "6875"
+    assert tpex_filing.filed_at == date(2026, 7, 14)
+    assert "合作夥伴提出" in tpex_filing.metadata["evidence_text"]
+    assert twse_filing.title == "取得先進製程設備"
+    assert twse_filing.metadata["evidence_text"].startswith("取得先進製程設備")
+
+
 def test_each_taiwan_market_captures_all_financial_industry_shapes() -> None:
     assert len(SOURCE_CONTRACTS["twse"].financial_urls) == 12
     assert len(SOURCE_CONTRACTS["tpex"].financial_urls) == 12

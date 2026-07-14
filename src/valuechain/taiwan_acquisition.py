@@ -81,21 +81,26 @@ def parse_roc_date(value: Any) -> date | None:
         return None
 
 
+def event_field(row: dict[str, Any], *names: str) -> Any:
+    for name in names:
+        if name in row and row[name] not in (None, ""):
+            return row[name]
+    normalized = {str(key).strip(): value for key, value in row.items()}
+    for name in names:
+        value = normalized.get(name.strip())
+        if value not in (None, ""):
+            return value
+    return None
+
+
 def event_evidence(row: dict[str, Any]) -> str:
-    subject = str(row.get("主旨") or row.get("Subject") or "").strip()
-    explanation = str(row.get("說明") or row.get("Explanation") or "").strip()
+    subject = str(event_field(row, "主旨", "Subject") or "").strip()
+    explanation = str(event_field(row, "說明", "Explanation") or "").strip()
     return "\n".join(part for part in (subject, explanation) if part)
 
 
 def event_identifier(source_id: str, row: dict[str, Any]) -> str:
-    stable = {
-        "company": row.get("公司代號") or row.get("CompanyCode"),
-        "event_date": row.get("事實發生日") or row.get("DateOfEvent"),
-        "statement_date": row.get("發言日期") or row.get("DateOfStatement"),
-        "statement_time": row.get("發言時間") or row.get("TimeOfStatement"),
-        "subject": row.get("主旨") or row.get("Subject"),
-        "explanation": row.get("說明") or row.get("Explanation"),
-    }
+    stable = {str(key).strip(): value for key, value in row.items()}
     digest = hashlib.sha256(
         json.dumps(stable, ensure_ascii=False, sort_keys=True).encode("utf-8")
     ).hexdigest()[:24]
@@ -108,12 +113,15 @@ def events_to_filings(
     today = datetime.now(TAIPEI).date()
     filings: list[FilingRef] = []
     for index, row in enumerate(rows):
-        ticker = str(row.get("公司代號") or row.get("CompanyCode") or "").strip()
+        ticker = str(
+            event_field(row, "公司代號", "CompanyCode", "SecuritiesCompanyCode")
+            or ""
+        ).strip()
         if not ticker:
             continue
         filed_at = (
-            parse_roc_date(row.get("發言日期") or row.get("DateOfStatement"))
-            or parse_roc_date(row.get("事實發生日") or row.get("DateOfEvent"))
+            parse_roc_date(event_field(row, "發言日期", "DateOfStatement", "Date"))
+            or parse_roc_date(event_field(row, "事實發生日", "DateOfEvent"))
             or today
         )
         filing_id = event_identifier(source_id, row)
@@ -124,7 +132,7 @@ def events_to_filings(
                 entity_id=f"{source_id}-{ticker}",
                 source_entity_id=ticker,
                 form="material_event",
-                title=str(row.get("主旨") or row.get("Subject") or "Material event"),
+                title=str(event_field(row, "主旨", "Subject") or "Material event"),
                 filed_at=filed_at,
                 detail_url=f"{source_url}#{filing_id}",
                 language="zh-TW",
@@ -369,18 +377,28 @@ class TaiwanOpenApiAcquisitionRunner:
         self, rows: list[dict[str, Any]], state: GlobalSourceAcquisitionState
     ) -> list[EntityRef]:
         tickers = {
-            str(row.get("公司代號") or row.get("CompanyCode") or "").strip()
+            str(
+                event_field(
+                    row, "公司代號", "CompanyCode", "SecuritiesCompanyCode"
+                )
+                or ""
+            ).strip()
             for row in rows
         }
         tickers.discard("")
         known = state.known_issuer_ids(tickers)
         entities = []
         for row in rows:
-            ticker = str(row.get("公司代號") or row.get("CompanyCode") or "").strip()
+            ticker = str(
+                event_field(
+                    row, "公司代號", "CompanyCode", "SecuritiesCompanyCode"
+                )
+                or ""
+            ).strip()
             if not ticker or ticker in known:
                 continue
             known.add(ticker)
-            name = str(row.get("公司名稱") or row.get("CompanyName") or ticker).strip()
+            name = str(event_field(row, "公司名稱", "CompanyName") or ticker).strip()
             entities.append(
                 EntityRef(
                     entity_id=f"{self.source_id}-{ticker}",
