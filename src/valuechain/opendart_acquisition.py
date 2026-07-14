@@ -30,6 +30,9 @@ from valuechain.request_budget import (
 
 
 EXCHANGE_BY_CLASS = {"Y": "XKRX", "K": "XKOS", "N": "XKON"}
+EXCLUDED_REPORT_MARKERS = (
+    "정정신고서제출요구",
+)
 DISCOVERY_PREFIX = "filing-index:"
 UNIVERSE_CHECKPOINT = "corporation-code-universe"
 
@@ -315,6 +318,7 @@ class OpenDartAcquisitionRunner:
                     row
                     for row in records
                     if str(row.get("corp_code") or "") in known
+                    and not self._is_non_downloadable_notice(row)
                 ]
                 entities, filings = self._convert_records(selected)
                 entities = [self._enrich_watchlist_entity(entity) for entity in entities]
@@ -338,6 +342,11 @@ class OpenDartAcquisitionRunner:
             ) as state:
                 state.fail_checkpoint(checkpoint, f"{type(exc).__name__}: {exc}")
             raise
+
+    @staticmethod
+    def _is_non_downloadable_notice(record: dict[str, Any]) -> bool:
+        report_name = "".join(str(record.get("report_nm") or "").split())
+        return any(marker in report_name for marker in EXCLUDED_REPORT_MARKERS)
 
     def _enrich_watchlist_entity(self, entity: EntityRef) -> EntityRef:
         company: CuratedCompany | None = self.watchlist_by_ticker.get(entity.ticker or "")

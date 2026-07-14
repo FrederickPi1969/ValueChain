@@ -48,3 +48,12 @@ def test_opendart_no_longer_has_all_listed_company_fallback() -> None:
     source = __import__("valuechain.opendart_acquisition", fromlist=["*"])
 
     assert not hasattr(source, "LISTED_CORPORATION_CLASSES")
+
+
+def test_opendart_excludes_regulator_notice_without_document_package() -> None:
+    assert OpenDartAcquisitionRunner._is_non_downloadable_notice(
+        {"report_nm": "정정신고서제출요구(증권신고서)"}
+    )
+    assert not OpenDartAcquisitionRunner._is_non_downloadable_notice(
+        {"report_nm": "사업보고서 (2025.12)"}
+    )
