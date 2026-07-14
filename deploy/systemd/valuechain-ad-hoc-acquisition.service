@@ -1,0 +1,19 @@
+[Unit]
+Description=ValueChain local-first ad hoc disclosure acquisition worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/ValueChain
+EnvironmentFile=/home/pi/ValueChain/.env
+ExecStart=/home/pi/ValueChain/.venv/bin/python -m valuechain.ad_hoc_worker
+Restart=always
+RestartSec=5s
+Nice=5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+TimeoutStopSec=2min
+
+[Install]
+WantedBy=default.target

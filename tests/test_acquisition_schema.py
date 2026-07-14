@@ -20,3 +20,6 @@ def test_acquisition_schema_has_source_native_uniqueness_and_queue_indexes() -> 
     assert "acquisition_source_objects" in sql
     assert "claimed_at TIMESTAMPTZ" in sql
     assert "next_attempt_at TIMESTAMPTZ" in sql
+    assert "acquisition_ad_hoc_requests" in sql
+    assert "request_key TEXT NOT NULL UNIQUE" in sql
+    assert "idx_acquisition_ad_hoc_queue" in sql

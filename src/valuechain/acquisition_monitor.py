@@ -40,6 +40,7 @@ DEFAULT_SERVICES = (
     "valuechain-tpex-acquisition.service",
     "valuechain-companies-house-bulk-acquisition.service",
     "valuechain-cvm-bulk-acquisition.service",
+    "valuechain-ad-hoc-acquisition.service",
 )
 
 

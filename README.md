@@ -349,3 +349,9 @@ Raise it per run only when the endpoint can handle the load:
 ```bash
 valuechain run --priority 1 --extractor hybrid --llm-concurrency 8 --max-filings-per-company 1 --write-postgres
 ```
+
+## Unified Disclosure API
+
+The local-first cross-market report resolver, canonical document taxonomy,
+exact native form mappings, request parameters, and ad hoc fallback behavior are
+documented in `docs/UNIFIED_DISCLOSURE_API.md`.

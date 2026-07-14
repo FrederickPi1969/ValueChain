@@ -202,6 +202,44 @@ CREATE TABLE IF NOT EXISTS acquisition_runs (
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
+CREATE TABLE IF NOT EXISTS acquisition_ad_hoc_requests (
+  request_id UUID PRIMARY KEY,
+  request_key TEXT NOT NULL UNIQUE,
+  source_id TEXT NOT NULL,
+  source_issuer_id TEXT NOT NULL,
+  requested_year INTEGER NOT NULL,
+  canonical_document_type TEXT NOT NULL,
+  source_document_type TEXT NOT NULL DEFAULT '',
+  year_basis TEXT NOT NULL DEFAULT 'auto',
+  include_amendments BOOLEAN NOT NULL DEFAULT false,
+  status TEXT NOT NULL DEFAULT 'queued',
+  attempts INTEGER NOT NULL DEFAULT 0,
+  claimed_at TIMESTAMPTZ,
+  next_attempt_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  result_document_ids BIGINT[] NOT NULL DEFAULT '{}'::bigint[],
+  request_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  result JSONB NOT NULL DEFAULT '{}'::jsonb,
+  error_code TEXT,
+  error_message TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (status IN (
+    'queued', 'discovering', 'downloading', 'complete', 'not_found',
+    'retry', 'failed', 'unsupported'
+  )),
+  CHECK (requested_year BETWEEN 1994 AND 2100),
+  CHECK (attempts >= 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_acquisition_ad_hoc_queue
+ON acquisition_ad_hoc_requests(status, next_attempt_at, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_acquisition_ad_hoc_lookup
+ON acquisition_ad_hoc_requests(
+  source_id, source_issuer_id, requested_year, canonical_document_type
+);
+
 INSERT INTO acquisition_sources(source_id, authority, canonical, enabled)
 VALUES ('sec_edgar', 'U.S. Securities and Exchange Commission', true, true)
 ON CONFLICT (source_id) DO UPDATE

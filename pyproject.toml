@@ -29,6 +29,7 @@ valuechain-acquire = "valuechain.acquisition_cli:main"
 valuechain-global = "gcu_priority_markets.cli:app"
 valuechain-global-acquire = "valuechain.global_acquisition_cli:main"
 valuechain-monitor = "valuechain.acquisition_monitor_cli:main"
+valuechain-ad-hoc-worker = "valuechain.ad_hoc_worker:main"
 
 [project.optional-dependencies]
 browser = ["playwright>=1.50"]

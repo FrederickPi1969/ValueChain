@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+import asyncio
 from typing import Any
 
 import uvicorn
@@ -11,6 +12,8 @@ from psycopg_pool import AsyncConnectionPool
 
 from valuechain.config import Settings
 from valuechain.acquisition_api import router as acquisition_router
+from valuechain.acquisition_resolver_api import router as acquisition_resolver_router
+from valuechain.acquisition_schema import prepare_acquisition_schema
 from valuechain.dashboard import build_dashboard_data
 from valuechain.models import Company, GraphEdge, RelationEvidence, SourceDocument
 
@@ -20,6 +23,7 @@ settings = Settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await asyncio.to_thread(prepare_acquisition_schema, settings.database_url)
     pool = AsyncConnectionPool(
         conninfo=settings.database_url,
         kwargs={"row_factory": dict_row},
@@ -29,6 +33,7 @@ async def lifespan(app: FastAPI):
     )
     await pool.open()
     app.state.pool = pool
+    app.state.database_url = settings.database_url
     app.state.acquisition_file_roots = settings.acquisition_file_roots
     app.state.file_api_token = settings.file_api_token
     try:
@@ -46,6 +51,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(acquisition_router)
+app.include_router(acquisition_resolver_router)
 
 
 @app.get("/api/health")
