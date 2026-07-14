@@ -213,7 +213,7 @@ that domestic small-company records never enter the queue.
 
 OpenDART refreshes the corporation-code master weekly using resumable transfer,
 maps the Korean ticker catalog to corporation codes, and downloads only original
-disclosure packages for matched companies. Its internal safety ceiling is 3,000
+disclosure packages for matched companies. Its internal safety ceiling is 10,000
 attempts per Asia/Seoul day at no more than 1 request per second and two workers.
 OpenDART status `020` immediately exhausts the local budget for that day.
 

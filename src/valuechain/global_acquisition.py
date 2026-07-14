@@ -68,7 +68,7 @@ class GlobalAcquisitionConfig:
     esef_requests_per_second: float = 4.0
     opendart_requests_per_second: float = 1.0
     edinet_requests_per_second: float = 0.5
-    opendart_daily_request_budget: int = 3_000
+    opendart_daily_request_budget: int = 10_000
     edinet_daily_request_budget: int = 1_000
     opendart_discovery_lookback_days: int = 3
     opendart_discovery_refresh_hours: int = 1
@@ -149,10 +149,10 @@ class GlobalAcquisitionConfig:
                 ),
             ),
             opendart_daily_request_budget=min(
-                3_000,
+                10_000,
                 max(
                     100,
-                    int(os.getenv("VALUECHAIN_OPENDART_DAILY_REQUEST_BUDGET", "3000")),
+                    int(os.getenv("VALUECHAIN_OPENDART_DAILY_REQUEST_BUDGET", "10000")),
                 ),
             ),
             edinet_daily_request_budget=min(

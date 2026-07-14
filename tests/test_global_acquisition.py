@@ -39,7 +39,7 @@ def test_opendart_runtime_limits_cannot_exceed_safe_caps(monkeypatch) -> None:
 
     config = GlobalAcquisitionConfig.from_env()
 
-    assert config.opendart_daily_request_budget == 3_000
+    assert config.opendart_daily_request_budget == 10_000
     assert config.opendart_requests_per_second == 1.0
     assert config.opendart_worker_count == 2
 
