@@ -18,3 +18,5 @@ def test_acquisition_schema_has_source_native_uniqueness_and_queue_indexes() -> 
     assert "acquisition_api_usage" in sql
     assert "request_count <= request_limit" in sql
     assert "acquisition_source_objects" in sql
+    assert "claimed_at TIMESTAMPTZ" in sql
+    assert "next_attempt_at TIMESTAMPTZ" in sql

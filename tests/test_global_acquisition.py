@@ -12,6 +12,7 @@ from valuechain.global_acquisition import (
 )
 from valuechain.global_acquisition_state import (
     FILING_CLAIM_ORDER_SQL,
+    SOURCE_OBJECT_CLAIM_ORDER_SQL,
     filing_local_dir,
 )
 
@@ -26,6 +27,11 @@ def test_global_acquisition_config_preserves_year_priority(monkeypatch) -> None:
 
 def test_global_filing_queue_claims_newest_filings_first() -> None:
     assert FILING_CLAIM_ORDER_SQL == "filing_date DESC, source_filing_id DESC"
+
+
+def test_bulk_object_queue_claims_newest_effective_date_first() -> None:
+    assert "effective_date" in SOURCE_OBJECT_CLAIM_ORDER_SQL
+    assert "DESC" in SOURCE_OBJECT_CLAIM_ORDER_SQL
 
 
 def test_global_acquisition_caps_async_workers_at_four(monkeypatch) -> None:
@@ -61,6 +67,16 @@ def test_edinet_runtime_limits_cannot_exceed_safe_caps(monkeypatch) -> None:
     assert config.edinet_daily_request_budget == 1_000
     assert config.edinet_requests_per_second == 1.0
     assert config.edinet_worker_count == 2
+
+
+def test_new_public_source_runtime_rates_are_conservatively_capped(monkeypatch) -> None:
+    monkeypatch.setenv("VALUECHAIN_TAIWAN_REQUESTS_PER_SECOND", "20")
+    monkeypatch.setenv("VALUECHAIN_COMPANIES_HOUSE_BULK_REQUESTS_PER_SECOND", "20")
+
+    config = GlobalAcquisitionConfig.from_env()
+
+    assert config.taiwan_requests_per_second == 1.0
+    assert config.companies_house_bulk_requests_per_second == 0.5
 
 
 def test_global_acquisition_requires_proxy() -> None:

@@ -46,7 +46,7 @@ def batch_work_count(result: dict[str, Any]) -> int:
         return int(result.get("objects", 0) or 0)
     return sum(
         int(counts.get(key, 0) or 0)
-        for key in ("issuers", "filings", "documents")
+        for key in ("issuers", "filings", "documents", "objects")
     )
 
 

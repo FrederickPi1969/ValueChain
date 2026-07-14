@@ -1,0 +1,19 @@
+[Unit]
+Description=ValueChain Companies House public accounts bulk acquisition worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/ValueChain
+EnvironmentFile=/home/pi/ValueChain/.env
+ExecStart=/home/pi/ValueChain/.venv/bin/valuechain-global-acquire run-worker --source companies_house_accounts_bulk
+Restart=on-failure
+RestartSec=30s
+Nice=8
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStopSec=5min
+
+[Install]
+WantedBy=default.target

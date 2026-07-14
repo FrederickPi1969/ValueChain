@@ -34,12 +34,18 @@ ESEF_SOURCE = "priority_eu_esef"
 GLEIF_SOURCE = "gleif_golden_copy"
 OPENDART_SOURCE = "opendart"
 EDINET_SOURCE = "edinet"
+TWSE_SOURCE = "twse"
+TPEX_SOURCE = "tpex"
+COMPANIES_HOUSE_BULK_SOURCE = "companies_house_accounts_bulk"
 SUPPORTED_SOURCES = (
     CNINFO_SOURCE,
     ESEF_SOURCE,
     GLEIF_SOURCE,
     OPENDART_SOURCE,
     EDINET_SOURCE,
+    TWSE_SOURCE,
+    TPEX_SOURCE,
+    COMPANIES_HOUSE_BULK_SOURCE,
 )
 
 
@@ -61,6 +67,7 @@ class GlobalAcquisitionConfig:
     esef_filing_limit: int = 16
     opendart_filing_limit: int = 16
     edinet_filing_limit: int = 16
+    companies_house_bulk_object_limit: int = 1
     worker_count: int = 4
     opendart_worker_count: int = 2
     edinet_worker_count: int = 2
@@ -68,6 +75,8 @@ class GlobalAcquisitionConfig:
     esef_requests_per_second: float = 4.0
     opendart_requests_per_second: float = 1.0
     edinet_requests_per_second: float = 0.5
+    taiwan_requests_per_second: float = 0.5
+    companies_house_bulk_requests_per_second: float = 0.25
     opendart_daily_request_budget: int = 10_000
     edinet_daily_request_budget: int = 1_000
     opendart_discovery_lookback_days: int = 3
@@ -77,6 +86,9 @@ class GlobalAcquisitionConfig:
     edinet_discovery_refresh_hours: int = 1
     cninfo_rescan_hours: int = 24
     discovery_refresh_hours: int = 24
+    taiwan_event_refresh_hours: int = 1
+    taiwan_snapshot_refresh_hours: int = 24
+    companies_house_bulk_refresh_hours: int = 6
 
     @classmethod
     def from_env(cls) -> GlobalAcquisitionConfig:
@@ -112,6 +124,10 @@ class GlobalAcquisitionConfig:
             edinet_filing_limit=max(
                 1, int(os.getenv("VALUECHAIN_EDINET_FILING_LIMIT", "16"))
             ),
+            companies_house_bulk_object_limit=max(
+                1,
+                int(os.getenv("VALUECHAIN_COMPANIES_HOUSE_BULK_OBJECT_LIMIT", "1")),
+            ),
             worker_count=min(
                 4,
                 max(1, int(os.getenv("VALUECHAIN_GLOBAL_CONCURRENCY", "4"))),
@@ -146,6 +162,25 @@ class GlobalAcquisitionConfig:
                 max(
                     0.1,
                     float(os.getenv("VALUECHAIN_EDINET_REQUESTS_PER_SECOND", "0.5")),
+                ),
+            ),
+            taiwan_requests_per_second=min(
+                1.0,
+                max(
+                    0.1,
+                    float(os.getenv("VALUECHAIN_TAIWAN_REQUESTS_PER_SECOND", "0.5")),
+                ),
+            ),
+            companies_house_bulk_requests_per_second=min(
+                0.5,
+                max(
+                    0.1,
+                    float(
+                        os.getenv(
+                            "VALUECHAIN_COMPANIES_HOUSE_BULK_REQUESTS_PER_SECOND",
+                            "0.25",
+                        )
+                    ),
                 ),
             ),
             opendart_daily_request_budget=min(
@@ -187,6 +222,20 @@ class GlobalAcquisitionConfig:
             ),
             discovery_refresh_hours=max(
                 1, int(os.getenv("VALUECHAIN_GLOBAL_DISCOVERY_REFRESH_HOURS", "24"))
+            ),
+            taiwan_event_refresh_hours=max(
+                1, int(os.getenv("VALUECHAIN_TAIWAN_EVENT_REFRESH_HOURS", "1"))
+            ),
+            taiwan_snapshot_refresh_hours=max(
+                6, int(os.getenv("VALUECHAIN_TAIWAN_SNAPSHOT_REFRESH_HOURS", "24"))
+            ),
+            companies_house_bulk_refresh_hours=max(
+                1,
+                int(
+                    os.getenv(
+                        "VALUECHAIN_COMPANIES_HOUSE_BULK_REFRESH_HOURS", "6"
+                    )
+                ),
             ),
         )
 

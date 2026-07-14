@@ -146,13 +146,28 @@ CREATE TABLE IF NOT EXISTS acquisition_source_objects (
   sha256 TEXT,
   retrieved_at TIMESTAMPTZ,
   status TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  claimed_at TIMESTAMPTZ,
+  next_attempt_at TIMESTAMPTZ,
   last_error TEXT,
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   PRIMARY KEY (source_id, object_key)
 );
 
+ALTER TABLE acquisition_source_objects
+ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE acquisition_source_objects
+ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ;
+
+ALTER TABLE acquisition_source_objects
+ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ;
+
 CREATE INDEX IF NOT EXISTS idx_acquisition_source_objects_status
 ON acquisition_source_objects(source_id, status, retrieved_at);
+
+CREATE INDEX IF NOT EXISTS idx_acquisition_source_objects_queue
+ON acquisition_source_objects(source_id, status, next_attempt_at, object_key DESC);
 
 CREATE INDEX IF NOT EXISTS idx_acquisition_source_objects_hash
 ON acquisition_source_objects(source_id, sha256) WHERE sha256 IS NOT NULL;

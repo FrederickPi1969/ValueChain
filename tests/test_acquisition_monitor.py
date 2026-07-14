@@ -21,8 +21,11 @@ def snapshot(**overrides):
         "latest_document_at": NOW - timedelta(minutes=2),
         "documents": 100,
         "document_bytes": 1_000,
+        "source_objects": 0,
+        "source_object_bytes": 0,
         "scan_backlog": 10,
         "filing_backlog": 0,
+        "source_object_backlog": 0,
         "stale_claims": 0,
         "checkpoint_problems": 0,
         "recent_run_errors": 0,
@@ -46,6 +49,15 @@ def test_source_with_recent_progress_is_healthy() -> None:
     result = evaluate(snapshot())
     assert result.status == "ok"
     assert result.details["backlog"] == 10
+
+
+def test_bulk_object_backlog_is_included_in_health() -> None:
+    result = evaluate(
+        snapshot(scan_backlog=0, source_objects=4, source_object_backlog=2)
+    )
+    assert result.status == "ok"
+    assert result.details["backlog"] == 2
+    assert result.details["source_objects"] == 4
 
 
 def test_idle_source_does_not_trigger_staleness() -> None:

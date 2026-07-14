@@ -98,7 +98,8 @@ HDD. Snapshots and rebuildable index exports may be stored there.
 
 ## Scheduler
 
-SEC, CNINFO, ESEF, OpenDART, and EDINET are long-running user-level systemd services. A worker
+SEC, CNINFO, ESEF, OpenDART, EDINET, TWSE, TPEx, and Companies House bulk are
+long-running user-level systemd services. A worker
 claims 16 records at a time, processes up to four concurrently, waits one second
 between non-empty batches, and uses a longer idle wait only when no work is due.
 Systemd restarts a worker after an unhandled failure. GLEIF remains timer-based
@@ -125,6 +126,9 @@ systemctl --user restart valuechain-cninfo-acquisition.service
 systemctl --user restart valuechain-esef-acquisition.service
 systemctl --user restart valuechain-opendart-acquisition.service
 systemctl --user restart valuechain-edinet-acquisition.service
+systemctl --user restart valuechain-twse-acquisition.service
+systemctl --user restart valuechain-tpex-acquisition.service
+systemctl --user restart valuechain-companies-house-bulk-acquisition.service
 ```
 
 Operational health is checked every five minutes by
@@ -190,6 +194,42 @@ Raw files are written below:
 The global lanes use `acquisition_source_checkpoints` for discovery/refresh
 state and `acquisition_source_objects` for non-filing bulk objects. Files still
 flow through `.partial`, fsync, hash validation, and atomic rename.
+
+## Taiwan OpenAPI Lanes
+
+TWSE and TPEx run as independent source-scoped listeners at a default 0.5
+requests per second through the project proxy. Each listener refreshes the
+official listed-company universe and twelve current financial-statement table
+shapes every 24 hours. The table shapes cover balance sheets and income
+statements for general industry, banking, securities, financial holding,
+insurance, and miscellaneous regulated templates.
+
+The official material-event endpoint is checked hourly. Its full response is
+saved as an immutable hash-addressed snapshot, while each newly observed event
+is also stored as a company-scoped JSON document and a `material_event` filing
+row. The event document retains the original row, subject, explanation, event
+date, announcement time, snapshot path, and snapshot hash. This makes the lane
+directly usable by later relevance and relation extraction without treating a
+current API response as historical completeness.
+
+These listeners do not yet constitute a historical MOPS report backfill. They
+provide current company normalization, structured financial snapshots, and a
+rolling high-value disclosure feed.
+
+## Companies House Accounts Bulk Lane
+
+`companies_house_accounts_bulk` uses the public daily accounts product and
+does not require `COMPANIES_HOUSE_API_KEY`. It refreshes the official index
+every six hours, records each dated ZIP as a PostgreSQL source object, and
+claims the newest uncollected date first. Only one large ZIP is claimed per
+batch by default. Downloads use the project proxy, at most five retries,
+adaptive rate limiting, `.partial` files, HTTP Range resume, ZIP signature
+validation, SHA-256, and a sidecar manifest.
+
+This lane stores raw accounts packages only. Extraction of individual iXBRL or
+XBRL members is intentionally a downstream job so raw acquisition remains
+restartable and independent of parser versions. Older monthly archives are a
+separate future backfill lane and are not implied by the daily listener.
 
 ## Curated Korea And Japan Lanes
 

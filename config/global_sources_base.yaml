@@ -84,6 +84,24 @@ sources:
   rate_limit_requests_per_second: 2.0
   api_base_url: https://api.company-information.service.gov.uk/
   credential_env: COMPANIES_HOUSE_API_KEY
+- source_id: companies_house_accounts_bulk
+  name: UK Companies House Accounts Data Product
+  jurisdictions:
+  - GB
+  macro_regions:
+  - Europe
+  adapter: gcu.adapters.official_web:OfficialWebAdapter
+  access_mode: public_bulk
+  official_url: https://download.companieshouse.gov.uk/en_accountsdata.html
+  capabilities:
+  - document_inventory
+  - document_download
+  - structured_facts
+  - historical_index
+  historical_scope: Public daily accounts ZIPs containing individual company-account iXBRL and XBRL files; older monthly archives remain a separate backfill lane.
+  status: production_listener
+  notes: No API key. Daily ZIP discovery and resumable raw download are tracked as source objects in PostgreSQL.
+  rate_limit_requests_per_second: 0.25
 - source_id: filings_xbrl
   name: filings.xbrl.org global Inline XBRL index
   jurisdictions:
@@ -130,10 +148,14 @@ sources:
   official_url: https://openapi.twse.com.tw/
   capabilities:
   - entity_universe
-  historical_scope: Current listed-company reference data through TWSE OpenAPI.
-  status: implemented_and_fixture_tested
-  notes: MOPS remains the primary disclosure channel for company reports.
-  rate_limit_requests_per_second: 1.0
+  - filing_discovery
+  - document_download
+  - structured_facts
+  - event_monitoring
+  historical_scope: Current listed-company reference data, current financial-statement tables, and rolling material-event disclosures through official TWSE OpenAPI endpoints.
+  status: production_listener
+  notes: The OpenAPI listener preserves raw endpoint snapshots and individual material-event evidence. Historical MOPS filing backfill remains separate.
+  rate_limit_requests_per_second: 0.5
   api_base_url: https://openapi.twse.com.tw/v1/
 - source_id: cvm_brazil
   name: Comissão de Valores Mobiliários Open Data
@@ -1255,10 +1277,14 @@ sources:
   api_base_url: https://www.tpex.org.tw/openapi/v1/
   capabilities:
   - entity_universe
-  historical_scope: Current TPEx listed-company reference data from the official OpenAPI.
-  status: implemented_and_fixture_tested
-  notes: GET mopsfin_t187ap03_O returns listed-company basic data.
-  rate_limit_requests_per_second: 1.0
+  - filing_discovery
+  - document_download
+  - structured_facts
+  - event_monitoring
+  historical_scope: Current listed-company reference data, current financial-statement tables, and rolling material-event disclosures through official TPEx OpenAPI endpoints.
+  status: production_listener
+  notes: The OpenAPI listener preserves raw endpoint snapshots and individual material-event evidence. Historical MOPS filing backfill remains separate.
+  rate_limit_requests_per_second: 0.5
 - source_id: gleif_golden_copy
   name: GLEIF Golden Copy and Level 1/Level 2 LEI files
   jurisdictions:

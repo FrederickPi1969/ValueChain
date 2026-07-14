@@ -13,6 +13,10 @@ from valuechain.acquisition_schema import ensure_acquisition_schema
 
 
 FILING_CLAIM_ORDER_SQL = "filing_date DESC, source_filing_id DESC"
+SOURCE_OBJECT_CLAIM_ORDER_SQL = (
+    "COALESCE((metadata->>'effective_date')::date, DATE '1900-01-01') DESC, "
+    "object_key DESC"
+)
 
 
 def filing_local_dir(
@@ -438,9 +442,41 @@ class GlobalSourceAcquisitionState:
                       NULLIF(%s, '')::timestamptz, %s, %s, %s)
             ON CONFLICT(source_id, object_key) DO UPDATE SET
               source_url = EXCLUDED.source_url, local_path = EXCLUDED.local_path,
-              content_type = EXCLUDED.content_type, byte_size = EXCLUDED.byte_size,
-              sha256 = EXCLUDED.sha256, retrieved_at = EXCLUDED.retrieved_at,
-              status = EXCLUDED.status, last_error = EXCLUDED.last_error,
+              content_type = CASE
+                WHEN acquisition_source_objects.status = 'complete'
+                  AND EXCLUDED.status <> 'complete'
+                THEN acquisition_source_objects.content_type
+                ELSE EXCLUDED.content_type
+              END,
+              byte_size = CASE
+                WHEN acquisition_source_objects.status = 'complete'
+                  AND EXCLUDED.status <> 'complete'
+                THEN acquisition_source_objects.byte_size
+                ELSE EXCLUDED.byte_size
+              END,
+              sha256 = CASE
+                WHEN acquisition_source_objects.status = 'complete'
+                  AND EXCLUDED.status <> 'complete'
+                THEN acquisition_source_objects.sha256
+                ELSE EXCLUDED.sha256
+              END,
+              retrieved_at = CASE
+                WHEN acquisition_source_objects.status = 'complete'
+                  AND EXCLUDED.status <> 'complete'
+                THEN acquisition_source_objects.retrieved_at
+                ELSE EXCLUDED.retrieved_at
+              END,
+              status = CASE
+                WHEN acquisition_source_objects.status = 'complete'
+                  AND EXCLUDED.status <> 'complete' THEN 'complete'
+                ELSE EXCLUDED.status
+              END,
+              last_error = CASE
+                WHEN acquisition_source_objects.status = 'complete'
+                  AND EXCLUDED.status <> 'complete'
+                THEN acquisition_source_objects.last_error
+                ELSE EXCLUDED.last_error
+              END,
               metadata = acquisition_source_objects.metadata || EXCLUDED.metadata
             """,
             (
@@ -457,6 +493,84 @@ class GlobalSourceAcquisitionState:
                 row.get("last_error", "")[:1000],
                 Jsonb(row.get("metadata", {})),
             ),
+        )
+        self.connection.commit()
+
+    def claim_source_objects(self, limit: int) -> list[dict[str, Any]]:
+        with self.connection.transaction():
+            rows = self.connection.execute(
+                f"""
+                SELECT * FROM acquisition_source_objects
+                WHERE source_id = %s
+                  AND status IN ('discovered', 'retry')
+                  AND (next_attempt_at IS NULL OR next_attempt_at <= now())
+                ORDER BY {SOURCE_OBJECT_CLAIM_ORDER_SQL}
+                FOR UPDATE SKIP LOCKED
+                LIMIT %s
+                """,
+                (self.source_id, limit),
+            ).fetchall()
+            if rows:
+                with self.connection.cursor() as cursor:
+                    cursor.executemany(
+                        """
+                        UPDATE acquisition_source_objects
+                        SET status = 'downloading', attempts = attempts + 1,
+                            claimed_at = now(), next_attempt_at = NULL,
+                            last_error = NULL
+                        WHERE source_id = %s AND object_key = %s
+                        """,
+                        [(self.source_id, row["object_key"]) for row in rows],
+                    )
+        return [dict(row) for row in rows]
+
+    def recover_downloading_source_objects(self, error: str) -> int:
+        cursor = self.connection.execute(
+            """
+            UPDATE acquisition_source_objects
+            SET status = 'retry', last_error = %s, next_attempt_at = now(),
+                claimed_at = NULL
+            WHERE source_id = %s AND status = 'downloading'
+            """,
+            (error[:1000], self.source_id),
+        )
+        self.connection.commit()
+        return cursor.rowcount
+
+    def complete_source_object(self, object_key: str, row: dict[str, Any]) -> None:
+        self.connection.execute(
+            """
+            UPDATE acquisition_source_objects
+            SET local_path = %s, content_type = %s, byte_size = %s, sha256 = %s,
+                retrieved_at = NULLIF(%s, '')::timestamptz, status = 'complete',
+                claimed_at = NULL, next_attempt_at = NULL, last_error = NULL,
+                metadata = metadata || %s
+            WHERE source_id = %s AND object_key = %s
+            """,
+            (
+                row["local_path"],
+                row.get("content_type", ""),
+                row.get("byte_size"),
+                row.get("sha256", ""),
+                row.get("retrieved_at", ""),
+                Jsonb(row.get("metadata", {})),
+                self.source_id,
+                object_key,
+            ),
+        )
+        self.connection.commit()
+
+    def fail_source_object(
+        self, object_key: str, error: str, retry_minutes: int = 30
+    ) -> None:
+        self.connection.execute(
+            """
+            UPDATE acquisition_source_objects
+            SET status = 'retry', last_error = %s, claimed_at = NULL,
+                next_attempt_at = now() + (%s * interval '1 minute')
+            WHERE source_id = %s AND object_key = %s
+            """,
+            (error[:1000], retry_minutes, self.source_id, object_key),
         )
         self.connection.commit()
 

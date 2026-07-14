@@ -6,6 +6,9 @@ import json
 
 from valuechain.acquisition_worker import acquisition_process_lock, run_worker_loop
 from valuechain.async_global_acquisition import AsyncGlobalAcquisitionRunner
+from valuechain.companies_house_bulk_acquisition import (
+    CompaniesHouseBulkAcquisitionRunner,
+)
 from valuechain.edinet_acquisition import EdinetAcquisitionRunner
 from valuechain.global_acquisition import (
     GLEIF_SOURCE,
@@ -15,6 +18,7 @@ from valuechain.global_acquisition import (
     source_status,
 )
 from valuechain.opendart_acquisition import OpenDartAcquisitionRunner
+from valuechain.taiwan_acquisition import TaiwanOpenApiAcquisitionRunner
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,7 +32,15 @@ def build_parser() -> argparse.ArgumentParser:
     worker.add_argument(
         "--source",
         required=True,
-        choices=("cninfo", "priority_eu_esef", "opendart", "edinet"),
+        choices=(
+            "cninfo",
+            "priority_eu_esef",
+            "opendart",
+            "edinet",
+            "twse",
+            "tpex",
+            "companies_house_accounts_bulk",
+        ),
     )
     status = subparsers.add_parser("status", help="Show global-source acquisition statistics.")
     status.add_argument("--source", choices=SUPPORTED_SOURCES, default=None)
@@ -43,6 +55,10 @@ def main(argv: list[str] | None = None) -> None:
             runner = OpenDartAcquisitionRunner(config)
         elif args.source == "edinet":
             runner = EdinetAcquisitionRunner(config)
+        elif args.source in {"twse", "tpex"}:
+            runner = TaiwanOpenApiAcquisitionRunner(args.source, config)
+        elif args.source == "companies_house_accounts_bulk":
+            runner = CompaniesHouseBulkAcquisitionRunner(config)
         else:
             runner = AsyncGlobalAcquisitionRunner(args.source, config)
         try:
@@ -69,6 +85,12 @@ def main(argv: list[str] | None = None) -> None:
                     payload = asyncio.run(runner.run_batch())
                 finally:
                     runner.close()
+            elif args.source in {"twse", "tpex"}:
+                runner = TaiwanOpenApiAcquisitionRunner(args.source, config)
+                payload = asyncio.run(runner.run_batch())
+            elif args.source == "companies_house_accounts_bulk":
+                runner = CompaniesHouseBulkAcquisitionRunner(config)
+                payload = asyncio.run(runner.run_batch())
             else:
                 runner = AsyncGlobalAcquisitionRunner(args.source, config)
                 payload = asyncio.run(runner.run_batch())

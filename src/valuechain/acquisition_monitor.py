@@ -25,6 +25,9 @@ DEFAULT_SOURCES = (
     "priority_eu_esef",
     "opendart",
     "edinet",
+    "twse",
+    "tpex",
+    "companies_house_accounts_bulk",
 )
 DEFAULT_SERVICES = (
     "valuechain-sec-acquisition.service",
@@ -32,6 +35,9 @@ DEFAULT_SERVICES = (
     "valuechain-esef-acquisition.service",
     "valuechain-opendart-acquisition.service",
     "valuechain-edinet-acquisition.service",
+    "valuechain-twse-acquisition.service",
+    "valuechain-tpex-acquisition.service",
+    "valuechain-companies-house-bulk-acquisition.service",
 )
 
 
@@ -125,8 +131,11 @@ class SourceSnapshot:
     latest_document_at: datetime | None
     documents: int
     document_bytes: int
+    source_objects: int
+    source_object_bytes: int
     scan_backlog: int
     filing_backlog: int
+    source_object_backlog: int
     stale_claims: int
     checkpoint_problems: int
     recent_run_errors: int
@@ -135,7 +144,12 @@ class SourceSnapshot:
 
     @property
     def backlog(self) -> int:
-        return self.scan_backlog + self.filing_backlog + self.checkpoint_problems
+        return (
+            self.scan_backlog
+            + self.filing_backlog
+            + self.source_object_backlog
+            + self.checkpoint_problems
+        )
 
 
 def _csv_env(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
@@ -161,12 +175,15 @@ def evaluate_source(
         "source_id": snapshot.source_id,
         "documents": snapshot.documents,
         "document_bytes": snapshot.document_bytes,
+        "source_objects": snapshot.source_objects,
+        "source_object_bytes": snapshot.source_object_bytes,
         "latest_document_at": (
             snapshot.latest_document_at.isoformat() if snapshot.latest_document_at else None
         ),
         "backlog": snapshot.backlog,
         "scan_backlog": snapshot.scan_backlog,
         "filing_backlog": snapshot.filing_backlog,
+        "source_object_backlog": snapshot.source_object_backlog,
         "stale_claims": snapshot.stale_claims,
         "checkpoint_problems": snapshot.checkpoint_problems,
         "recent_run_errors": snapshot.recent_run_errors,
@@ -363,12 +380,21 @@ class AcquisitionHealthMonitor:
         rows = connection.execute(
             """
             SELECT s.source_id,
-              (SELECT max(d.retrieved_at) FROM acquisition_documents d
-                WHERE d.source_id = s.source_id AND d.status = 'complete') latest_document_at,
+              greatest(
+                (SELECT max(d.retrieved_at) FROM acquisition_documents d
+                  WHERE d.source_id = s.source_id AND d.status = 'complete'),
+                (SELECT max(o.retrieved_at) FROM acquisition_source_objects o
+                  WHERE o.source_id = s.source_id AND o.status = 'complete')
+              ) latest_document_at,
               (SELECT count(*)::int FROM acquisition_documents d
                 WHERE d.source_id = s.source_id AND d.status = 'complete') documents,
               (SELECT coalesce(sum(d.byte_size), 0)::bigint FROM acquisition_documents d
                 WHERE d.source_id = s.source_id AND d.status = 'complete') document_bytes,
+              (SELECT count(*)::int FROM acquisition_source_objects o
+                WHERE o.source_id = s.source_id AND o.status = 'complete') source_objects,
+              (SELECT coalesce(sum(o.byte_size), 0)::bigint
+                FROM acquisition_source_objects o
+                WHERE o.source_id = s.source_id AND o.status = 'complete') source_object_bytes,
               (SELECT count(*)::int FROM acquisition_issuer_scans q
                 WHERE q.source_id = s.source_id AND (
                   q.status IN ('pending', 'running') OR
@@ -379,6 +405,11 @@ class AcquisitionHealthMonitor:
                   f.status IN ('discovered', 'downloading') OR
                   (f.status = 'retry' AND coalesce(f.next_attempt_at, now()) <= now())
                 )) filing_backlog,
+              (SELECT count(*)::int FROM acquisition_source_objects o
+                WHERE o.source_id = s.source_id AND (
+                  o.status IN ('discovered', 'downloading') OR
+                  (o.status = 'retry' AND coalesce(o.next_attempt_at, now()) <= now())
+                )) source_object_backlog,
               (SELECT count(*)::int FROM acquisition_issuer_scans q
                 WHERE q.source_id = s.source_id AND q.status = 'running'
                   AND q.claimed_at < now() - (%s * interval '1 minute')) stale_claims,
@@ -404,11 +435,22 @@ class AcquisitionHealthMonitor:
             SELECT source_id, local_path FROM (
               SELECT source_id, local_path,
                 row_number() OVER (PARTITION BY source_id ORDER BY retrieved_at DESC NULLS LAST) rn
-              FROM acquisition_documents
-              WHERE source_id = ANY(%s) AND status = 'complete'
+              FROM (
+                SELECT source_id, local_path, retrieved_at
+                FROM acquisition_documents
+                WHERE source_id = ANY(%s) AND status = 'complete'
+                UNION ALL
+                SELECT source_id, local_path, retrieved_at
+                FROM acquisition_source_objects
+                WHERE source_id = ANY(%s) AND status = 'complete'
+              ) completed_files
             ) ranked WHERE rn <= %s
             """,
-            (list(self.config.sources), self.config.file_sample_size),
+            (
+                list(self.config.sources),
+                list(self.config.sources),
+                self.config.file_sample_size,
+            ),
         ).fetchall()
         paths: dict[str, list[str]] = {}
         for row in path_rows:

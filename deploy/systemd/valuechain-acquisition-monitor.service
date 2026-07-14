@@ -1,6 +1,6 @@
 [Unit]
 Description=ValueChain acquisition database, worker and storage health monitor
-After=network-online.target valuechain-sec-acquisition.service valuechain-cninfo-acquisition.service valuechain-esef-acquisition.service valuechain-opendart-acquisition.service valuechain-edinet-acquisition.service
+After=network-online.target valuechain-sec-acquisition.service valuechain-cninfo-acquisition.service valuechain-esef-acquisition.service valuechain-opendart-acquisition.service valuechain-edinet-acquisition.service valuechain-twse-acquisition.service valuechain-tpex-acquisition.service valuechain-companies-house-bulk-acquisition.service
 Wants=network-online.target
 
 [Service]
