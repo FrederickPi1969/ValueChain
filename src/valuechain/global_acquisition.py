@@ -242,11 +242,17 @@ class CninfoAcquisitionRunner:
         )
         filings = [row for row in filings if not is_report_summary(row.title or "")]
         unique = {row.filing_id: row for row in filings}
+        complete_ids = state.complete_filing_ids(unique.keys())
         state.upsert_filings(unique.values(), self.config.raw_root)
         documents = 0
-        for filing in unique.values():
+        pending = [
+            filing
+            for filing_id, filing in unique.items()
+            if filing_id not in complete_ids
+        ]
+        for filing in pending:
             documents += self._acquire_filing(adapter, state, client, filing)
-        return {"filings": len(unique), "documents": documents}
+        return {"filings": len(pending), "documents": documents}
 
     def _acquire_filing(
         self,

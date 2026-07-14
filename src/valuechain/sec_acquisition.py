@@ -502,10 +502,16 @@ class SecAcquisitionRunner:
                 )
             )
         unique_filings = {row["accession_number"]: row for row in filings}
+        complete_ids = state.complete_filing_ids(unique_filings.keys())
+        pending = [
+            row
+            for accession, row in unique_filings.items()
+            if accession not in complete_ids
+        ]
         document_count = 0
-        for filing in sorted(unique_filings.values(), key=lambda row: row["filing_date"]):
+        for filing in sorted(pending, key=lambda row: row["filing_date"]):
             document_count += self.acquire_filing(state, session, filing)
-        return {"filings": len(unique_filings), "documents": document_count}
+        return {"filings": len(pending), "documents": document_count}
 
     def acquire_filing(
         self,

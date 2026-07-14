@@ -150,6 +150,20 @@ class GlobalSourceAcquisitionState:
         )
         self.connection.commit()
 
+    def complete_filing_ids(self, filing_ids: Iterable[str]) -> set[str]:
+        identifiers = list(filing_ids)
+        if not identifiers:
+            return set()
+        rows = self.connection.execute(
+            """
+            SELECT source_filing_id FROM acquisition_filings
+            WHERE source_id = %s AND status = 'complete'
+              AND source_filing_id = ANY(%s)
+            """,
+            (self.source_id, identifiers),
+        ).fetchall()
+        return {row["source_filing_id"] for row in rows}
+
     def checkpoint_due(self, checkpoint_key: str, max_age_hours: int) -> bool:
         row = self.connection.execute(
             """

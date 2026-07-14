@@ -219,10 +219,16 @@ class AsyncSecAcquisitionRunner:
                 )
             )
         unique = {row["accession_number"]: row for row in filings}
+        complete_ids = await asyncio.to_thread(
+            state.complete_filing_ids, unique.keys()
+        )
+        pending = [
+            row for accession, row in unique.items() if accession not in complete_ids
+        ]
         document_count = 0
-        for filing in sorted(unique.values(), key=lambda row: row["filing_date"]):
+        for filing in sorted(pending, key=lambda row: row["filing_date"]):
             document_count += await self.acquire_filing(state, client, filing)
-        return {"filings": len(unique), "documents": document_count}
+        return {"filings": len(pending), "documents": document_count}
 
     async def acquire_filing(
         self,

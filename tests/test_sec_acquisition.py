@@ -13,6 +13,7 @@ from valuechain.sec_acquisition import (
     parse_submission_columns,
     parse_target_years,
 )
+from valuechain.acquisition_state import AcquisitionIssuer
 
 
 def test_company_universe_prioritizes_seed_and_deduplicates_cik() -> None:
@@ -204,3 +205,58 @@ def test_complete_submission_url_preserves_accession_dashes(tmp_path, monkeypatc
     runner.acquire_filing(FakeState(), object(), filing)
 
     assert any(url.endswith("/0001045810-26-000003.txt") for url in urls)
+
+
+def test_incremental_scan_skips_filings_already_complete(tmp_path, monkeypatch) -> None:
+    accessions = ["0000000001-26-000001", "0000000001-26-000002"]
+    payload = {
+        "filings": {
+            "recent": {
+                "accessionNumber": accessions,
+                "filingDate": ["2026-01-04", "2026-02-01"],
+                "form": ["10-K", "8-K"],
+                "primaryDocument": ["annual.htm", "event.htm"],
+            },
+            "files": [],
+        }
+    }
+
+    class IncrementalSession:
+        def rotate_proxy(self):
+            return None
+
+        def get_json(self, _url):
+            return payload
+
+    class IncrementalState:
+        def complete_filing_ids(self, filing_ids):
+            assert set(filing_ids) == set(accessions)
+            return {accessions[0]}
+
+    config = AcquisitionConfig(
+        raw_root=tmp_path,
+        state_path=tmp_path / "state.sqlite3",
+        database_url="postgresql://test:test@127.0.0.1:5432/test",
+        proxy_pool_url="https://proxy.example",
+        sec_user_agent="test@example.com",
+    )
+    runner = SecAcquisitionRunner(config, tmp_path)
+    monkeypatch.setattr(runner, "new_session", lambda: IncrementalSession())
+    acquired: list[str] = []
+    monkeypatch.setattr(
+        runner,
+        "acquire_filing",
+        lambda _state, _session, filing: acquired.append(
+            filing["accession_number"]
+        )
+        or 3,
+    )
+
+    result = runner.acquire_issuer(
+        IncrementalState(),
+        AcquisitionIssuer("0000000001", "TEST", "Test Inc.", "NASDAQ", 0),
+        2026,
+    )
+
+    assert acquired == [accessions[1]]
+    assert result == {"filings": 1, "documents": 3}
