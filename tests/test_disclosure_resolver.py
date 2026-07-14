@@ -120,6 +120,23 @@ def test_cninfo_correction_is_excluded_from_default_results() -> None:
     )) == []
 
 
+def test_report_summary_is_never_returned_as_the_full_report() -> None:
+    row = {
+        "document_id": 11,
+        "source_id": "cninfo",
+        "form_raw": "annual_report",
+        "filing_date": date(2023, 4, 1),
+        "report_date": "",
+        "metadata": {"title": "2022年年度报告摘要"},
+    }
+    assert select_local_documents([row], ResolveDisclosureRequest(
+        source_id="cninfo",
+        company="000333",
+        year=2022,
+        document_type="annual_report",
+    )) == []
+
+
 def test_request_key_deduplicates_same_resolved_company_request() -> None:
     query = request()
     assert request_key(query, "sec_edgar", "0001045810") == request_key(

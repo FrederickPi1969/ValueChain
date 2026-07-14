@@ -148,6 +148,13 @@ def _title_report_year(row: dict[str, Any]) -> int | None:
     return years[0] if years else None
 
 
+def summary_like(metadata: dict[str, Any]) -> bool:
+    title = re.sub(
+        r"\s+", "", str(metadata.get("title") or metadata.get("docDescription") or "")
+    ).casefold()
+    return any(marker in title for marker in ("摘要", "summary", "abstract"))
+
+
 def effective_year_basis(
     request: ResolveDisclosureRequest, source_id: str
 ) -> YearBasis:
@@ -185,6 +192,8 @@ def row_matches_request(
         if not exact_native_match and not semantic_native_match:
             return False
     metadata = row.get("metadata") or {}
+    if summary_like(metadata):
+        return False
     if not request.include_amendments and amendment_like(
         source_id, form_raw, metadata
     ):
