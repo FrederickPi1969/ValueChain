@@ -289,8 +289,11 @@ class GlobalSourceAcquisitionState:
                   primary_document = EXCLUDED.primary_document,
                   archive_url = EXCLUDED.archive_url,
                   local_dir = EXCLUDED.local_dir,
-                  status = CASE WHEN acquisition_filings.status = 'complete'
-                                THEN 'complete' ELSE EXCLUDED.status END,
+                  status = CASE
+                    WHEN acquisition_filings.status IN ('complete', 'downloading')
+                    THEN acquisition_filings.status
+                    ELSE EXCLUDED.status
+                  END,
                   metadata = acquisition_filings.metadata || EXCLUDED.metadata
                 """,
                 [self._filing_values(row, raw_root) for row in rows],
@@ -359,6 +362,31 @@ class GlobalSourceAcquisitionState:
                         [(self.source_id, row["source_filing_id"]) for row in rows],
                     )
         return [dict(row) for row in rows]
+
+    def claim_filing(self, filing_id: str) -> dict[str, Any] | None:
+        """Atomically claim one known filing without racing scheduled workers."""
+        with self.connection.transaction():
+            row = self.connection.execute(
+                """
+                SELECT * FROM acquisition_filings
+                WHERE source_id = %s AND source_filing_id = %s
+                FOR UPDATE
+                """,
+                (self.source_id, filing_id),
+            ).fetchone()
+            if row is None or row["status"] in {"complete", "downloading"}:
+                return None
+            self.connection.execute(
+                """
+                UPDATE acquisition_filings
+                SET status = 'downloading', next_attempt_at = NULL, last_error = NULL
+                WHERE source_id = %s AND source_filing_id = %s
+                """,
+                (self.source_id, filing_id),
+            )
+        claimed = dict(row)
+        claimed["status"] = "downloading"
+        return claimed
 
     def recover_downloading_filings(self, error: str) -> int:
         """Return filings left in downloading state by an interrupted worker to retry."""

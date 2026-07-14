@@ -174,6 +174,16 @@ class AdHocAcquisitionWorker:
             ).fetchall()
         return [int(row["document_id"]) for row in rows]
 
+    def _completed_documents_or_defer(
+        self, source_id: str, filing_ids: list[str]
+    ) -> list[int]:
+        document_ids = self._document_ids(source_id, filing_ids)
+        if not document_ids:
+            raise RuntimeError(
+                "Matching filings exist but their documents are still being acquired"
+            )
+        return document_ids
+
     async def _sec(
         self, job: dict[str, Any], request: ResolveDisclosureRequest
     ) -> list[int]:
@@ -233,7 +243,7 @@ class AdHocAcquisitionWorker:
                 for accession, filing in sorted(selected.items()):
                     if accession not in complete:
                         await runner.acquire_filing(acquisition_state, client, filing)
-        return self._document_ids("sec_edgar", list(selected))
+        return self._completed_documents_or_defer("sec_edgar", list(selected))
 
     async def _cninfo(
         self, job: dict[str, Any], request: ResolveDisclosureRequest
@@ -281,11 +291,13 @@ class AdHocAcquisitionWorker:
                 acquisition_state.upsert_filings(selected.values(), self.global_config.raw_root)
                 complete = acquisition_state.complete_filing_ids(selected)
                 for filing_id, filing in selected.items():
-                    if filing_id not in complete:
+                    if filing_id not in complete and acquisition_state.claim_filing(
+                        filing_id
+                    ):
                         await runner._download_cninfo_filing(
                             acquisition_state, client, filing
                         )
-        return self._document_ids(CNINFO_SOURCE, list(selected))
+        return self._completed_documents_or_defer(CNINFO_SOURCE, list(selected))
 
     async def _opendart(
         self, job: dict[str, Any], request: ResolveDisclosureRequest
@@ -354,19 +366,15 @@ class AdHocAcquisitionWorker:
                     for filing_id in selected:
                         if filing_id in complete:
                             continue
-                        row = acquisition_state.connection.execute(
-                            """
-                            SELECT * FROM acquisition_filings
-                            WHERE source_id = %s AND source_filing_id = %s
-                            """,
-                            (OPENDART_SOURCE, filing_id),
-                        ).fetchone()
+                        row = acquisition_state.claim_filing(filing_id)
+                        if row is None:
+                            continue
                         await runner._download_filing(
-                            acquisition_state, client, dict(row)
+                            acquisition_state, client, row
                         )
         finally:
             runner.close()
-        return self._document_ids(OPENDART_SOURCE, list(selected))
+        return self._completed_documents_or_defer(OPENDART_SOURCE, list(selected))
 
 
 async def run_ad_hoc_worker() -> None:

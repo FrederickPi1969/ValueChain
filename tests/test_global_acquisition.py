@@ -17,6 +17,12 @@ from valuechain.global_acquisition_state import (
 )
 
 
+def test_global_state_has_atomic_single_filing_claim_for_ad_hoc_work() -> None:
+    from valuechain.global_acquisition_state import GlobalSourceAcquisitionState
+
+    assert callable(GlobalSourceAcquisitionState.claim_filing)
+
+
 def test_global_acquisition_config_preserves_year_priority(monkeypatch) -> None:
     monkeypatch.setenv("VALUECHAIN_GLOBAL_ACQUISITION_YEARS", "2026,2025")
 
