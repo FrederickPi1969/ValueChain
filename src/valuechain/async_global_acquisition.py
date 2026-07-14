@@ -18,6 +18,7 @@ from valuechain.global_acquisition import (
     CNINFO_SOURCE,
     ESEF_SOURCE,
     GlobalAcquisitionConfig,
+    is_report_summary,
     safe_filename,
     write_manifest,
 )
@@ -192,7 +193,7 @@ class AsyncGlobalAcquisitionRunner:
             ticker=issuer.ticker or None,
         )
         filings = await self._list_cninfo_filings(client, entity, year)
-        filings = [row for row in filings if "摘要" not in (row.title or "")]
+        filings = [row for row in filings if not is_report_summary(row.title or "")]
         unique = {row.filing_id: row for row in filings}
         await asyncio.to_thread(
             state.upsert_filings, unique.values(), self.config.raw_root

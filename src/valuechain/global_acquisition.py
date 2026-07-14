@@ -44,7 +44,7 @@ def require_proxy(settings: Settings) -> Settings:
 class GlobalAcquisitionConfig:
     raw_root: Path
     database_url: str
-    target_years: tuple[int, ...] = (2026, 2025)
+    target_years: tuple[int, ...] = (2026, 2025, 2024, 2023, 2022, 2021, 2020)
     cninfo_issuer_limit: int = 16
     esef_filing_limit: int = 16
     worker_count: int = 4
@@ -70,7 +70,10 @@ class GlobalAcquisitionConfig:
                 ),
             ),
             target_years=parse_target_years(
-                os.getenv("VALUECHAIN_GLOBAL_ACQUISITION_YEARS", "2026,2025")
+                os.getenv(
+                    "VALUECHAIN_GLOBAL_ACQUISITION_YEARS",
+                    "2026,2025,2024,2023,2022,2021,2020",
+                )
             ),
             cninfo_issuer_limit=max(
                 1, int(os.getenv("VALUECHAIN_CNINFO_ISSUER_LIMIT", "16"))
@@ -103,6 +106,11 @@ def safe_filename(value: str, fallback: str) -> str:
     name = Path(urlparse(value).path).name or fallback
     cleaned = "".join(character if character.isalnum() or character in ".-_" else "_" for character in name)
     return cleaned[:240] or fallback
+
+
+def is_report_summary(title: str) -> bool:
+    normalized = "".join(title.lower().split())
+    return any(marker in normalized for marker in ("摘要", "summary", "abstract"))
 
 
 def download_document(
@@ -216,7 +224,7 @@ class CninfoAcquisitionRunner:
                 max_pages=5,
             )
         )
-        filings = [row for row in filings if "摘要" not in (row.title or "")]
+        filings = [row for row in filings if not is_report_summary(row.title or "")]
         unique = {row.filing_id: row for row in filings}
         state.upsert_filings(unique.values(), self.config.raw_root)
         documents = 0

@@ -74,10 +74,10 @@ def test_target_years_preserve_order_and_reject_duplicates() -> None:
         parse_target_years("2026,2026")
 
 
-def test_environment_caps_request_concurrency_at_four(monkeypatch) -> None:
+def test_environment_caps_request_concurrency_at_eight(monkeypatch) -> None:
     monkeypatch.setenv("VALUECHAIN_ACQUISITION_CONCURRENCY", "20")
 
-    assert AcquisitionConfig.from_env().request_concurrency == 4
+    assert AcquisitionConfig.from_env().request_concurrency == 8
 
 
 def test_async_backfill_defaults_feed_four_workers(monkeypatch) -> None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from datetime import UTC, date, datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from gcu.adapters.base import BaseAdapter
 from gcu.http import NetworkBlockedError
@@ -17,7 +18,9 @@ class CninfoAdapter(BaseAdapter):
     # fetch also prevents denominator drift caused by separately timed files.
     UNIVERSE_URL = "https://www.cninfo.com.cn/new/data/szse_stock.json"
     MARKET_URLS = {"SSE": UNIVERSE_URL, "SZSE": UNIVERSE_URL, "BSE": UNIVERSE_URL}
-    MARKET_COLUMNS = {"SSE": "sse", "SZSE": "szse", "BSE": "bse"}
+    # CNINFO serves Beijing issuer-filtered results through the combined
+    # `szse` search column; the intuitive `bse` value returns an empty set.
+    MARKET_COLUMNS = {"SSE": "sse", "SZSE": "szse", "BSE": "szse"}
     MARKET_MICS = {"SSE": "XSHG", "SZSE": "XSHE", "BSE": "XBSE"}
     MIC_MARKETS = {value: key for key, value in MARKET_MICS.items()}
     FINANCIAL_REPORT_CATEGORIES = ";".join(
@@ -33,6 +36,7 @@ class CninfoAdapter(BaseAdapter):
     MIN_UNIVERSE_ROWS = 5_000
     TARGET_UNIVERSE_ROWS = 6_000
     MAX_UNIVERSE_ATTEMPTS = 3
+    LOCAL_TIMEZONE = ZoneInfo("Asia/Shanghai")
 
     @staticmethod
     def _stock_rows(payload: Any) -> list[dict[str, Any]]:
@@ -179,33 +183,54 @@ class CninfoAdapter(BaseAdapter):
             if timestamp > 10_000_000_000:
                 timestamp /= 1000
             moment = datetime.fromtimestamp(timestamp, tz=UTC)
-            return moment.date(), moment
+            return moment.astimezone(CninfoAdapter.LOCAL_TIMEZONE).date(), moment
         except (TypeError, ValueError, OSError):
             text = str(value).strip().replace("/", "-")
             try:
                 parsed = datetime.fromisoformat(text)
                 if parsed.tzinfo is None:
-                    parsed = parsed.replace(tzinfo=UTC)
-                return parsed.date(), parsed
+                    parsed = parsed.replace(tzinfo=CninfoAdapter.LOCAL_TIMEZONE)
+                return (
+                    parsed.astimezone(CninfoAdapter.LOCAL_TIMEZONE).date(),
+                    parsed.astimezone(UTC),
+                )
             except ValueError:
                 try:
                     parsed_date = date.fromisoformat(text[:10])
-                    return parsed_date, datetime.combine(parsed_date, datetime.min.time(), tzinfo=UTC)
+                    local_moment = datetime.combine(
+                        parsed_date,
+                        datetime.min.time(),
+                        tzinfo=CninfoAdapter.LOCAL_TIMEZONE,
+                    )
+                    return parsed_date, local_moment.astimezone(UTC)
                 except ValueError:
                     return None, None
 
     @staticmethod
     def _classify(title: str) -> str:
-        normalized = title.replace(" ", "")
+        normalized = title.replace(" ", "").lower()
         mapping = (
-            ("年度报告", "annual_report"),
-            ("年报", "annual_report"),
             ("半年度报告", "semiannual_report"),
             ("半年报", "semiannual_report"),
-            ("第一季度报告", "q1_report"),
-            ("一季度报告", "q1_report"),
-            ("第三季度报告", "q3_report"),
-            ("三季度报告", "q3_report"),
+            ("中期报告", "semiannual_report"),
+            ("semi-annualreport", "semiannual_report"),
+            ("semiannualreport", "semiannual_report"),
+            ("interimreport", "semiannual_report"),
+            ("第一季度", "q1_report"),
+            ("一季度", "q1_report"),
+            ("一季报", "q1_report"),
+            ("firstquarter", "q1_report"),
+            ("reportofq1", "q1_report"),
+            ("q1report", "q1_report"),
+            ("第三季度", "q3_report"),
+            ("三季度", "q3_report"),
+            ("三季报", "q3_report"),
+            ("thirdquarter", "q3_report"),
+            ("reportofq3", "q3_report"),
+            ("q3report", "q3_report"),
+            ("年度报告", "annual_report"),
+            ("年报", "annual_report"),
+            ("annualreport", "annual_report"),
             ("季度报告", "quarterly_report"),
             ("业绩快报", "earnings_flash"),
             ("业绩预告", "earnings_forecast"),

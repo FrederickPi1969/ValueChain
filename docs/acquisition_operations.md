@@ -3,9 +3,9 @@
 ## Scope
 
 The first scheduled collector inventories the live SEC universe and downloads
-Tier-A filings in strict year phases: complete the first issuer scan for 2026,
-then begin 2025. It deliberately does not run parsing, relation extraction,
-embeddings, or LLM calls.
+Tier-A filings in strict descending year phases from 2026 through 2020. It
+deliberately does not run parsing, relation extraction, embeddings, or LLM
+calls.
 
 Issuer order is:
 
@@ -25,9 +25,10 @@ All SEC requests use a normal proxy obtained from:
 https://proxy.frederickpi.com/proxy/random/normal
 ```
 
-The asynchronous worker pool is hard-capped at four workers. Each worker owns
+The asynchronous worker pool is hard-capped at eight workers. Each worker owns
 its proxy and HTTP session, while all workers share one adaptive SEC rate limiter
-that starts at four requests per second. HTTP 429 and retryable 5xx responses
+that can start at up to eight requests per second, below SEC's global ten
+requests-per-second ceiling. HTTP 429 and retryable 5xx responses
 reduce the shared rate; sustained successful requests gradually restore it.
 The worker rotates proxies after request failures and never falls back to a
 direct SEC request. Proxy credentials are not logged or persisted.
@@ -156,7 +157,8 @@ annual, semiannual, first-quarter, and third-quarter reports while excluding
 summary-only PDFs. Priority ESEF claims 16 filings, processes four concurrently
 at an initial shared rate of four requests per second, and retains the original
 report package, Inline XBRL report, and xBRL-JSON representation. Both queues
-process 2026 before 2025 and retain retry state in PostgreSQL.
+process years from 2026 through 2020 in descending order and retain retry state
+in PostgreSQL.
 
 After the CNINFO historical phases finish, the newest configured year enters a
 24-hour issuer rescan cycle. ESEF refreshes its filing discovery checkpoints

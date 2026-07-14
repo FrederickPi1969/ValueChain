@@ -51,7 +51,7 @@ class AcquisitionConfig:
     request_retries: int = 5
     issuer_limit: int = 16
     rescan_hours: int = 24
-    target_years: tuple[int, ...] = (2026, 2025)
+    target_years: tuple[int, ...] = (2026, 2025, 2024, 2023, 2022, 2021, 2020)
     request_concurrency: int = 4
     request_sleep_seconds: float = 0.5
     request_jitter_seconds: float = 0.5
@@ -98,10 +98,13 @@ class AcquisitionConfig:
             ),
             rescan_hours=int(os.getenv("VALUECHAIN_ACQUISITION_RESCAN_HOURS", "24")),
             target_years=parse_target_years(
-                os.getenv("VALUECHAIN_ACQUISITION_YEARS", "2026,2025")
+                os.getenv(
+                    "VALUECHAIN_ACQUISITION_YEARS",
+                    "2026,2025,2024,2023,2022,2021,2020",
+                )
             ),
             request_concurrency=min(
-                4,
+                8,
                 max(1, int(os.getenv("VALUECHAIN_ACQUISITION_CONCURRENCY", "4"))),
             ),
             request_sleep_seconds=max(

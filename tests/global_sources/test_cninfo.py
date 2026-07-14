@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 from gcu.config import Settings
 from gcu.models import EntityRef, SourceDefinition
@@ -46,6 +46,19 @@ def test_cninfo_date_parser_accepts_iso_date() -> None:
     filed, moment = CninfoAdapter._date_from_millis("2026-07-10")
     assert filed == date(2026, 7, 10)
     assert moment is not None
+
+
+def test_cninfo_epoch_uses_china_disclosure_date() -> None:
+    filed, moment = CninfoAdapter._date_from_millis(1777478400000)
+
+    assert filed == date(2026, 4, 30)
+    assert moment == datetime(2026, 4, 29, 16, tzinfo=UTC)
+
+
+def test_cninfo_classifies_semiannual_before_annual() -> None:
+    assert CninfoAdapter._classify("2025年半年度报告") == "semiannual_report"
+    assert CninfoAdapter._classify("2025 Semi-Annual Report") == "semiannual_report"
+    assert CninfoAdapter._classify("2025 Annual Report") == "annual_report"
 
 
 def test_cninfo_combined_map_infers_all_three_markets() -> None:
@@ -127,3 +140,7 @@ def test_cninfo_maps_iso_mic_back_to_query_market() -> None:
 
     assert CninfoAdapter.MIC_MARKETS[entity.exchange] == "SSE"
     assert "category_ndbg_szsh" in CninfoAdapter.FINANCIAL_REPORT_CATEGORIES
+
+
+def test_cninfo_beijing_uses_combined_search_column() -> None:
+    assert CninfoAdapter.MARKET_COLUMNS["BSE"] == "szse"

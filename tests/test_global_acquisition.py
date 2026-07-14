@@ -6,6 +6,7 @@ from gcu.config import Settings
 from gcu.http import DownloadedPayload, PoliteHttpClient
 from valuechain.global_acquisition import (
     GlobalAcquisitionConfig,
+    is_report_summary,
     require_proxy,
     safe_filename,
 )
@@ -49,6 +50,13 @@ def test_safe_filename_removes_paths_and_unsafe_characters() -> None:
         "report_20one.pdf"
     )
     assert Path(safe_filename("https://example.test/", "fallback.bin")).name == "fallback.bin"
+
+
+def test_report_summary_filter_handles_chinese_and_english() -> None:
+    assert is_report_summary("2025年年度报告摘要")
+    assert is_report_summary("Summary of 2025 Annual Report")
+    assert is_report_summary("Abstract of the Semi-Annual Report 2025")
+    assert not is_report_summary("2025 Annual Report")
 
 
 def test_cninfo_filing_directory_includes_issuer_partition(tmp_path: Path) -> None:
