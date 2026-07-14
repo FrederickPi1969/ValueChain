@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,10 @@ from gcu_priority_markets.adapters.cninfo import CninfoAdapter
 from gcu_priority_markets.adapters.esef import PriorityEsefAdapter
 from gcu_priority_markets.registry import PatchRegistry
 from valuechain.acquisition_schema import AcquisitionSchemaGuard
+from valuechain.acquisition_schedule import (
+    choose_issuer_scan_plan,
+    years_with_current,
+)
 from valuechain.acquisition_state import AcquisitionIssuer
 from valuechain.async_http import AdaptiveRateLimiter, AsyncHttpClient
 from valuechain.global_acquisition import (
@@ -28,6 +33,7 @@ from valuechain.global_acquisition_state import (
 )
 from valuechain.postgres_acquisition_state import PostgresAcquisitionState
 from valuechain.proxy_pool import ProxyPoolClient
+from valuechain.sec_acquisition import atomic_write_json
 
 
 class AsyncGlobalAcquisitionRunner:
@@ -70,6 +76,10 @@ class AsyncGlobalAcquisitionRunner:
 
     async def _run_cninfo_batch(self) -> dict[str, Any]:
         counts = {"issuers": 0, "filings": 0, "documents": 0, "errors": 0}
+        current_year = datetime.now(UTC).year
+        years = years_with_current(self.config.target_years, current_year)
+        if self._cninfo_universe_refresh_due():
+            await self._refresh_cninfo_universe(years)
         with (
             GlobalSourceAcquisitionState(
                 self.config.database_url, CNINFO_SOURCE, False
@@ -79,12 +89,15 @@ class AsyncGlobalAcquisitionRunner:
             ) as queue_state,
         ):
             state.ensure_source(self.definition)
-            queue_state.ensure_scan_years(self.config.target_years)
-            year = queue_state.active_backfill_year(self.config.target_years)
-            maintenance = year is None
-            if year is None:
-                year = self.config.target_years[0]
-            mode = "maintenance" if maintenance else "backfill"
+            queue_state.ensure_scan_years(years)
+            plan = choose_issuer_scan_plan(
+                queue_state,
+                years=years,
+                current_year=current_year,
+                rescan_hours=self.config.cninfo_rescan_hours,
+            )
+            year = plan.filing_year
+            mode = plan.mode
             run_id = datetime.now(UTC).strftime(
                 f"cninfo-{year}-%Y%m%dT%H%M%S.%fZ"
             )
@@ -92,9 +105,7 @@ class AsyncGlobalAcquisitionRunner:
             issuers = queue_state.claim_issuers(
                 self.config.cninfo_issuer_limit,
                 filing_year=year,
-                rescan_hours=(
-                    self.config.cninfo_rescan_hours if maintenance else None
-                ),
+                rescan_hours=plan.rescan_hours,
             )
 
         queue: asyncio.Queue[AcquisitionIssuer] = asyncio.Queue()
@@ -127,6 +138,67 @@ class AsyncGlobalAcquisitionRunner:
             "effective_rps": round(self.limiter.current_rate, 3),
             "state": stats,
         }
+
+    def _cninfo_universe_refresh_due(self) -> bool:
+        catalog_dir = self.config.raw_root / CNINFO_SOURCE / "_catalog"
+        snapshots = list(catalog_dir.glob("szse_stock.*.json"))
+        if not snapshots:
+            return True
+        newest = max(path.stat().st_mtime for path in snapshots)
+        age_seconds = datetime.now(UTC).timestamp() - newest
+        return age_seconds >= self.config.discovery_refresh_hours * 3600
+
+    async def _refresh_cninfo_universe(self, years: tuple[int, ...]) -> int:
+        headers = {
+            "Referer": "https://www.cninfo.com.cn/new/index",
+            "Accept": "application/json, text/plain, */*",
+            "X-Requested-With": "XMLHttpRequest",
+        }
+        best_payload: Any = None
+        best_entities: list[EntityRef] = []
+        for _attempt in range(CninfoAdapter.MAX_UNIVERSE_ATTEMPTS):
+            async with await self._new_client() as client:
+                payload = await client.get_json(CninfoAdapter.UNIVERSE_URL, headers=headers)
+            entities = list(CninfoAdapter.parse_universe(payload))
+            if len(entities) > len(best_entities):
+                best_payload = payload
+                best_entities = entities
+            if len(entities) >= CninfoAdapter.TARGET_UNIVERSE_ROWS:
+                break
+        if len(best_entities) < CninfoAdapter.MIN_UNIVERSE_ROWS:
+            raise ValueError(
+                f"CNINFO universe refresh produced only {len(best_entities)} issuers"
+            )
+        timestamp = datetime.now(UTC)
+        catalog_path = (
+            self.config.raw_root
+            / CNINFO_SOURCE
+            / "_catalog"
+            / f"szse_stock.{timestamp.strftime('%Y%m%dT%H%M%SZ')}.json"
+        )
+        await asyncio.to_thread(atomic_write_json, catalog_path, best_payload)
+        digest = await asyncio.to_thread(
+            lambda: hashlib.sha256(catalog_path.read_bytes()).hexdigest()
+        )
+        with (
+            GlobalSourceAcquisitionState(
+                self.config.database_url, CNINFO_SOURCE, False
+            ) as state,
+            PostgresAcquisitionState(
+                self.config.database_url, CNINFO_SOURCE, False
+            ) as queue_state,
+        ):
+            state.ensure_source(self.definition)
+            count = state.upsert_entities(best_entities)
+            state.record_universe_snapshot(
+                path=catalog_path,
+                source_url=CninfoAdapter.UNIVERSE_URL,
+                row_count=count,
+                sha256=digest,
+                retrieved_at=timestamp,
+            )
+            queue_state.ensure_scan_years(years)
+        return count
 
     async def _cninfo_worker(
         self,

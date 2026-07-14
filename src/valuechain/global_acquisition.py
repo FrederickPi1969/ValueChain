@@ -16,6 +16,10 @@ from gcu.models import DocumentRef, EntityRef, FilingRef
 from gcu.registry import SourceRegistry
 from gcu_priority_markets.adapters.cninfo import CninfoAdapter
 from gcu_priority_markets.registry import PatchRegistry
+from valuechain.acquisition_schedule import (
+    choose_issuer_scan_plan,
+    years_with_current,
+)
 from valuechain.acquisition_state import AcquisitionIssuer
 from valuechain.global_acquisition_state import (
     GlobalSourceAcquisitionState,
@@ -172,12 +176,24 @@ class CninfoAcquisitionRunner:
             PoliteHttpClient(self.settings) as client,
         ):
             state.ensure_source(self.definition)
-            queue.ensure_scan_years(self.config.target_years)
-            year = queue.active_backfill_year(self.config.target_years) or self.config.target_years[0]
+            current_year = datetime.now(UTC).year
+            years = years_with_current(self.config.target_years, current_year)
+            queue.ensure_scan_years(years)
+            plan = choose_issuer_scan_plan(
+                queue,
+                years=years,
+                current_year=current_year,
+                rescan_hours=self.config.cninfo_rescan_hours,
+            )
+            year = plan.filing_year
             run_id = datetime.now(UTC).strftime(f"cninfo-{year}-%Y%m%dT%H%M%SZ")
-            queue.begin_run(run_id, year, "backfill")
+            queue.begin_run(run_id, year, plan.mode)
             adapter = PatchRegistry().create_adapter(CNINFO_SOURCE, self.settings, client)
-            issuers = queue.claim_issuers(self.config.cninfo_issuer_limit, filing_year=year)
+            issuers = queue.claim_issuers(
+                self.config.cninfo_issuer_limit,
+                filing_year=year,
+                rescan_hours=plan.rescan_hours,
+            )
             for issuer in issuers:
                 counts["issuers"] += 1
                 try:

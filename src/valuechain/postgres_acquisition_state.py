@@ -191,6 +191,27 @@ class PostgresAcquisitionState:
                 return year
         return None
 
+    def rescan_due(self, filing_year: int, rescan_hours: int) -> bool:
+        row = self.connection.execute(
+            """
+            SELECT EXISTS (
+              SELECT 1 FROM acquisition_issuer_scans
+              WHERE source_id = %s AND filing_year = %s AND (
+                status IN ('pending', 'running')
+                OR (status = 'retry' AND (
+                  next_attempt_at IS NULL OR next_attempt_at <= now()
+                ))
+                OR (status = 'complete' AND (
+                  scanned_at IS NULL
+                  OR scanned_at <= now() - (%s * interval '1 hour')
+                ))
+              )
+            ) AS due
+            """,
+            (self.source_id, filing_year, rescan_hours),
+        ).fetchone()
+        return bool(row["due"])
+
     def upsert_filing(self, filing: dict, local_dir: Path, status: str, error: str = "") -> None:
         self.connection.execute(
             """

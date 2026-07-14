@@ -130,11 +130,13 @@ Operational health is checked every five minutes by
 recent raw paths, worker service state, and HDD capacity. See
 `docs/ACQUISITION_MONITORING.md` for thresholds and optional webhook delivery.
 
-The issuer universe is refreshed from the live SEC endpoint every 24 hours. The
-2025 phase cannot claim an issuer until every 2026 issuer is complete. After all
-configured historical phases finish, the newest year enters a 24-hour rescan
-cycle so new filings continue to enter the corpus. Failed issuers use persistent
-retry state rather than being silently skipped.
+The SEC issuer universe is refreshed from the live endpoint every 24 hours.
+CNINFO's combined SSE/SZSE/BSE issuer map is also refreshed every 24 hours. Each
+source keeps the current calendar year on a rolling 24-hour issuer rescan even
+while older years are being backfilled. Due current-year scans take priority;
+when that incremental queue is fresh, the same worker resumes the descending
+historical queue. Failed issuers use persistent retry state rather than being
+silently skipped.
 
 ## Source Management
 
@@ -165,9 +167,10 @@ report package, Inline XBRL report, and xBRL-JSON representation. Both queues
 process years from 2026 through 2020 in descending order and retain retry state
 in PostgreSQL.
 
-After the CNINFO historical phases finish, the newest configured year enters a
-24-hour issuer rescan cycle. ESEF refreshes its filing discovery checkpoints
-every 24 hours, so both lanes continue ingesting newly published disclosures.
+CNINFO refreshes its issuer denominator and current-year filing scans every 24
+hours while historical phases continue. ESEF refreshes its filing discovery
+checkpoints every 24 hours, so both lanes continue ingesting newly published
+disclosures.
 
 GLEIF has no filing year. It refreshes the latest LEI Level 1 (`lei2`), Level 2
 relationship (`rr`), and reporting-exception (`repex`) Golden Copy ZIPs at most

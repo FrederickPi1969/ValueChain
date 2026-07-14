@@ -117,6 +117,39 @@ class GlobalSourceAcquisitionState:
         self.connection.commit()
         return len(rows)
 
+    def record_universe_snapshot(
+        self,
+        *,
+        path: Path,
+        source_url: str,
+        row_count: int,
+        sha256: str,
+        retrieved_at: datetime,
+    ) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO acquisition_universe_snapshots(
+              source_id, source_url, local_path, sha256, row_count, retrieved_at,
+              metadata
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(source_id, sha256) DO UPDATE SET
+              local_path = EXCLUDED.local_path,
+              row_count = EXCLUDED.row_count,
+              retrieved_at = EXCLUDED.retrieved_at,
+              metadata = acquisition_universe_snapshots.metadata || EXCLUDED.metadata
+            """,
+            (
+                self.source_id,
+                source_url,
+                str(path),
+                sha256,
+                row_count,
+                retrieved_at,
+                Jsonb({"listener_refresh": True}),
+            ),
+        )
+        self.connection.commit()
+
     def checkpoint_due(self, checkpoint_key: str, max_age_hours: int) -> bool:
         row = self.connection.execute(
             """

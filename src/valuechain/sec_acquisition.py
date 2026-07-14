@@ -14,6 +14,10 @@ from typing import Any, Iterable
 
 import requests
 
+from valuechain.acquisition_schedule import (
+    choose_issuer_scan_plan,
+    years_with_current,
+)
 from valuechain.acquisition_state import AcquisitionIssuer, iso_now
 from valuechain.postgres_acquisition_state import PostgresAcquisitionState
 from valuechain.proxy_pool import ProxyEndpoint, ProxyPoolClient
@@ -398,7 +402,9 @@ class SecAcquisitionRunner:
         )
         issuers = parse_company_universe(payload, priority_tickers)
         count = state.upsert_issuers(issuers)
-        state.ensure_scan_years(self.config.target_years)
+        state.ensure_scan_years(
+            years_with_current(self.config.target_years, datetime.now(UTC).year)
+        )
         return count
 
     def run_batch(self) -> dict[str, object]:
@@ -408,18 +414,23 @@ class SecAcquisitionRunner:
             if not stats["issuers"] or self.universe_refresh_due():
                 self.proxy_pool.health()
                 self.refresh_universe(state)
-            state.ensure_scan_years(self.config.target_years)
-            filing_year = state.active_backfill_year(self.config.target_years)
-            maintenance = filing_year is None
-            if filing_year is None:
-                filing_year = self.config.target_years[0]
-            mode = "maintenance" if maintenance else "backfill"
+            current_year = datetime.now(UTC).year
+            years = years_with_current(self.config.target_years, current_year)
+            state.ensure_scan_years(years)
+            plan = choose_issuer_scan_plan(
+                state,
+                years=years,
+                current_year=current_year,
+                rescan_hours=self.config.rescan_hours,
+            )
+            filing_year = plan.filing_year
+            mode = plan.mode
             run_id = datetime.now(UTC).strftime(f"sec-{filing_year}-%Y%m%dT%H%M%SZ")
             state.begin_run(run_id, filing_year, mode)
             issuers = state.claim_issuers(
                 self.config.issuer_limit,
                 filing_year=filing_year,
-                rescan_hours=self.config.rescan_hours if maintenance else None,
+                rescan_hours=plan.rescan_hours,
             )
             for issuer in issuers:
                 counts["issuers"] += 1

@@ -6,6 +6,10 @@ from pathlib import Path
 from typing import Any
 
 from valuechain.acquisition_schema import AcquisitionSchemaGuard
+from valuechain.acquisition_schedule import (
+    choose_issuer_scan_plan,
+    years_with_current,
+)
 from valuechain.acquisition_state import AcquisitionIssuer
 from valuechain.async_http import AdaptiveRateLimiter, AsyncHttpClient
 from valuechain.postgres_acquisition_state import PostgresAcquisitionState
@@ -65,7 +69,9 @@ class AsyncSecAcquisitionRunner:
             self.config.database_url, ensure_schema=False
         ) as state:
             count = state.upsert_issuers(issuers)
-            state.ensure_scan_years(self.config.target_years)
+            state.ensure_scan_years(
+                years_with_current(self.config.target_years, datetime.now(UTC).year)
+            )
         return count
 
     async def run_batch(self) -> dict[str, object]:
@@ -83,18 +89,23 @@ class AsyncSecAcquisitionRunner:
         with PostgresAcquisitionState(
             self.config.database_url, ensure_schema=False
         ) as state:
-            state.ensure_scan_years(self.config.target_years)
-            filing_year = state.active_backfill_year(self.config.target_years)
-            maintenance = filing_year is None
-            if filing_year is None:
-                filing_year = self.config.target_years[0]
-            mode = "maintenance" if maintenance else "backfill"
+            current_year = datetime.now(UTC).year
+            years = years_with_current(self.config.target_years, current_year)
+            state.ensure_scan_years(years)
+            plan = choose_issuer_scan_plan(
+                state,
+                years=years,
+                current_year=current_year,
+                rescan_hours=self.config.rescan_hours,
+            )
+            filing_year = plan.filing_year
+            mode = plan.mode
             run_id = datetime.now(UTC).strftime(f"sec-{filing_year}-%Y%m%dT%H%M%S.%fZ")
             state.begin_run(run_id, filing_year, mode)
             issuers = state.claim_issuers(
                 self.config.issuer_limit,
                 filing_year=filing_year,
-                rescan_hours=self.config.rescan_hours if maintenance else None,
+                rescan_hours=plan.rescan_hours,
             )
 
         queue: asyncio.Queue[AcquisitionIssuer] = asyncio.Queue()
