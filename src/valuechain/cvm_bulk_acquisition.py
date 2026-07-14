@@ -208,7 +208,12 @@ class CvmBulkAcquisitionRunner:
             if not path.exists():
                 _atomic_write(path, response.content)
             entities = list(
-                CvmBrazilAdapter.parse_registry_file(path, active_only=True)
+                {
+                    entity.source_entity_id: entity
+                    for entity in CvmBrazilAdapter.parse_registry_file(
+                        path, active_only=True
+                    )
+                }.values()
             )
             if not entities:
                 raise ValueError("CVM registry contained no active companies")
