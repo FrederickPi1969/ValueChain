@@ -107,6 +107,12 @@ docker compose ps
 curl http://100.102.250.107:18018/api/health
 ```
 
+The API container mounts SEC and global-acquisition HDD roots read-only. Set
+`VALUECHAIN_FILE_API_TOKEN`, `VALUECHAIN_FILE_HOST_SEC_ROOT`, and
+`VALUECHAIN_FILE_HOST_VALUECHAIN_ROOT` in the uncommitted Cosmos `.env` before
+recreating the API container. File API operations are documented in
+`docs/acquisition_file_api.md`.
+
 The database is authoritative for manifests, job state, provenance, and resolver
 records. Raw files are immutable and should be written atomically (`.partial`,
 hash/size validation, then rename). A downloader must be resumable and idempotent

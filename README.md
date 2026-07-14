@@ -261,6 +261,11 @@ http://127.0.0.1:8000/api/runs/<run_id>/edges
 http://127.0.0.1:8000/api/runs/<run_id>/evidence
 ```
 
+Acquisition metadata and raw files are exposed separately under
+`/api/acquisition`. These routes support source, issuer, filing, document, and
+bulk-object queries plus authenticated Range downloads. See
+[`docs/acquisition_file_api.md`](docs/acquisition_file_api.md).
+
 For local development without Docker:
 
 ```bash

@@ -14,6 +14,13 @@ def _env_path(name: str, default: Path) -> Path:
     return Path(os.getenv(name, str(default))).expanduser()
 
 
+def _env_paths(name: str, defaults: tuple[Path, ...]) -> tuple[Path, ...]:
+    raw = os.getenv(name, "")
+    if not raw.strip():
+        return defaults
+    return tuple(Path(item.strip()).expanduser() for item in raw.split(",") if item.strip())
+
+
 @dataclass(frozen=True)
 class Settings:
     root_dir: Path = ROOT
@@ -60,6 +67,18 @@ class Settings:
     )
     api_host: str = os.getenv("VALUECHAIN_API_HOST", "127.0.0.1")
     api_port: int = int(os.getenv("VALUECHAIN_API_PORT", "8000"))
+    acquisition_file_roots: tuple[Path, ...] = field(
+        default_factory=lambda: _env_paths(
+            "VALUECHAIN_ACQUISITION_FILE_ROOTS",
+            (
+                Path("/mnt/hdd8tb/filings"),
+                Path("/mnt/hdd8tb/valuechain"),
+            ),
+        )
+    )
+    file_api_token: str = field(
+        default_factory=lambda: os.getenv("VALUECHAIN_FILE_API_TOKEN", "")
+    )
 
     @property
     def proxies(self) -> dict[str, str]:

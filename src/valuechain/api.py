@@ -10,6 +10,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
 from valuechain.config import Settings
+from valuechain.acquisition_api import router as acquisition_router
 from valuechain.dashboard import build_dashboard_data
 from valuechain.models import Company, GraphEdge, RelationEvidence, SourceDocument
 
@@ -28,6 +29,8 @@ async def lifespan(app: FastAPI):
     )
     await pool.open()
     app.state.pool = pool
+    app.state.acquisition_file_roots = settings.acquisition_file_roots
+    app.state.file_api_token = settings.file_api_token
     try:
         yield
     finally:
@@ -42,6 +45,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(acquisition_router)
 
 
 @app.get("/api/health")

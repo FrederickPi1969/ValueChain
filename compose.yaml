@@ -39,8 +39,13 @@ services:
       VALUECHAIN_DATABASE_URL: postgresql://valuechain:${VALUECHAIN_POSTGRES_PASSWORD:-valuechain_dev}@postgres:5432/valuechain
       VALUECHAIN_API_HOST: 0.0.0.0
       VALUECHAIN_API_PORT: 8000
+      VALUECHAIN_ACQUISITION_FILE_ROOTS: /mnt/hdd8tb/filings,/mnt/hdd8tb/valuechain
+      VALUECHAIN_FILE_API_TOKEN: ${VALUECHAIN_FILE_API_TOKEN:-}
     ports:
       - "${VALUECHAIN_API_BIND:-127.0.0.1}:${VALUECHAIN_API_PORT:-8000}:8000"
+    volumes:
+      - ${VALUECHAIN_FILE_HOST_SEC_ROOT:-./data/raw/sec_edgar}:/mnt/hdd8tb/filings/sec_edgar:ro
+      - ${VALUECHAIN_FILE_HOST_VALUECHAIN_ROOT:-./data}:/mnt/hdd8tb/valuechain:ro
     depends_on:
       postgres:
         condition: service_healthy

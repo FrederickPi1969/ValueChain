@@ -39,3 +39,23 @@ def test_specific_storage_paths_override_data_root(monkeypatch, tmp_path: Path) 
 
     assert settings.raw_dir == tmp_path / "raw-objects"
     assert settings.processed_dir == tmp_path / "derived"
+
+
+def test_acquisition_file_roots_parse_comma_separated_paths(
+    monkeypatch, tmp_path: Path
+) -> None:
+    first = tmp_path / "filings"
+    second = tmp_path / "global"
+    monkeypatch.setenv(
+        "VALUECHAIN_ACQUISITION_FILE_ROOTS", f"{first}, {second}"
+    )
+
+    settings = Settings()
+
+    assert settings.acquisition_file_roots == (first, second)
+
+
+def test_file_api_token_reads_environment_at_runtime(monkeypatch) -> None:
+    monkeypatch.setenv("VALUECHAIN_FILE_API_TOKEN", "runtime-secret")
+
+    assert Settings().file_api_token == "runtime-secret"

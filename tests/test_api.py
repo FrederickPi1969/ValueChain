@@ -1,4 +1,4 @@
-from valuechain.api import build_filters
+from valuechain.api import app, build_filters
 
 
 def test_build_filters_composes_optional_edge_filters() -> None:
@@ -28,3 +28,13 @@ def test_build_filters_can_search_evidence_text_columns() -> None:
     )
     assert "evidence_text ILIKE %s" in where
     assert params == ("r1", "%supplier%", "%supplier%", "%supplier%")
+
+
+def test_openapi_exposes_acquisition_query_and_download_routes() -> None:
+    paths = app.openapi()["paths"]
+
+    assert "/api/acquisition/sources" in paths
+    assert "/api/acquisition/filings" in paths
+    assert "/api/acquisition/documents/{document_id}/download" in paths
+    assert "/api/acquisition/snapshots/{snapshot_id}/download" in paths
+    assert "/api/acquisition/objects/{source_id}/{object_key}/download" in paths
