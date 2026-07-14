@@ -1,6 +1,6 @@
 [Unit]
 Description=ValueChain acquisition database, worker and storage health monitor
-After=network-online.target valuechain-sec-acquisition.service valuechain-cninfo-acquisition.service valuechain-esef-acquisition.service
+After=network-online.target valuechain-sec-acquisition.service valuechain-cninfo-acquisition.service valuechain-esef-acquisition.service valuechain-opendart-acquisition.service
 Wants=network-online.target
 
 [Service]
@@ -12,4 +12,3 @@ Nice=10
 IOSchedulingClass=idle
 IOSchedulingPriority=7
 TimeoutStartSec=2min
-

@@ -157,6 +157,21 @@ ON acquisition_source_objects(source_id, status, retrieved_at);
 CREATE INDEX IF NOT EXISTS idx_acquisition_source_objects_hash
 ON acquisition_source_objects(source_id, sha256) WHERE sha256 IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS acquisition_api_usage (
+  source_id TEXT NOT NULL,
+  usage_date DATE NOT NULL,
+  request_count INTEGER NOT NULL DEFAULT 0,
+  request_limit INTEGER NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (source_id, usage_date),
+  CHECK (request_count >= 0),
+  CHECK (request_limit > 0),
+  CHECK (request_count <= request_limit)
+);
+
+CREATE INDEX IF NOT EXISTS idx_acquisition_api_usage_recent
+ON acquisition_api_usage(source_id, usage_date DESC);
+
 CREATE TABLE IF NOT EXISTS acquisition_runs (
   run_id TEXT PRIMARY KEY,
   source_id TEXT NOT NULL REFERENCES acquisition_sources(source_id),

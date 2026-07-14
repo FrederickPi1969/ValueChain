@@ -37,6 +37,37 @@ def test_async_request_retries_and_recovers() -> None:
     assert calls == 2
 
 
+def test_async_request_reserves_budget_for_each_attempt() -> None:
+    async def run() -> tuple[int, int]:
+        attempts = 0
+        reservations = 0
+
+        async def reserve() -> None:
+            nonlocal reservations
+            reservations += 1
+
+        async def handler(_request: httpx.Request) -> httpx.Response:
+            nonlocal attempts
+            attempts += 1
+            return httpx.Response(503 if attempts == 1 else 200, json={"ok": True})
+
+        client = AsyncHttpClient(
+            limiter=AdaptiveRateLimiter(10_000),
+            user_agent="test",
+            max_retries=1,
+            backoff_base_seconds=0,
+            transport=httpx.MockTransport(handler),
+            before_request=reserve,
+        )
+        try:
+            await client.get_json("https://example.test/data")
+        finally:
+            await client.close()
+        return attempts, reservations
+
+    assert asyncio.run(run()) == (2, 2)
+
+
 def test_async_request_error_includes_http_status() -> None:
     async def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(404)
@@ -99,6 +130,49 @@ def test_async_download_resumes_partial_file(tmp_path: Path) -> None:
     assert target.read_bytes() == content
     assert result["resumed_from"] == 25
     assert not partial.exists()
+
+
+def test_async_download_keeps_credentials_out_of_result_url(tmp_path: Path) -> None:
+    target = tmp_path / "filing.zip"
+    reservations = 0
+
+    async def reserve() -> None:
+        nonlocal reservations
+        reservations += 1
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.params["crtfc_key"] == "secret"
+        assert request.url.params["rcept_no"] == "20260714000001"
+        return httpx.Response(
+            200,
+            headers={"Content-Type": "application/zip"},
+            content=b"PK\x03\x04payload",
+        )
+
+    async def run() -> dict:
+        client = AsyncHttpClient(
+            limiter=AdaptiveRateLimiter(10_000),
+            user_agent="test",
+            max_retries=0,
+            transport=httpx.MockTransport(handler),
+            before_request=reserve,
+        )
+        try:
+            return await client.download(
+                "https://example.test/document.xml?rcept_no=20260714000001",
+                target,
+                expected_media_type="application/zip",
+                params={"crtfc_key": "secret"},
+            )
+        finally:
+            await client.close()
+
+    result = asyncio.run(run())
+
+    assert reservations == 1
+    assert "secret" not in result["source_url"]
+    assert "secret" not in result["final_url"]
+    assert result["final_url"].endswith("?<redacted>")
 
 
 def test_async_download_finalizes_complete_partial_after_416(tmp_path: Path) -> None:

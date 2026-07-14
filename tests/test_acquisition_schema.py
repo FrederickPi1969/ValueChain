@@ -15,4 +15,6 @@ def test_acquisition_schema_has_source_native_uniqueness_and_queue_indexes() -> 
     assert "acquisition_universe_snapshots" in sql
     assert "UNIQUE (source_id, sha256)" in sql
     assert "acquisition_source_checkpoints" in sql
+    assert "acquisition_api_usage" in sql
+    assert "request_count <= request_limit" in sql
     assert "acquisition_source_objects" in sql

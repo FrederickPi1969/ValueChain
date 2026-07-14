@@ -19,11 +19,12 @@ from psycopg.rows import dict_row
 Status = Literal["ok", "warning", "critical"]
 STATUS_RANK: dict[Status, int] = {"ok": 0, "warning": 1, "critical": 2}
 
-DEFAULT_SOURCES = ("sec_edgar", "cninfo", "priority_eu_esef")
+DEFAULT_SOURCES = ("sec_edgar", "cninfo", "priority_eu_esef", "opendart")
 DEFAULT_SERVICES = (
     "valuechain-sec-acquisition.service",
     "valuechain-cninfo-acquisition.service",
     "valuechain-esef-acquisition.service",
+    "valuechain-opendart-acquisition.service",
 )
 
 

@@ -32,6 +32,18 @@ def test_global_acquisition_caps_async_workers_at_four(monkeypatch) -> None:
     assert config.cninfo_rescan_hours == 24
 
 
+def test_opendart_runtime_limits_cannot_exceed_safe_caps(monkeypatch) -> None:
+    monkeypatch.setenv("VALUECHAIN_OPENDART_DAILY_REQUEST_BUDGET", "999999")
+    monkeypatch.setenv("VALUECHAIN_OPENDART_REQUESTS_PER_SECOND", "20")
+    monkeypatch.setenv("VALUECHAIN_OPENDART_CONCURRENCY", "20")
+
+    config = GlobalAcquisitionConfig.from_env()
+
+    assert config.opendart_daily_request_budget == 10_000
+    assert config.opendart_requests_per_second == 1.0
+    assert config.opendart_worker_count == 2
+
+
 def test_global_acquisition_requires_proxy() -> None:
     settings = Settings(_env_file=None, proxy_pool_url=None)
 
@@ -104,6 +116,21 @@ def test_html_is_rejected_when_a_zip_is_expected(tmp_path: Path) -> None:
         assert "expected application/zip" in str(exc)
     else:
         raise AssertionError("Expected an HTML error page to fail ZIP validation")
+
+
+def test_zip_signature_allows_octet_stream_content_type(tmp_path: Path) -> None:
+    payload = DownloadedPayload(
+        temporary_path=tmp_path / "filing.zip",
+        sha256="abc",
+        content_length=11,
+        media_type="application/octet-stream",
+        http_status=200,
+        final_url="https://example.test/document.xml",
+        response_headers={},
+        first_bytes=b"PK\x03\x04payload",
+    )
+
+    PoliteHttpClient.validate_payload(payload, "application/zip", "filing.zip")
 
 
 def test_sec_json_body_is_accepted_when_content_type_is_text_html(tmp_path: Path) -> None:

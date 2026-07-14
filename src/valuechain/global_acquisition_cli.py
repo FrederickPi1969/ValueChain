@@ -13,6 +13,7 @@ from valuechain.global_acquisition import (
     run_source,
     source_status,
 )
+from valuechain.opendart_acquisition import OpenDartAcquisitionRunner
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -24,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
         "run-worker", help="Continuously drain one global source asynchronously."
     )
     worker.add_argument(
-        "--source", required=True, choices=("cninfo", "priority_eu_esef")
+        "--source", required=True, choices=("cninfo", "priority_eu_esef", "opendart")
     )
     status = subparsers.add_parser("status", help="Show global-source acquisition statistics.")
     status.add_argument("--source", choices=SUPPORTED_SOURCES, default=None)
@@ -35,14 +36,29 @@ def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     config = GlobalAcquisitionConfig.from_env()
     if args.command == "run-worker":
-        runner = AsyncGlobalAcquisitionRunner(args.source, config)
-        with acquisition_process_lock(config.database_url, args.source):
-            asyncio.run(run_worker_loop(runner.run_batch))
+        runner = (
+            OpenDartAcquisitionRunner(config)
+            if args.source == "opendart"
+            else AsyncGlobalAcquisitionRunner(args.source, config)
+        )
+        try:
+            with acquisition_process_lock(config.database_url, args.source):
+                asyncio.run(run_worker_loop(runner.run_batch))
+        finally:
+            close = getattr(runner, "close", None)
+            if close is not None:
+                close()
         return
     if args.command == "run-batch":
         with acquisition_process_lock(config.database_url, args.source):
             if args.source == GLEIF_SOURCE:
                 payload = run_source(args.source, config)
+            elif args.source == "opendart":
+                runner = OpenDartAcquisitionRunner(config)
+                try:
+                    payload = asyncio.run(runner.run_batch())
+                finally:
+                    runner.close()
             else:
                 runner = AsyncGlobalAcquisitionRunner(args.source, config)
                 payload = asyncio.run(runner.run_batch())

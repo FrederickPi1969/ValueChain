@@ -75,6 +75,30 @@ Set a random PostgreSQL password and a real SEC contact identity before starting
 automated collection. Keep SEC traffic globally rate-limited; worker concurrency
 must not multiply the configured request rate.
 
+OpenDART's official error-code documentation says status `020` is generally
+returned after at least 20,000 requests, while explicitly warning that a key can
+have a different configured threshold. The production worker therefore uses a
+10,000-request daily hard budget in the `Asia/Seoul` timezone, reserves one unit
+before every real HTTP attempt (including retries), and stops before the next
+request when the budget is exhausted. Its default transport limit is 1 request
+per second with at most two workers. The defaults can only be reduced at runtime:
+
+```dotenv
+OPENDART_API_KEY=...
+VALUECHAIN_OPENDART_DAILY_REQUEST_BUDGET=10000
+VALUECHAIN_OPENDART_REQUESTS_PER_SECOND=1.0
+VALUECHAIN_OPENDART_CONCURRENCY=2
+VALUECHAIN_OPENDART_DISCOVERY_LOOKBACK_DAYS=3
+VALUECHAIN_OPENDART_DISCOVERY_REFRESH_HOURS=1
+VALUECHAIN_OPENDART_UNIVERSE_REFRESH_HOURS=168
+```
+
+OpenDART discovery queries the whole market by filing date with 100 rows per
+page. It does not spend one request per issuer. PostgreSQL records each daily API
+attempt, discovered filing, download state, retry, and document hash. Raw
+corporation-code snapshots and original disclosure ZIP packages are stored under
+`VALUECHAIN_GLOBAL_RAW_DIR/opendart` on the HDD.
+
 ## Operations
 
 ```bash

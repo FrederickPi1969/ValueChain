@@ -61,7 +61,7 @@ sources:
   - structured_facts
   historical_scope: Corporation-code master, filing search, original disclosure package, and financial-statement XBRL endpoints.
   status: implemented_and_fixture_tested
-  notes: Free API key registration required.
+  notes: Free API key required. Official status 020 is generally associated with 20,000 or more requests but may use a key-specific threshold; production hard-caps attempts at 10,000 per Asia/Seoul day.
   rate_limit_requests_per_second: 1.0
   api_base_url: https://opendart.fss.or.kr/api/
   credential_env: OPENDART_API_KEY

@@ -5,6 +5,7 @@ import hashlib
 import os
 import random
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -144,6 +145,7 @@ class AsyncHttpClient:
         minimum_download_bytes_per_second: float = 64 * 1024,
         throughput_window_seconds: float = 15.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        before_request: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self.limiter = limiter
         self.user_agent = user_agent
@@ -159,6 +161,7 @@ class AsyncHttpClient:
         )
         self.throughput_window_seconds = max(0.0, throughput_window_seconds)
         self.transport = transport
+        self.before_request = before_request
         self.client = self._build_client()
 
     @classmethod
@@ -172,6 +175,7 @@ class AsyncHttpClient:
         timeout_seconds: float = 60.0,
         max_retries: int = 5,
         verify_tls: bool = True,
+        before_request: Callable[[], Awaitable[None]] | None = None,
     ) -> AsyncHttpClient:
         endpoint = await asyncio.to_thread(proxy_pool.random_normal)
         return cls(
@@ -183,6 +187,7 @@ class AsyncHttpClient:
             proxy_pool=proxy_pool,
             proxy_url=endpoint.url,
             verify_tls=verify_tls,
+            before_request=before_request,
         )
 
     def _build_client(self) -> httpx.AsyncClient:
@@ -244,6 +249,8 @@ class AsyncHttpClient:
         for attempt in range(self.max_retries + 1):
             response: httpx.Response | None = None
             await self.limiter.acquire()
+            if self.before_request is not None:
+                await self.before_request()
             try:
                 response = await self.client.request(
                     method,
@@ -312,8 +319,10 @@ class AsyncHttpClient:
         *,
         expected_media_type: str | None = None,
         headers: Mapping[str, str] | None = None,
+        params: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         output_path.parent.mkdir(parents=True, exist_ok=True)
+        request_url = str(httpx.URL(url).copy_merge_params(params or {}))
         if output_path.exists() and output_path.stat().st_size > 0:
             stat = output_path.stat()
             return AsyncDownloadResult(
@@ -340,9 +349,11 @@ class AsyncHttpClient:
             if resume_from:
                 request_headers["Range"] = f"bytes={resume_from}-"
             await self.limiter.acquire()
+            if self.before_request is not None:
+                await self.before_request()
             try:
                 async with self.client.stream(
-                    "GET", url, headers=request_headers or None
+                    "GET", request_url, headers=request_headers or None
                 ) as response:
                     if response.status_code == 416 and resume_from:
                         remote_size = unsatisfied_range_total(
@@ -364,7 +375,7 @@ class AsyncHttpClient:
                             PoliteHttpClient.validate_payload(
                                 payload, expected_media_type, output_path.name
                             )
-                            final_url = str(response.url)
+                            final_url = PoliteHttpClient._safe_url(str(response.url))
                             successful_resume_from = resume_from
                             await self.limiter.succeeded()
                         else:
@@ -424,7 +435,7 @@ class AsyncHttpClient:
                         PoliteHttpClient.validate_payload(
                             payload, expected_media_type, output_path.name
                         )
-                        final_url = str(response.url)
+                        final_url = PoliteHttpClient._safe_url(str(response.url))
                         await self.limiter.succeeded()
                 os.replace(partial, output_path)
                 return AsyncDownloadResult(

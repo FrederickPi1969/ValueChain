@@ -1,0 +1,19 @@
+[Unit]
+Description=ValueChain quota-guarded OpenDART acquisition worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/ValueChain
+EnvironmentFile=/home/pi/ValueChain/.env
+ExecStart=/home/pi/ValueChain/.venv/bin/valuechain-global-acquire run-worker --source opendart
+Restart=on-failure
+RestartSec=30s
+Nice=5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=6
+TimeoutStopSec=2min
+
+[Install]
+WantedBy=default.target

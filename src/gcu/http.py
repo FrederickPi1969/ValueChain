@@ -241,6 +241,11 @@ class PoliteHttpClient:
                 expected_media_type == "application/pdf"
                 and lowered_type == "application/octet-stream"
             )
+            compatible_zip_stream = (
+                expected_media_type == "application/zip"
+                and lowered_type == "application/octet-stream"
+                and first.startswith(b"PK")
+            )
             compatible_mislabeled_json = (
                 expects_json
                 and lowered_type in {"text/html", "text/plain"}
@@ -249,6 +254,7 @@ class PoliteHttpClient:
             if expected_family != actual_family and not (
                 compatible_html
                 or compatible_pdf_stream
+                or compatible_zip_stream
                 or compatible_mislabeled_json
             ):
                 raise PayloadValidationError(

@@ -164,6 +164,30 @@ class GlobalSourceAcquisitionState:
         ).fetchall()
         return {row["source_filing_id"] for row in rows}
 
+    def known_issuer_ids(self, issuer_ids: Iterable[str]) -> set[str]:
+        identifiers = list(dict.fromkeys(issuer_ids))
+        if not identifiers:
+            return set()
+        rows = self.connection.execute(
+            """
+            SELECT source_issuer_id FROM acquisition_issuers
+            WHERE source_id = %s AND source_issuer_id = ANY(%s)
+            """,
+            (self.source_id, identifiers),
+        ).fetchall()
+        return {row["source_issuer_id"] for row in rows}
+
+    def completed_checkpoint_keys(self, prefix: str) -> set[str]:
+        rows = self.connection.execute(
+            """
+            SELECT checkpoint_key FROM acquisition_source_checkpoints
+            WHERE source_id = %s AND status = 'complete'
+              AND checkpoint_key LIKE %s
+            """,
+            (self.source_id, f"{prefix}%"),
+        ).fetchall()
+        return {row["checkpoint_key"] for row in rows}
+
     def checkpoint_due(self, checkpoint_key: str, max_age_hours: int) -> bool:
         row = self.connection.execute(
             """
