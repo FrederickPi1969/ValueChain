@@ -6,11 +6,21 @@ from fastapi.testclient import TestClient
 
 import valuechain.acquisition_api as acquisition_api
 from valuechain.acquisition_api import (
+    add_canonical_document_type,
     download_response,
     public_row,
     resolve_download_path,
     router,
 )
+
+
+def test_legacy_file_api_rows_include_canonical_document_type() -> None:
+    assert add_canonical_document_type(
+        {"source_id": "sec_edgar", "form_raw": "20-F"}
+    )["canonical_document_type"] == "annual_report"
+    assert add_canonical_document_type(
+        {"source_id": "unknown", "form_raw": "x"}
+    )["canonical_document_type"] == "other_regulatory_filing"
 
 
 def build_test_app(root: Path, *, token: str = "") -> FastAPI:

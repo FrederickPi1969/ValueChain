@@ -10,6 +10,8 @@ from urllib.parse import quote
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 
+from valuechain.disclosure_schema import canonicalize_document_type
+
 
 router = APIRouter(prefix="/api/acquisition", tags=["acquisition-files"])
 
@@ -37,6 +39,18 @@ def page(items: list[dict[str, Any]], limit: int, offset: int) -> dict[str, Any]
         "offset": offset,
         "has_more": len(items) == limit,
     }
+
+
+def add_canonical_document_type(row: dict[str, Any]) -> dict[str, Any]:
+    source_id = str(row.get("source_id") or "")
+    form_raw = str(row.get("form_raw") or "")
+    try:
+        row["canonical_document_type"] = canonicalize_document_type(
+            source_id, form_raw
+        ).value
+    except ValueError:
+        row["canonical_document_type"] = "other_regulatory_filing"
+    return row
 
 
 async def require_file_api_access(
@@ -253,6 +267,7 @@ async def acquisition_filings(
         (*params, limit, offset),
     )
     for row in rows:
+        add_canonical_document_type(row)
         row["detail_url"] = (
             f"/api/acquisition/filings/{quote(str(row['source_id']), safe='')}/"
             f"{quote(str(row['source_filing_id']), safe='')}"
@@ -283,6 +298,7 @@ async def acquisition_filing_detail(
     )
     if not filing:
         raise HTTPException(status_code=404, detail="Filing not found")
+    add_canonical_document_type(filing)
     documents = await _fetch_all(
         request,
         """
@@ -346,6 +362,7 @@ async def acquisition_documents(
         (*params, limit, offset),
     )
     for row in rows:
+        add_canonical_document_type(row)
         if row.get("status") == "complete":
             row["download_url"] = (
                 f"/api/acquisition/documents/{row['document_id']}/download"
