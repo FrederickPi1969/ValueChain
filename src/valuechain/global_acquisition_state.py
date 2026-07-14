@@ -177,6 +177,19 @@ class GlobalSourceAcquisitionState:
         ).fetchall()
         return {row["source_issuer_id"] for row in rows}
 
+    def issuer_ids_for_tickers(self, tickers: Iterable[str]) -> set[str]:
+        identifiers = list(dict.fromkeys(tickers))
+        if not identifiers:
+            return set()
+        rows = self.connection.execute(
+            """
+            SELECT source_issuer_id FROM acquisition_issuers
+            WHERE source_id = %s AND ticker = ANY(%s)
+            """,
+            (self.source_id, identifiers),
+        ).fetchall()
+        return {row["source_issuer_id"] for row in rows}
+
     def completed_checkpoint_keys(self, prefix: str) -> set[str]:
         rows = self.connection.execute(
             """

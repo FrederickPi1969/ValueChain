@@ -1,0 +1,93 @@
+ticker,company_name,tier,theme
+7203,Toyota Motor,1,mobility
+7267,Honda Motor,1,mobility
+7201,Nissan Motor,1,mobility
+7269,Suzuki Motor,1,mobility
+7270,Subaru,1,mobility
+7261,Mazda Motor,2,mobility
+7211,Mitsubishi Motors,2,mobility
+6902,Denso,1,mobility
+7259,Aisin,2,mobility
+5108,Bridgestone,1,mobility
+5101,Yokohama Rubber,2,mobility
+6758,Sony Group,1,electronics_digital
+6752,Panasonic Holdings,1,electronics_digital
+6501,Hitachi,1,electronics_digital
+6503,Mitsubishi Electric,1,electronics_digital
+6702,Fujitsu,1,electronics_digital
+6701,NEC,1,electronics_digital
+7751,Canon,1,electronics_digital
+7731,Nikon,2,electronics_digital
+6724,Seiko Epson,2,electronics_digital
+6971,Kyocera,1,electronics_components
+6981,Murata Manufacturing,1,electronics_components
+6762,TDK,1,electronics_components
+6963,ROHM,1,semiconductor_ai
+6723,Renesas Electronics,1,semiconductor_ai
+6857,Advantest,1,semiconductor_ai
+8035,Tokyo Electron,1,semiconductor_ai
+6146,Disco,1,semiconductor_ai
+6920,Lasertec,1,semiconductor_ai
+7735,SCREEN Holdings,1,semiconductor_ai
+3436,SUMCO,1,semiconductor_ai
+4063,Shin-Etsu Chemical,1,semiconductor_ai
+4062,Ibiden,1,semiconductor_ai
+5333,NGK Insulators,2,electronics_components
+5334,Niterra,2,electronics_components
+6504,Fuji Electric,2,electrical_equipment
+6506,Yaskawa Electric,1,industrial_automation
+6861,Keyence,1,industrial_automation
+6954,Fanuc,1,industrial_automation
+6645,Omron,1,industrial_automation
+6273,SMC,1,industrial_automation
+6594,Nidec,1,industrial_automation
+6481,THK,2,industrial_automation
+6586,Makita,2,industrial_equipment
+6367,Daikin Industries,1,industrial_equipment
+6301,Komatsu,1,industrial_equipment
+6326,Kubota,1,industrial_equipment
+6305,Hitachi Construction Machinery,2,industrial_equipment
+7011,Mitsubishi Heavy Industries,1,aerospace_defense
+7013,IHI,1,aerospace_defense
+7012,Kawasaki Heavy Industries,1,aerospace_defense
+5631,Japan Steel Works,2,industrial_equipment
+5411,JFE Holdings,1,metals_materials
+5401,Nippon Steel,1,metals_materials
+5406,Kobe Steel,2,metals_materials
+8031,Mitsui & Co.,1,trading_global
+8058,Mitsubishi Corporation,1,trading_global
+8001,Itochu,1,trading_global
+8002,Marubeni,1,trading_global
+8053,Sumitomo Corporation,1,trading_global
+3402,Toray Industries,1,chemicals_materials
+3407,Asahi Kasei,1,chemicals_materials
+4188,Mitsubishi Chemical Group,1,chemicals_materials
+4183,Mitsui Chemicals,2,chemicals_materials
+5201,AGC,1,chemicals_materials
+4612,Nippon Paint Holdings,2,chemicals_materials
+4502,Takeda Pharmaceutical,1,biopharma
+4568,Daiichi Sankyo,1,biopharma
+4503,Astellas Pharma,1,biopharma
+4519,Chugai Pharmaceutical,1,biopharma
+4507,Shionogi,2,biopharma
+9983,Fast Retailing,1,consumer_exports
+7974,Nintendo,1,gaming_content
+7832,Bandai Namco Holdings,2,gaming_content
+9697,Capcom,2,gaming_content
+6460,Sega Sammy Holdings,2,gaming_content
+4452,Kao,1,consumer_exports
+4911,Shiseido,1,consumer_exports
+2802,Ajinomoto,1,consumer_exports
+9984,SoftBank Group,1,telecom_internet
+9432,NTT,1,telecom_internet
+9433,KDDI,1,telecom_internet
+9434,SoftBank,1,telecom_internet
+4755,Rakuten Group,1,telecom_internet
+6098,Recruit Holdings,1,digital_platform
+4689,LY Corporation,1,digital_platform
+9449,GMO Internet Group,2,digital_platform
+9101,Nippon Yusen,1,shipping_logistics
+9104,Mitsui O.S.K. Lines,1,shipping_logistics
+9107,Kawasaki Kisen Kaisha,1,shipping_logistics
+1605,INPEX,1,energy
+5020,ENEOS Holdings,1,energy

@@ -33,7 +33,14 @@ CNINFO_SOURCE = "cninfo"
 ESEF_SOURCE = "priority_eu_esef"
 GLEIF_SOURCE = "gleif_golden_copy"
 OPENDART_SOURCE = "opendart"
-SUPPORTED_SOURCES = (CNINFO_SOURCE, ESEF_SOURCE, GLEIF_SOURCE, OPENDART_SOURCE)
+EDINET_SOURCE = "edinet"
+SUPPORTED_SOURCES = (
+    CNINFO_SOURCE,
+    ESEF_SOURCE,
+    GLEIF_SOURCE,
+    OPENDART_SOURCE,
+    EDINET_SOURCE,
+)
 
 
 def require_proxy(settings: Settings) -> Settings:
@@ -53,15 +60,21 @@ class GlobalAcquisitionConfig:
     cninfo_issuer_limit: int = 16
     esef_filing_limit: int = 16
     opendart_filing_limit: int = 16
+    edinet_filing_limit: int = 16
     worker_count: int = 4
     opendart_worker_count: int = 2
+    edinet_worker_count: int = 2
     cninfo_requests_per_second: float = 2.0
     esef_requests_per_second: float = 4.0
     opendart_requests_per_second: float = 1.0
-    opendart_daily_request_budget: int = 10_000
+    edinet_requests_per_second: float = 0.5
+    opendart_daily_request_budget: int = 3_000
+    edinet_daily_request_budget: int = 1_000
     opendart_discovery_lookback_days: int = 3
     opendart_discovery_refresh_hours: int = 1
     opendart_universe_refresh_hours: int = 168
+    edinet_discovery_lookback_days: int = 3
+    edinet_discovery_refresh_hours: int = 1
     cninfo_rescan_hours: int = 24
     discovery_refresh_hours: int = 24
 
@@ -96,6 +109,9 @@ class GlobalAcquisitionConfig:
             opendart_filing_limit=max(
                 1, int(os.getenv("VALUECHAIN_OPENDART_FILING_LIMIT", "16"))
             ),
+            edinet_filing_limit=max(
+                1, int(os.getenv("VALUECHAIN_EDINET_FILING_LIMIT", "16"))
+            ),
             worker_count=min(
                 4,
                 max(1, int(os.getenv("VALUECHAIN_GLOBAL_CONCURRENCY", "4"))),
@@ -103,6 +119,10 @@ class GlobalAcquisitionConfig:
             opendart_worker_count=min(
                 2,
                 max(1, int(os.getenv("VALUECHAIN_OPENDART_CONCURRENCY", "2"))),
+            ),
+            edinet_worker_count=min(
+                2,
+                max(1, int(os.getenv("VALUECHAIN_EDINET_CONCURRENCY", "2"))),
             ),
             cninfo_requests_per_second=max(
                 0.25,
@@ -121,11 +141,25 @@ class GlobalAcquisitionConfig:
                     ),
                 ),
             ),
+            edinet_requests_per_second=min(
+                1.0,
+                max(
+                    0.1,
+                    float(os.getenv("VALUECHAIN_EDINET_REQUESTS_PER_SECOND", "0.5")),
+                ),
+            ),
             opendart_daily_request_budget=min(
-                10_000,
+                3_000,
                 max(
                     100,
-                    int(os.getenv("VALUECHAIN_OPENDART_DAILY_REQUEST_BUDGET", "10000")),
+                    int(os.getenv("VALUECHAIN_OPENDART_DAILY_REQUEST_BUDGET", "3000")),
+                ),
+            ),
+            edinet_daily_request_budget=min(
+                1_000,
+                max(
+                    100,
+                    int(os.getenv("VALUECHAIN_EDINET_DAILY_REQUEST_BUDGET", "1000")),
                 ),
             ),
             opendart_discovery_lookback_days=max(
@@ -139,6 +173,14 @@ class GlobalAcquisitionConfig:
             opendart_universe_refresh_hours=max(
                 24,
                 int(os.getenv("VALUECHAIN_OPENDART_UNIVERSE_REFRESH_HOURS", "168")),
+            ),
+            edinet_discovery_lookback_days=max(
+                1,
+                int(os.getenv("VALUECHAIN_EDINET_DISCOVERY_LOOKBACK_DAYS", "3")),
+            ),
+            edinet_discovery_refresh_hours=max(
+                1,
+                int(os.getenv("VALUECHAIN_EDINET_DISCOVERY_REFRESH_HOURS", "1")),
             ),
             cninfo_rescan_hours=max(
                 1, int(os.getenv("VALUECHAIN_CNINFO_RESCAN_HOURS", "24"))

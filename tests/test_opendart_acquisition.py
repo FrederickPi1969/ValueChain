@@ -42,3 +42,9 @@ def test_opendart_records_skip_rows_without_receipt_or_date() -> None:
 
     assert entities == []
     assert filings == []
+
+
+def test_opendart_no_longer_has_all_listed_company_fallback() -> None:
+    source = __import__("valuechain.opendart_acquisition", fromlist=["*"])
+
+    assert not hasattr(source, "LISTED_CORPORATION_CLASSES")

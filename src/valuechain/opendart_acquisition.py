@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import os
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -15,6 +13,7 @@ from gcu.registry import SourceRegistry
 from valuechain.acquisition_schema import AcquisitionSchemaGuard
 from valuechain.acquisition_schedule import years_with_current
 from valuechain.async_http import AdaptiveRateLimiter, AsyncHttpClient
+from valuechain.curated_universe import CuratedCompany, load_curated_companies
 from valuechain.global_acquisition import (
     OPENDART_SOURCE,
     GlobalAcquisitionConfig,
@@ -30,20 +29,9 @@ from valuechain.request_budget import (
 )
 
 
-LISTED_CORPORATION_CLASSES = {"Y", "K", "N"}
 EXCHANGE_BY_CLASS = {"Y": "XKRX", "K": "XKOS", "N": "XKON"}
 DISCOVERY_PREFIX = "filing-index:"
 UNIVERSE_CHECKPOINT = "corporation-code-universe"
-
-
-def _atomic_write(path: Path, content: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    partial = path.with_name(f"{path.name}.partial")
-    partial.write_bytes(content)
-    with partial.open("rb") as handle:
-        os.fsync(handle.fileno())
-    os.replace(partial, path)
-
 
 def _parse_date(value: str | None) -> date | None:
     if not value or len(value) != 8 or not value.isdigit():
@@ -73,6 +61,8 @@ class OpenDartAcquisitionRunner:
             config.opendart_daily_request_budget,
             timezone="Asia/Seoul",
         )
+        self.watchlist = load_curated_companies("korea")
+        self.watchlist_by_ticker = {company.ticker: company for company in self.watchlist}
         self._completed_discovery_dates: set[str] | None = None
 
     def close(self) -> None:
@@ -165,6 +155,7 @@ class OpenDartAcquisitionRunner:
                 "discovery_date": discovery_date,
                 "worker_count": worker_count,
                 "effective_rps": round(self.limiter.current_rate, 3),
+                "watchlist_companies": len(self.watchlist),
             }
         )
         with GlobalSourceAcquisitionState(
@@ -199,18 +190,27 @@ class OpenDartAcquisitionRunner:
                 return 0
             state.begin_checkpoint(UNIVERSE_CHECKPOINT)
         try:
+            now = datetime.now(UTC)
+            path = (
+                self.config.raw_root
+                / OPENDART_SOURCE
+                / "_catalog"
+                / f"corpCode.{now.strftime('%Y%m%dT%H%M%SZ')}.zip"
+            )
             async with await self._new_client() as client:
-                response = await client.request(
-                    "GET",
+                result = await client.download(
                     f"{self.API_BASE}/corpCode.xml",
+                    path,
+                    expected_media_type="application/zip",
                     params={"crtfc_key": self.settings.opendart_api_key},
                 )
-            content = response.content
+            content = await asyncio.to_thread(path.read_bytes)
             if not content.startswith(b"PK"):
                 raise ValueError(
                     "OpenDART corporation-code response was not a ZIP archive"
                 )
             records = list(OpenDartAdapter.parse_corp_code_zip(content))
+            matched_tickers: set[str] = set()
             entities = [
                 EntityRef(
                     entity_id=f"opendart-{row['corp_code']}",
@@ -222,24 +222,26 @@ class OpenDartAcquisitionRunner:
                         or row["corp_code"]
                     ),
                     jurisdiction="KR",
-                    exchange="XKRX",
+                    exchange=EXCHANGE_BY_CLASS.get(str(row.get("corp_cls") or ""), "XKRX"),
                     ticker=row.get("stock_code") or None,
                     local_registry_id=row["corp_code"],
                     aliases=[row["corp_name"]] if row.get("corp_name") else [],
-                    metadata=row,
+                    metadata={
+                        **row,
+                        **self.watchlist_by_ticker[str(row.get("stock_code"))].metadata(),
+                    },
                 )
                 for row in records
-                if row.get("stock_code")
+                if str(row.get("stock_code") or "") in self.watchlist_by_ticker
             ]
-            now = datetime.now(UTC)
-            path = (
-                self.config.raw_root
-                / OPENDART_SOURCE
-                / "_catalog"
-                / f"corpCode.{now.strftime('%Y%m%dT%H%M%SZ')}.zip"
-            )
-            await asyncio.to_thread(_atomic_write, path, content)
-            digest = hashlib.sha256(content).hexdigest()
+            matched_tickers.update(entity.ticker or "" for entity in entities)
+            missing = sorted(set(self.watchlist_by_ticker) - matched_tickers)
+            minimum_matches = max(1, int(len(self.watchlist) * 0.85))
+            if len(entities) < minimum_matches:
+                raise ValueError(
+                    f"OpenDART watchlist match coverage too low: {len(entities)}/"
+                    f"{len(self.watchlist)}; missing={missing[:10]}"
+                )
             with GlobalSourceAcquisitionState(
                 self.config.database_url, OPENDART_SOURCE, False
             ) as state:
@@ -248,12 +250,17 @@ class OpenDartAcquisitionRunner:
                     path=path,
                     source_url=f"{self.API_BASE}/corpCode.xml",
                     row_count=count,
-                    sha256=digest,
+                    sha256=str(result["sha256"]),
                     retrieved_at=now,
                 )
                 state.complete_checkpoint(
                     UNIVERSE_CHECKPOINT,
-                    {"listed_entities": count, "all_corporations": len(records)},
+                    {
+                        "watchlist_entities": count,
+                        "watchlist_size": len(self.watchlist),
+                        "all_corporations": len(records),
+                        "missing_tickers": missing,
+                    },
                 )
             return count
         except Exception as exc:
@@ -300,18 +307,17 @@ class OpenDartAcquisitionRunner:
         try:
             async with await self._new_client() as client:
                 records, pages = await self._list_records(client, filing_date)
-            corp_codes = [str(row.get("corp_code") or "") for row in records]
             with GlobalSourceAcquisitionState(
                 self.config.database_url, OPENDART_SOURCE, False
             ) as state:
-                known = state.known_issuer_ids(corp_codes)
+                known = state.issuer_ids_for_tickers(self.watchlist_by_ticker)
                 selected = [
                     row
                     for row in records
                     if str(row.get("corp_code") or "") in known
-                    or str(row.get("corp_cls") or "") in LISTED_CORPORATION_CLASSES
                 ]
                 entities, filings = self._convert_records(selected)
+                entities = [self._enrich_watchlist_entity(entity) for entity in entities]
                 state.upsert_entities(entities, priority=100)
                 count = state.upsert_filings(filings, self.config.raw_root)
                 state.complete_checkpoint(
@@ -319,7 +325,8 @@ class OpenDartAcquisitionRunner:
                     {
                         "pages": pages,
                         "records_observed": len(records),
-                        "listed_filings": count,
+                        "watchlist_filings": count,
+                        "watchlist_size": len(self.watchlist),
                     },
                 )
             if self._completed_discovery_dates is not None:
@@ -331,6 +338,14 @@ class OpenDartAcquisitionRunner:
             ) as state:
                 state.fail_checkpoint(checkpoint, f"{type(exc).__name__}: {exc}")
             raise
+
+    def _enrich_watchlist_entity(self, entity: EntityRef) -> EntityRef:
+        company: CuratedCompany | None = self.watchlist_by_ticker.get(entity.ticker or "")
+        if company is None:
+            return entity
+        return entity.model_copy(
+            update={"metadata": {**entity.metadata, **company.metadata()}}
+        )
 
     async def _list_records(
         self, client: AsyncHttpClient, filing_date: date

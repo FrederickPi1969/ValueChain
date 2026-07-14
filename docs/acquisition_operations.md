@@ -98,7 +98,7 @@ HDD. Snapshots and rebuildable index exports may be stored there.
 
 ## Scheduler
 
-SEC, CNINFO, and ESEF are long-running user-level systemd services. A worker
+SEC, CNINFO, ESEF, OpenDART, and EDINET are long-running user-level systemd services. A worker
 claims 16 records at a time, processes up to four concurrently, waits one second
 between non-empty batches, and uses a longer idle wait only when no work is due.
 Systemd restarts a worker after an unhandled failure. GLEIF remains timer-based
@@ -123,6 +123,8 @@ set -a; . ./.env; set +a
 systemctl --user restart valuechain-sec-acquisition.service
 systemctl --user restart valuechain-cninfo-acquisition.service
 systemctl --user restart valuechain-esef-acquisition.service
+systemctl --user restart valuechain-opendart-acquisition.service
+systemctl --user restart valuechain-edinet-acquisition.service
 ```
 
 Operational health is checked every five minutes by
@@ -154,6 +156,8 @@ not share SEC's worker pool or rate budget:
 systemctl --user status valuechain-cninfo-acquisition.service
 systemctl --user status valuechain-esef-acquisition.service
 systemctl --user status valuechain-gleif-acquisition.timer
+systemctl --user status valuechain-opendart-acquisition.service
+systemctl --user status valuechain-edinet-acquisition.service
 
 .venv/bin/valuechain-global-acquire status
 ```
@@ -186,3 +190,38 @@ Raw files are written below:
 The global lanes use `acquisition_source_checkpoints` for discovery/refresh
 state and `acquisition_source_objects` for non-filing bulk objects. Files still
 flow through `.partial`, fsync, hash validation, and atomic rename.
+
+## Curated Korea And Japan Lanes
+
+OpenDART and EDINET are deliberately watchlist collectors, not full-market raw
+mirrors. Their versioned catalogs are:
+
+```text
+config/curated_markets/korea.csv   89 issuers
+config/curated_markets/japan.csv   92 issuers
+```
+
+The catalogs prioritize major companies, globally relevant technology and
+industrial supply chains, and exporters. Tier and theme columns are retained in
+issuer and filing metadata. Editing the CSV changes scope without changing the
+transport or database code.
+
+Both listeners make one market-level daily discovery request (paginated where
+the authority requires it), then filter before any issuer or filing is stored.
+This is materially cheaper than polling every company separately and ensures
+that domestic small-company records never enter the queue.
+
+OpenDART refreshes the corporation-code master weekly using resumable transfer,
+maps the Korean ticker catalog to corporation codes, and downloads only original
+disclosure packages for matched companies. Its internal safety ceiling is 3,000
+attempts per Asia/Seoul day at no more than 1 request per second and two workers.
+OpenDART status `020` immediately exhausts the local budget for that day.
+
+EDINET retains selected issuer registration, annual, quarterly, semiannual, and
+extraordinary reports plus their amendments. It excludes fund reports,
+confirmation reports, internal-control reports, large-holder reports, and
+withdrawn documents. It downloads the original type-1 XBRL submission package.
+The FSA does not publish a fixed universal numeric quota in its API materials;
+the worker therefore uses a conservative local ceiling of 1,000 attempts per
+Asia/Tokyo day, 0.5 requests per second, and two workers. HTTP 429 and retryable
+server failures reduce the adaptive request rate and rotate the project proxy.

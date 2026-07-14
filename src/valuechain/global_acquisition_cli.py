@@ -6,6 +6,7 @@ import json
 
 from valuechain.acquisition_worker import acquisition_process_lock, run_worker_loop
 from valuechain.async_global_acquisition import AsyncGlobalAcquisitionRunner
+from valuechain.edinet_acquisition import EdinetAcquisitionRunner
 from valuechain.global_acquisition import (
     GLEIF_SOURCE,
     SUPPORTED_SOURCES,
@@ -25,7 +26,9 @@ def build_parser() -> argparse.ArgumentParser:
         "run-worker", help="Continuously drain one global source asynchronously."
     )
     worker.add_argument(
-        "--source", required=True, choices=("cninfo", "priority_eu_esef", "opendart")
+        "--source",
+        required=True,
+        choices=("cninfo", "priority_eu_esef", "opendart", "edinet"),
     )
     status = subparsers.add_parser("status", help="Show global-source acquisition statistics.")
     status.add_argument("--source", choices=SUPPORTED_SOURCES, default=None)
@@ -36,11 +39,12 @@ def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
     config = GlobalAcquisitionConfig.from_env()
     if args.command == "run-worker":
-        runner = (
-            OpenDartAcquisitionRunner(config)
-            if args.source == "opendart"
-            else AsyncGlobalAcquisitionRunner(args.source, config)
-        )
+        if args.source == "opendart":
+            runner = OpenDartAcquisitionRunner(config)
+        elif args.source == "edinet":
+            runner = EdinetAcquisitionRunner(config)
+        else:
+            runner = AsyncGlobalAcquisitionRunner(args.source, config)
         try:
             with acquisition_process_lock(config.database_url, args.source):
                 asyncio.run(run_worker_loop(runner.run_batch))
@@ -55,6 +59,12 @@ def main(argv: list[str] | None = None) -> None:
                 payload = run_source(args.source, config)
             elif args.source == "opendart":
                 runner = OpenDartAcquisitionRunner(config)
+                try:
+                    payload = asyncio.run(runner.run_batch())
+                finally:
+                    runner.close()
+            elif args.source == "edinet":
+                runner = EdinetAcquisitionRunner(config)
                 try:
                     payload = asyncio.run(runner.run_batch())
                 finally:
