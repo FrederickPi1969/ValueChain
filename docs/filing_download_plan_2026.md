@@ -1,22 +1,33 @@
 # 2026-First Global Filing Download Plan
 
-## Audit Result
+## Operational Coverage Snapshot (2026-07-14)
 
-The production ValueChain downloader currently supports SEC EDGAR only. The
-audited global-company-universe bundle is valuable, but it must not be mistaken
-for a global filing downloader:
+The global company denominator and raw filing corpus have different coverage.
+Do not describe an imported issuer list as filing coverage.
 
-- it catalogs 78 company sources and routes 249 jurisdictions;
-- only eight source adapters are fixture-tested;
-- only 23,725 source-local entity rows are bundled across SEC, JPX, HKEX, CVM,
-  ASX, TWSE, and TPEx;
-- those rows are not globally deduplicated legal entities;
-- most non-US sources are official webpage routes without a tested bulk contract;
-- the ValueChain repository has not integrated any of those non-US adapters.
+Production raw acquisition currently includes:
 
-The bundle can contribute its source catalog, normalized minimum entity schema,
-SEC monitoring design, and candidate adapters for EDINET, OpenDART, Companies
-House, CVM, and filings.xbrl.org. It cannot support a completeness claim by itself.
+| Lane | Issuers in Postgres | Raw coverage | Status |
+| --- | ---: | --- | --- |
+| SEC EDGAR | 7,636 | United States registrants plus SEC-reporting foreign issuers and ADRs | Enabled; 2026 through 2020 queue |
+| CNINFO | 5,881 | Mainland China SSE, SZSE, and BSE financial reports | Enabled; 2026 through 2020 queue |
+| Priority ESEF | 770 discovered | France, Italy, Spain, and Netherlands ESEF packages | Enabled; 2026 through 2020 discovery |
+| GLEIF Golden Copy | Global | LEI Level 1/Level 2 reference objects, not filings | Enabled refresh timer |
+
+The ESEF lane is configured for Germany as well, but the current secondary
+index produced zero German filings. Germany is therefore **not covered**. It
+requires reconciliation and acquisition from Unternehmensregister or another
+accepted national Officially Appointed Mechanism.
+
+The following denominators are loaded in Postgres but their filing collectors
+are disabled: Japan (3,904), Korea (2,760), Hong Kong (2,812), Canada (2,138),
+Australia (1,988), Taiwan TWSE/TPEx (1,980 combined), and Brazil (663). These are
+company lists only.
+
+Candidate adapters exist for EDINET, OpenDART, Companies House, CVM, and
+filings.xbrl.org. Japan, Korea, and the United Kingdom currently lack their
+required API credentials on Cosmos. Most remaining markets still need a live
+contract test, official export workflow, access approval, or licensed feed.
 
 ## Missing Source Inputs
 

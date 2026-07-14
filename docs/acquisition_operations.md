@@ -125,6 +125,11 @@ systemctl --user restart valuechain-cninfo-acquisition.service
 systemctl --user restart valuechain-esef-acquisition.service
 ```
 
+Operational health is checked every five minutes by
+`valuechain-acquisition-monitor.timer`. It verifies Postgres, queue progress,
+recent raw paths, worker service state, and HDD capacity. See
+`docs/ACQUISITION_MONITORING.md` for thresholds and optional webhook delivery.
+
 The issuer universe is refreshed from the live SEC endpoint every 24 hours. The
 2025 phase cannot claim an issuer until every 2026 issuer is complete. After all
 configured historical phases finish, the newest year enters a 24-hour rescan
