@@ -7,13 +7,26 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
 from fastapi.responses import FileResponse
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
 from valuechain.disclosure_schema import canonicalize_document_type
 
 
 router = APIRouter(prefix="/api/acquisition", tags=["acquisition-files"])
+
+api_key_header = APIKeyHeader(
+    name="X-API-Key",
+    scheme_name="AcquisitionApiKey",
+    description="ValueChain file API token sent as `X-API-Key`.",
+    auto_error=False,
+)
+bearer_header = HTTPBearer(
+    scheme_name="AcquisitionBearer",
+    description="The same ValueChain file API token sent as a Bearer token.",
+    auto_error=False,
+)
 
 
 def _json_value(value: Any) -> Any:
@@ -55,16 +68,13 @@ def add_canonical_document_type(row: dict[str, Any]) -> dict[str, Any]:
 
 async def require_file_api_access(
     request: Request,
-    authorization: str | None = Header(default=None),
-    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    x_api_key: str | None = Security(api_key_header),
+    bearer: HTTPAuthorizationCredentials | None = Security(bearer_header),
 ) -> None:
     expected = str(getattr(request.app.state, "file_api_token", "") or "")
     if not expected:
         return
-    bearer = ""
-    if authorization and authorization.lower().startswith("bearer "):
-        bearer = authorization[7:].strip()
-    supplied = x_api_key or bearer
+    supplied = x_api_key or (bearer.credentials if bearer else "")
     if not supplied or not secrets.compare_digest(supplied, expected):
         raise HTTPException(
             status_code=401,
@@ -132,8 +142,13 @@ def download_response(
     )
 
 
-@router.get("/sources", dependencies=[Depends(require_file_api_access)])
+@router.get(
+    "/sources",
+    summary="List acquisition source coverage",
+    dependencies=[Depends(require_file_api_access)],
+)
 async def acquisition_sources(request: Request) -> dict[str, Any]:
+    """List configured sources with issuer, filing, document, object, and byte totals."""
     rows = await _fetch_all(
         request,
         """
@@ -174,7 +189,11 @@ async def acquisition_sources(request: Request) -> dict[str, Any]:
     return {"items": [public_row(row) for row in rows]}
 
 
-@router.get("/issuers", dependencies=[Depends(require_file_api_access)])
+@router.get(
+    "/issuers",
+    summary="Search source issuer registry",
+    dependencies=[Depends(require_file_api_access)],
+)
 async def acquisition_issuers(
     request: Request,
     source_id: str = "",
@@ -182,6 +201,7 @@ async def acquisition_issuers(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> dict[str, Any]:
+    """Search the source-local issuer registry by name, ticker, or native issuer id."""
     clauses = ["true"]
     params: list[Any] = []
     if source_id:
@@ -212,7 +232,11 @@ async def acquisition_issuers(
     return page(rows, limit, offset)
 
 
-@router.get("/filings", dependencies=[Depends(require_file_api_access)])
+@router.get(
+    "/filings",
+    summary="Search normalized filing inventory",
+    dependencies=[Depends(require_file_api_access)],
+)
 async def acquisition_filings(
     request: Request,
     source_id: str = "",
@@ -224,6 +248,7 @@ async def acquisition_filings(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> dict[str, Any]:
+    """List filings while preserving both `form_raw` and `canonical_document_type`."""
     clauses = ["true"]
     params: list[Any] = []
     filters = (
@@ -277,11 +302,13 @@ async def acquisition_filings(
 
 @router.get(
     "/filings/{source_id}/{filing_id:path}",
+    summary="Inspect one filing and its documents",
     dependencies=[Depends(require_file_api_access)],
 )
 async def acquisition_filing_detail(
     source_id: str, filing_id: str, request: Request
 ) -> dict[str, Any]:
+    """Return one filing, its provenance metadata, and all associated documents."""
     filing = await _fetch_one(
         request,
         """
@@ -322,7 +349,11 @@ async def acquisition_filing_detail(
     }
 
 
-@router.get("/documents", dependencies=[Depends(require_file_api_access)])
+@router.get(
+    "/documents",
+    summary="Search stored disclosure documents",
+    dependencies=[Depends(require_file_api_access)],
+)
 async def acquisition_documents(
     request: Request,
     source_id: str = "",
@@ -332,6 +363,7 @@ async def acquisition_documents(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> dict[str, Any]:
+    """Search complete acquisition documents and obtain authenticated download URLs."""
     clauses = ["true"]
     params: list[Any] = []
     for value, clause in (
@@ -370,7 +402,11 @@ async def acquisition_documents(
     return page(rows, limit, offset)
 
 
-@router.get("/snapshots", dependencies=[Depends(require_file_api_access)])
+@router.get(
+    "/snapshots",
+    summary="List issuer-universe snapshots",
+    dependencies=[Depends(require_file_api_access)],
+)
 async def acquisition_universe_snapshots(
     request: Request,
     source_id: str = "",
@@ -378,6 +414,7 @@ async def acquisition_universe_snapshots(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> dict[str, Any]:
+    """List versioned issuer-universe snapshots and their content hashes."""
     clauses = ["true"]
     params: list[Any] = []
     for value, clause in (
@@ -427,11 +464,13 @@ async def _snapshot_download_response(
 
 @router.get(
     "/snapshots/{snapshot_id}/download",
+    summary="Download an issuer-universe snapshot",
     dependencies=[Depends(require_file_api_access)],
 )
 async def download_acquisition_snapshot(
     snapshot_id: int, request: Request
 ) -> FileResponse:
+    """Stream a universe snapshot with ETag, SHA-256, and HTTP byte-range support."""
     return await _snapshot_download_response(snapshot_id, request)
 
 
@@ -466,11 +505,13 @@ async def _document_download_response(
 
 @router.get(
     "/documents/{document_id}/download",
+    summary="Download an original disclosure document",
     dependencies=[Depends(require_file_api_access)],
 )
 async def download_acquisition_document(
     document_id: int, request: Request
 ) -> FileResponse:
+    """Stream an original disclosure document with byte-range and checksum headers."""
     return await _document_download_response(document_id, request)
 
 
@@ -485,7 +526,11 @@ async def head_acquisition_document(
     return await _document_download_response(document_id, request)
 
 
-@router.get("/objects", dependencies=[Depends(require_file_api_access)])
+@router.get(
+    "/objects",
+    summary="List stored bulk source objects",
+    dependencies=[Depends(require_file_api_access)],
+)
 async def acquisition_objects(
     request: Request,
     source_id: str = "",
@@ -495,6 +540,7 @@ async def acquisition_objects(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> dict[str, Any]:
+    """List source-level bulk objects such as CVM, Companies House, or authorized packages."""
     clauses = ["true"]
     params: list[Any] = []
     for value, clause in (
@@ -556,11 +602,13 @@ async def _object_download_response(
 
 @router.get(
     "/objects/{source_id}/{object_key:path}/download",
+    summary="Download a bulk source object",
     dependencies=[Depends(require_file_api_access)],
 )
 async def download_acquisition_object(
     source_id: str, object_key: str, request: Request
 ) -> FileResponse:
+    """Stream a source-level bulk object with byte-range and checksum headers."""
     return await _object_download_response(source_id, object_key, request)
 
 

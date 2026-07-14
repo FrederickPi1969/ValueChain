@@ -33,7 +33,44 @@ class YearBasis(StrEnum):
 class ResolveDisclosureRequest(BaseModel):
     """Stable cross-market request contract for a disclosure or report."""
 
-    model_config = ConfigDict(str_strip_whitespace=True, use_enum_values=True)
+    model_config = ConfigDict(
+        str_strip_whitespace=True,
+        use_enum_values=True,
+        json_schema_extra={
+            "examples": [
+                {
+                    "source_id": "sec_edgar",
+                    "company": "NVDA",
+                    "company_identifier": "ticker",
+                    "year": 2025,
+                    "document_type": "annual_report",
+                    "source_document_type": "10-K",
+                    "year_basis": "auto",
+                    "include_amendments": False,
+                    "allow_fallback": True,
+                    "wait_seconds": 30,
+                },
+                {
+                    "source_id": "cninfo",
+                    "company": "000333",
+                    "company_identifier": "ticker",
+                    "year": 2025,
+                    "document_type": "annual_report",
+                    "allow_fallback": True,
+                    "wait_seconds": 0,
+                },
+                {
+                    "source_id": "opendart",
+                    "company": "035420",
+                    "company_identifier": "ticker",
+                    "year": 2025,
+                    "document_type": "annual_report",
+                    "allow_fallback": True,
+                    "wait_seconds": 60,
+                },
+            ]
+        },
+    )
 
     company: str = Field(
         min_length=1,

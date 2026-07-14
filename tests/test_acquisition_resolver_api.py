@@ -22,3 +22,28 @@ def test_schema_endpoint_documents_unified_parameters_and_source_names() -> None
     assert sources["sec_edgar"]["mappings"][0]["source_names"][0] == "10-K"
     assert sources["opendart"]["fallback_mode"] == "on_demand"
     assert sources["unternehmensregister"]["fallback_mode"] == "authorized_import_only"
+
+
+def test_swagger_and_openapi_expose_auth_workflow_and_detailed_resolver_contract() -> None:
+    app = FastAPI(
+        title="test",
+        description="Detailed acquisition API",
+        docs_url="/docs",
+    )
+    app.state.file_api_token = ""
+    app.include_router(router)
+    client = TestClient(app)
+
+    assert client.get("/docs").status_code == 200
+    schema = client.get("/openapi.json").json()
+    security = schema["components"]["securitySchemes"]
+    assert security["AcquisitionApiKey"]["name"] == "X-API-Key"
+    assert security["AcquisitionBearer"]["scheme"] == "bearer"
+    resolve = schema["paths"]["/api/acquisition/resolve"]["post"]
+    assert resolve["summary"] == "Resolve or acquire a company disclosure"
+    assert "local corpus first" in resolve["description"]
+    assert "202" in resolve["responses"]
+    assert resolve["security"] == [
+        {"AcquisitionApiKey": []},
+        {"AcquisitionBearer": []},
+    ]

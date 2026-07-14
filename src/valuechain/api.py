@@ -20,6 +20,53 @@ from valuechain.models import Company, GraphEdge, RelationEvidence, SourceDocume
 
 settings = Settings()
 
+API_DESCRIPTION = """
+## Disclosure-derived AI value-chain data service
+
+This API serves the evidence corpus, source inventory, extracted dependency
+data, and a **local-first unified disclosure resolver**.
+
+### Recommended disclosure workflow
+
+1. Call `GET /api/acquisition/schema` to inspect canonical document types,
+   source-native form names/codes, identifiers, credentials, and fallback modes.
+2. Call `POST /api/acquisition/resolve` with a company, year, and canonical
+   document type.
+3. A local hit returns `200` immediately. A legal on-demand miss is persisted
+   and returns `202` when it outlives `wait_seconds`.
+4. Poll `GET /api/acquisition/requests/{request_id}` until `complete`, then use
+   the returned `download_url`.
+
+### Authentication
+
+Acquisition metadata and file routes accept either `X-API-Key` or
+`Authorization: Bearer <token>`. The service can be configured without a token
+for trusted local development; the Cosmos deployment requires one.
+
+### Storage and provenance
+
+Files are streamed from read-only HDD mounts with byte-range support. Responses
+retain source id, source issuer/filing id, native form, canonical type, filing
+and report dates, source URL, archive URL, SHA-256, byte size, and retrieval time.
+
+### Source-policy boundary
+
+Only SEC, CNINFO, and OpenDART currently advertise synchronous `on_demand`
+fallback. Scheduled bulk and authorized-import sources return an explicit
+capability response rather than scraping restricted websites.
+"""
+
+OPENAPI_TAGS = [
+    {
+        "name": "unified-disclosure-resolver",
+        "description": "Local-first company/year/report resolution with persistent ad hoc fallback jobs.",
+    },
+    {
+        "name": "acquisition-files",
+        "description": "Source, issuer, filing, document, snapshot, object, and byte-range download APIs.",
+    },
+]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,7 +89,17 @@ async def lifespan(app: FastAPI):
         await pool.close()
 
 
-app = FastAPI(title="AI Value Chain API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(
+    title="AI Value Chain API",
+    summary="Unified global disclosure acquisition and evidence API",
+    description=API_DESCRIPTION,
+    version="0.2.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    openapi_tags=OPENAPI_TAGS,
+    lifespan=lifespan,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],

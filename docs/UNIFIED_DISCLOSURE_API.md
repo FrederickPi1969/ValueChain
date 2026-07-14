@@ -13,6 +13,16 @@ each authority's native form name/code. Resolution is local first:
 The file-serving API remains read-only. `valuechain-ad-hoc-acquisition.service`
 is the component that writes raw storage and holds upstream credentials.
 
+Interactive OpenAPI documentation is served at:
+
+```text
+http://100.102.250.107:18018/docs
+```
+
+Use the Swagger **Authorize** button with either `AcquisitionApiKey`
+(`X-API-Key`) or `AcquisitionBearer`. ReDoc is available at `/redoc`, and the
+machine-readable contract is `/openapi.json`.
+
 ## Request
 
 `POST /api/acquisition/resolve`

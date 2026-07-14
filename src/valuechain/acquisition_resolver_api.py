@@ -45,7 +45,16 @@ async def _fetch_one(
     return rows[0] if rows else None
 
 
-@router.get("/schema")
+@router.get(
+    "/schema",
+    summary="Inspect unified disclosure schema",
+    description=(
+        "Returns the cross-market request JSON Schema, canonical document types, "
+        "source-native names/codes, company identifiers, credentials, fallback "
+        "modes, policy notes, and the resolver execution order."
+    ),
+    responses={401: {"description": "Missing or invalid API token."}},
+)
 async def disclosure_schema() -> dict[str, Any]:
     return {
         "schema_version": "1.0",
@@ -239,7 +248,29 @@ async def _request_status_payload(
     return payload
 
 
-@router.post("/resolve")
+@router.post(
+    "/resolve",
+    summary="Resolve or acquire a company disclosure",
+    description="""
+Resolve a company/year/document-type combination against the local corpus first.
+
+* A complete local match returns immediately with `retrieval=local`.
+* A miss on SEC, CNINFO, or OpenDART creates or reuses a deduplicated persistent
+  job. `wait_seconds` controls synchronous waiting; unfinished work returns 202.
+* Scheduled-bulk, current-only, and authorized-import sources return a structured
+  capability response and are never silently scraped.
+* Periodic reports use report/fiscal year by default. Current and material-event
+  reports use filing year. Set `year_basis` to override this behavior.
+""",
+    responses={
+        200: {"description": "Local hit or a completed upstream acquisition."},
+        202: {"description": "Persistent job is queued, discovering, downloading, or retrying."},
+        401: {"description": "Missing or invalid API token."},
+        404: {"description": "Company not found, fallback disabled, or upstream found no matching report."},
+        409: {"description": "Ambiguous company or source has no legal real-time fallback lane."},
+        422: {"description": "Invalid canonical/native type combination or request parameter."},
+    },
+)
 async def resolve_disclosure(
     query: ResolveDisclosureRequest, request: Request, response: Response
 ) -> dict[str, Any]:
@@ -302,7 +333,19 @@ def _enqueue(
         return state.enqueue(query, source_id, source_issuer_id)
 
 
-@router.get("/requests/{request_id}")
+@router.get(
+    "/requests/{request_id}",
+    summary="Poll an ad hoc disclosure request",
+    description=(
+        "Returns queue state, attempts, errors, result metadata, and complete "
+        "document download URLs. Terminal states are `complete`, `not_found`, "
+        "`failed`, and `unsupported`."
+    ),
+    responses={
+        401: {"description": "Missing or invalid API token."},
+        404: {"description": "Unknown request id."},
+    },
+)
 async def ad_hoc_request_status(
     request_id: UUID, request: Request
 ) -> dict[str, Any]:
