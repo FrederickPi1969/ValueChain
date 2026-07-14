@@ -28,6 +28,7 @@ DEFAULT_SOURCES = (
     "twse",
     "tpex",
     "companies_house_accounts_bulk",
+    "cvm_brazil",
 )
 DEFAULT_SERVICES = (
     "valuechain-sec-acquisition.service",
@@ -38,6 +39,7 @@ DEFAULT_SERVICES = (
     "valuechain-twse-acquisition.service",
     "valuechain-tpex-acquisition.service",
     "valuechain-companies-house-bulk-acquisition.service",
+    "valuechain-cvm-bulk-acquisition.service",
 )
 
 

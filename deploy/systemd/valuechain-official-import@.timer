@@ -1,0 +1,12 @@
+[Unit]
+Description=Scan ValueChain authorized official disclosure inbox for %i
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+RandomizedDelaySec=2min
+Persistent=true
+Unit=valuechain-official-import@%i.service
+
+[Install]
+WantedBy=timers.target

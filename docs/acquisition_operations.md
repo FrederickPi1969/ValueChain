@@ -129,6 +129,7 @@ systemctl --user restart valuechain-edinet-acquisition.service
 systemctl --user restart valuechain-twse-acquisition.service
 systemctl --user restart valuechain-tpex-acquisition.service
 systemctl --user restart valuechain-companies-house-bulk-acquisition.service
+systemctl --user restart valuechain-cvm-bulk-acquisition.service
 ```
 
 Operational health is checked every five minutes by
@@ -230,6 +231,14 @@ This lane stores raw accounts packages only. Extraction of individual iXBRL or
 XBRL members is intentionally a downstream job so raw acquisition remains
 restartable and independent of parser versions. Older monthly archives are a
 separate future backfill lane and are not implied by the daily listener.
+
+## CVM And Authorized Disclosure Lanes
+
+Brazil CVM DFP, ITR, FRE, and IPE ZIP archives use a public, version-aware bulk
+worker. HKEX, SEDAR+, ASX, German Unternehmensregister, and historical MOPS use
+the separate official-package importer because their public websites do not
+provide unrestricted institutional crawling rights. See
+`docs/DISCLOSURE_SOURCE_ACCESS_MATRIX.md` for inbox paths and entitlement gates.
 
 ## Curated Korea And Japan Lanes
 

@@ -181,6 +181,36 @@ contracts:
       - profile link
       - search result link
     monitoring: official CSV export plus operator-owned email alerts; public download batching remains external
+  hkex:
+    authority_page: https://www.hkexnews.hk/
+    input_kind: filings
+    stable_key_fields: [document_id, filing_date, issuer_id, title]
+    field_aliases: &disclosure_import_aliases
+      document_id: [document_id, document id, announcement id, reference, headline id]
+      issuer_name: [issuer_name, issuer, company name, listed issuer]
+      issuer_id: [issuer_id, stock code, issuer code, company code]
+      symbol: [symbol, stock code, security code, ticker]
+      title: [title, headline, document title, announcement title, subject]
+      form: [form, document type, category, headline category]
+      filing_date: [filing_date, publication date, release date, date, published]
+      document_url: [document_url, document link, attachment url, download url, url]
+      detail_url: [detail_url, announcement url, detail link, web link]
+    defaults: {jurisdiction: HK, exchange: XHKG}
+    monitoring: authorized HKEXnews export/feed only; public-site scraping is prohibited
+  asx:
+    authority_page: https://www.asx.com.au/connectivity-and-data/information-services/company-news
+    input_kind: filings
+    stable_key_fields: [document_id, filing_date, issuer_id, title]
+    field_aliases: *disclosure_import_aliases
+    defaults: {jurisdiction: AU, exchange: XASX}
+    monitoring: ASX ComNews or another written-authority delivery only
+  mops:
+    authority_page: https://eshop.twse.com.tw/en/mops/list
+    input_kind: filings
+    stable_key_fields: [document_id, filing_date, issuer_id, title]
+    field_aliases: *disclosure_import_aliases
+    defaults: {jurisdiction: TW}
+    monitoring: licensed MOPS Push Server/Data E-Shop package delivery only
   six_exchange:
     authority_page: https://www.six-group.com/en/market-data/shares/companies.html
     input_kind: auto

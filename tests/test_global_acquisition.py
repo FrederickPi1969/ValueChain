@@ -72,11 +72,13 @@ def test_edinet_runtime_limits_cannot_exceed_safe_caps(monkeypatch) -> None:
 def test_new_public_source_runtime_rates_are_conservatively_capped(monkeypatch) -> None:
     monkeypatch.setenv("VALUECHAIN_TAIWAN_REQUESTS_PER_SECOND", "20")
     monkeypatch.setenv("VALUECHAIN_COMPANIES_HOUSE_BULK_REQUESTS_PER_SECOND", "20")
+    monkeypatch.setenv("VALUECHAIN_CVM_REQUESTS_PER_SECOND", "20")
 
     config = GlobalAcquisitionConfig.from_env()
 
     assert config.taiwan_requests_per_second == 1.0
     assert config.companies_house_bulk_requests_per_second == 0.5
+    assert config.cvm_requests_per_second == 1.0
 
 
 def test_global_acquisition_requires_proxy() -> None:

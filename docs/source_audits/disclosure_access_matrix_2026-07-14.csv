@@ -1,0 +1,7 @@
+market,source_id,authority,official_url,api_key_required,automation_class,repo_status,required_next_input
+Brazil,cvm_brazil,CVM,https://dados.cvm.gov.br/,no,public_bulk,production_public_bulk_listener,none
+Hong Kong,hkex,HKEXnews,https://www.hkexnews.hk/,no_key_but_permission_required,authorized_feed_only,authorized_import_ready,written permission or licensed feed
+Canada,sedar_plus,Canadian Securities Administrators,https://www.sedarplus.ca/,no_key_but_license_required,authorized_feed_only,authorized_import_ready,licensed data delivery
+Australia,asx,Australian Securities Exchange,https://www.asx.com.au/connectivity-and-data/information-services/company-news,commercial_entitlement,authorized_feed_only,authorized_import_ready,ASX ComNews or written authority
+Germany,unternehmensregister,Unternehmensregister,https://www.unternehmensregister.de/,no_public_bulk_key,approved_export_or_bulk_delivery,authorized_import_ready,approved export or bulk arrangement
+Taiwan,mops,TWSE MOPS,https://eshop.twse.com.tw/en/mops/list,subscription_entitlement,licensed_push_package,current_openapi_plus_historical_import_ready,MOPS electronic-books and optional XBRL package

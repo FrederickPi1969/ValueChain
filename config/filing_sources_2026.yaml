@@ -47,12 +47,12 @@ sources:
     official_url: "https://www.sedarplus.ca/"
     access_mode: licensed_or_negotiated
     credentials: []
-    repo_status: policy_blocked
+    repo_status: authorized_import_ready_policy_blocked_from_scraping
     canonical: true
     capabilities: [issuer_universe, filing_discovery, document_download]
     missing:
       - "Licensed database/feed agreement; public-site terms prohibit scraping and database construction."
-      - "Machine-readable issuer denominator and historical document inventory contract."
+      - "Machine-readable issuer denominator and historical document inventory entitlement."
 
   - source_id: companies_house
     rank: 11
@@ -93,12 +93,12 @@ sources:
     official_url: "https://www.hkexnews.hk/"
     access_mode: official_web
     credentials: []
-    repo_status: catalog_only
+    repo_status: authorized_feed_import_ready
     canonical: true
     capabilities: [listed_universe, filing_discovery, document_download]
     missing:
       - "Approved machine-query contract for title search and document URLs."
-      - "Stable issuer identifier mapping, pagination, corrections, and delisting coverage."
+      - "Authorized HKEXnews delivery with stable identifiers, corrections, and delisting coverage."
 
   - source_id: edinet
     rank: 14
@@ -157,11 +157,10 @@ sources:
     machine_url: "https://openapi.twse.com.tw/v1/"
     access_mode: mixed_public_api_and_licensed_push
     credentials: []
-    repo_status: catalog_only
+    repo_status: current_openapi_production_historical_push_import_ready
     canonical: true
     capabilities: [listed_universe, structured_facts, filing_discovery, document_download, material_events]
     missing:
-      - "Decision between public MOPS acquisition and licensed Push Server packages."
       - "Complete document-feed entitlement, XBRL package, and historical coverage terms."
 
   - source_id: cvm_brazil
@@ -172,11 +171,10 @@ sources:
     official_url: "https://dados.cvm.gov.br/"
     access_mode: public_bulk
     credentials: []
-    repo_status: bundle_adapter_candidate
+    repo_status: production_public_bulk_listener
     canonical: true
     capabilities: [issuer_universe, historical_bulk, filing_discovery, document_download, structured_facts]
     missing:
-      - "Integration into ValueChain and live 2026 DFP/ITR/FRE/IPE inventory validation."
       - "CVM issuer-code/CNPJ reconciliation against B3 listings."
 
   - source_id: asx_comnews
@@ -187,7 +185,7 @@ sources:
     official_url: "https://www.asx.com.au/connectivity-and-data/information-services/company-news"
     access_mode: commercial_feed
     credentials: []
-    repo_status: license_required
+    repo_status: authorized_feed_import_ready_license_required
     canonical: true
     capabilities: [listed_universe, complete_announcements, document_download, metadata_feed]
     missing:

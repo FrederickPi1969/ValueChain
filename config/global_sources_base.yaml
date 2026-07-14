@@ -174,9 +174,9 @@ sources:
   - historical_index
   historical_scope: Public-company registry plus annual DFP, quarterly ITR, and reference-form bulk archives; many series
     reach 2010 or earlier.
-  status: implemented_api_and_real_snapshot
-  notes: Bulk archives are authoritative and efficient for historical backfill.
-  rate_limit_requests_per_second: 1.0
+  status: production_public_bulk_listener
+  notes: Versioned DFP, ITR, FRE, and IPE archives are downloaded through the project proxy; repeated official revisions are retained.
+  rate_limit_requests_per_second: 0.5
   api_base_url: https://dados.cvm.gov.br/dados/
 - source_id: hkex
   name: Hong Kong Exchanges and Clearing issuer lists and HKEXnews
@@ -191,8 +191,8 @@ sources:
   - entity_universe
   - document_download
   historical_scope: Current official securities workbook plus public announcement documents; historical search is web-oriented.
-  status: implemented_local_parser_and_real_snapshot
-  notes: No claim of a stable EDGAR-like public filing API; use HKEXnews document seeds or licensed feeds.
+  status: issuer_universe_live_authorized_disclosure_import_ready
+  notes: HKEX terms prohibit programmatic scraping and systematic database construction without permission. Use the official issuer workbook plus an authorized HKEXnews export/feed in the import inbox.
   rate_limit_requests_per_second: 0.5
 - source_id: jpx
   name: Japan Exchange Group listed-company list
@@ -223,8 +223,8 @@ sources:
   - document_download
   historical_scope: Listed-company directory and announcement documents; automated historical access requires careful access-policy
     review.
-  status: implemented_local_parser_and_real_snapshot
-  notes: ''
+  status: issuer_universe_live_authorized_disclosure_import_ready
+  notes: ASX announcements require ComNews or written authority for automated institutional collection; the official package import lane is ready.
   rate_limit_requests_per_second: 0.5
 - source_id: nse_india
   name: National Stock Exchange of India company list and filings
@@ -273,8 +273,8 @@ sources:
   - document_download
   historical_scope: Canadian public filings retained by SEDAR+; public search is official but no unrestricted EDGAR-style
     bulk API is claimed.
-  status: access_classified_not_bulk_api
-  notes: Use public search/manual seeds or licensed data access.
+  status: policy_restricted_authorized_import_ready
+  notes: Public-site terms prohibit automated retrieval and database construction. Only operator-owned exports, alerts, or a licensed feed may enter the import lane.
   rate_limit_requests_per_second: 1.0
 - source_id: fca_nsm
   name: Financial Conduct Authority National Storage Mechanism
@@ -392,8 +392,8 @@ sources:
   - filing_discovery
   - document_download
   historical_scope: Taiwan financial statements, XBRL, material information, ownership, and revenue disclosures.
-  status: access_classified_not_bulk_api
-  notes: Session-oriented official portal; production adapter requires request-policy validation.
+  status: current_openapi_live_historical_push_import_ready
+  notes: Current TWSE/TPEx OpenAPI listeners are live. Historical documents require an authorized MOPS Push Server/Data E-Shop package; website scraping is not enabled.
   rate_limit_requests_per_second: 1.0
 - source_id: sgx
   name: Singapore Exchange issuer announcements
@@ -955,8 +955,8 @@ sources:
   - filing_discovery
   - document_download
   historical_scope: German company publications and filed financial statements.
-  status: access_classified_not_bulk_api
-  notes: Official portal; some documents/workflows may involve fees or access controls.
+  status: official_export_import_ready
+  notes: filings.xbrl.org currently has no German records. Import approved Unternehmensregister/Bundesanzeiger exports or an authorized bulk delivery; no security challenge is bypassed.
   rate_limit_requests_per_second: 1.0
 - source_id: amf_france
   name: Autorité des marchés financiers France

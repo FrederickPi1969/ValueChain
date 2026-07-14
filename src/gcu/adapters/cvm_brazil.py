@@ -100,7 +100,12 @@ class CvmBrazilAdapter(BaseAdapter):
     ) -> Iterable[FilingRef]:
         end_year = end_year or date.today().year
         for year in range(start_year, end_year + 1):
-            for form, path in (("DFP", "DFP/DADOS"), ("ITR", "ITR/DADOS"), ("FRE", "FRE/DADOS")):
+            for form, path in (
+                ("DFP", "DFP/DADOS"),
+                ("ITR", "ITR/DADOS"),
+                ("FRE", "FRE/DADOS"),
+                ("IPE", "IPE/DADOS"),
+            ):
                 filename = f"{form.lower()}_cia_aberta_{year}.zip"
                 url = f"{self.DOC_BASE}/{path}/{filename}"
                 yield FilingRef(

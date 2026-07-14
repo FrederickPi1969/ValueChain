@@ -37,6 +37,14 @@ EDINET_SOURCE = "edinet"
 TWSE_SOURCE = "twse"
 TPEX_SOURCE = "tpex"
 COMPANIES_HOUSE_BULK_SOURCE = "companies_house_accounts_bulk"
+CVM_BRAZIL_SOURCE = "cvm_brazil"
+OFFICIAL_IMPORT_SOURCES = (
+    "asx",
+    "hkex",
+    "mops",
+    "sedar_plus",
+    "unternehmensregister",
+)
 SUPPORTED_SOURCES = (
     CNINFO_SOURCE,
     ESEF_SOURCE,
@@ -46,6 +54,8 @@ SUPPORTED_SOURCES = (
     TWSE_SOURCE,
     TPEX_SOURCE,
     COMPANIES_HOUSE_BULK_SOURCE,
+    CVM_BRAZIL_SOURCE,
+    *OFFICIAL_IMPORT_SOURCES,
 )
 
 
@@ -68,6 +78,8 @@ class GlobalAcquisitionConfig:
     opendart_filing_limit: int = 16
     edinet_filing_limit: int = 16
     companies_house_bulk_object_limit: int = 1
+    cvm_bulk_object_limit: int = 1
+    official_import_batch_limit: int = 20
     worker_count: int = 4
     opendart_worker_count: int = 2
     edinet_worker_count: int = 2
@@ -77,6 +89,7 @@ class GlobalAcquisitionConfig:
     edinet_requests_per_second: float = 0.5
     taiwan_requests_per_second: float = 0.5
     companies_house_bulk_requests_per_second: float = 0.25
+    cvm_requests_per_second: float = 0.5
     opendart_daily_request_budget: int = 10_000
     edinet_daily_request_budget: int = 1_000
     opendart_discovery_lookback_days: int = 3
@@ -89,6 +102,10 @@ class GlobalAcquisitionConfig:
     taiwan_event_refresh_hours: int = 1
     taiwan_snapshot_refresh_hours: int = 24
     companies_house_bulk_refresh_hours: int = 6
+    cvm_refresh_hours: int = 12
+    official_import_root: Path = Path(
+        "/mnt/hdd8tb/valuechain/official-imports"
+    )
 
     @classmethod
     def from_env(cls) -> GlobalAcquisitionConfig:
@@ -127,6 +144,12 @@ class GlobalAcquisitionConfig:
             companies_house_bulk_object_limit=max(
                 1,
                 int(os.getenv("VALUECHAIN_COMPANIES_HOUSE_BULK_OBJECT_LIMIT", "1")),
+            ),
+            cvm_bulk_object_limit=max(
+                1, int(os.getenv("VALUECHAIN_CVM_BULK_OBJECT_LIMIT", "1"))
+            ),
+            official_import_batch_limit=max(
+                1, int(os.getenv("VALUECHAIN_OFFICIAL_IMPORT_BATCH_LIMIT", "20"))
             ),
             worker_count=min(
                 4,
@@ -183,6 +206,13 @@ class GlobalAcquisitionConfig:
                     ),
                 ),
             ),
+            cvm_requests_per_second=min(
+                1.0,
+                max(
+                    0.1,
+                    float(os.getenv("VALUECHAIN_CVM_REQUESTS_PER_SECOND", "0.5")),
+                ),
+            ),
             opendart_daily_request_budget=min(
                 10_000,
                 max(
@@ -237,6 +267,15 @@ class GlobalAcquisitionConfig:
                     )
                 ),
             ),
+            cvm_refresh_hours=max(
+                1, int(os.getenv("VALUECHAIN_CVM_REFRESH_HOURS", "12"))
+            ),
+            official_import_root=Path(
+                os.getenv(
+                    "VALUECHAIN_OFFICIAL_IMPORT_DIR",
+                    "/mnt/hdd8tb/valuechain/official-imports",
+                )
+            ).expanduser(),
         )
 
 

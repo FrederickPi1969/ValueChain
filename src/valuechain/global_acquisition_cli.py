@@ -9,15 +9,18 @@ from valuechain.async_global_acquisition import AsyncGlobalAcquisitionRunner
 from valuechain.companies_house_bulk_acquisition import (
     CompaniesHouseBulkAcquisitionRunner,
 )
+from valuechain.cvm_bulk_acquisition import CvmBulkAcquisitionRunner
 from valuechain.edinet_acquisition import EdinetAcquisitionRunner
 from valuechain.global_acquisition import (
     GLEIF_SOURCE,
+    OFFICIAL_IMPORT_SOURCES,
     SUPPORTED_SOURCES,
     GlobalAcquisitionConfig,
     run_source,
     source_status,
 )
 from valuechain.opendart_acquisition import OpenDartAcquisitionRunner
+from valuechain.official_disclosure_import import OfficialDisclosureImportRunner
 from valuechain.taiwan_acquisition import TaiwanOpenApiAcquisitionRunner
 
 
@@ -40,6 +43,8 @@ def build_parser() -> argparse.ArgumentParser:
             "twse",
             "tpex",
             "companies_house_accounts_bulk",
+            "cvm_brazil",
+            *OFFICIAL_IMPORT_SOURCES,
         ),
     )
     status = subparsers.add_parser("status", help="Show global-source acquisition statistics.")
@@ -59,6 +64,10 @@ def main(argv: list[str] | None = None) -> None:
             runner = TaiwanOpenApiAcquisitionRunner(args.source, config)
         elif args.source == "companies_house_accounts_bulk":
             runner = CompaniesHouseBulkAcquisitionRunner(config)
+        elif args.source == "cvm_brazil":
+            runner = CvmBulkAcquisitionRunner(config)
+        elif args.source in OFFICIAL_IMPORT_SOURCES:
+            runner = OfficialDisclosureImportRunner(args.source, config)
         else:
             runner = AsyncGlobalAcquisitionRunner(args.source, config)
         try:
@@ -90,6 +99,12 @@ def main(argv: list[str] | None = None) -> None:
                 payload = asyncio.run(runner.run_batch())
             elif args.source == "companies_house_accounts_bulk":
                 runner = CompaniesHouseBulkAcquisitionRunner(config)
+                payload = asyncio.run(runner.run_batch())
+            elif args.source == "cvm_brazil":
+                runner = CvmBulkAcquisitionRunner(config)
+                payload = asyncio.run(runner.run_batch())
+            elif args.source in OFFICIAL_IMPORT_SOURCES:
+                runner = OfficialDisclosureImportRunner(args.source, config)
                 payload = asyncio.run(runner.run_batch())
             else:
                 runner = AsyncGlobalAcquisitionRunner(args.source, config)

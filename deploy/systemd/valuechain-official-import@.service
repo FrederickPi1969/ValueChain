@@ -1,0 +1,13 @@
+[Unit]
+Description=ValueChain authorized official disclosure import for %i
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/pi/ValueChain
+EnvironmentFile=/home/pi/ValueChain/.env
+ExecStart=/home/pi/ValueChain/.venv/bin/valuechain-global-acquire run-batch --source %i
+Nice=8
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=30min
