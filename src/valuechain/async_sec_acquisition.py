@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from valuechain.acquisition_schema import AcquisitionSchemaGuard
 from valuechain.acquisition_state import AcquisitionIssuer
 from valuechain.async_http import AdaptiveRateLimiter, AsyncHttpClient
 from valuechain.postgres_acquisition_state import PostgresAcquisitionState
@@ -29,6 +30,7 @@ class AsyncSecAcquisitionRunner:
         self.repository_root = repository_root
         self.proxy_pool = ProxyPoolClient(config.proxy_pool_url)
         self.limiter = AdaptiveRateLimiter(config.requests_per_second)
+        self.schema_guard = AcquisitionSchemaGuard(config.database_url)
         self.config.raw_root.mkdir(parents=True, exist_ok=True)
 
     async def _new_client(self) -> AsyncHttpClient:
@@ -41,6 +43,7 @@ class AsyncSecAcquisitionRunner:
         )
 
     async def refresh_universe(self) -> int:
+        await self.schema_guard.prepare()
         await asyncio.to_thread(self.proxy_pool.health)
         async with await self._new_client() as client:
             payload = await client.get_json(
@@ -58,21 +61,28 @@ class AsyncSecAcquisitionRunner:
             self.repository_root / "data" / "universe" / "ai_infra_universe.csv"
         )
         issuers = parse_company_universe(payload, priority_tickers)
-        with PostgresAcquisitionState(self.config.database_url) as state:
+        with PostgresAcquisitionState(
+            self.config.database_url, ensure_schema=False
+        ) as state:
             count = state.upsert_issuers(issuers)
             state.ensure_scan_years(self.config.target_years)
         return count
 
     async def run_batch(self) -> dict[str, object]:
+        await self.schema_guard.prepare()
         counts = {"issuers": 0, "filings": 0, "documents": 0, "errors": 0}
         sync_runner = SecAcquisitionRunner(self.config, self.repository_root)
-        with PostgresAcquisitionState(self.config.database_url) as state:
+        with PostgresAcquisitionState(
+            self.config.database_url, ensure_schema=False
+        ) as state:
             stats = state.stats()
             refresh_due = not stats["issuers"] or sync_runner.universe_refresh_due()
         if refresh_due:
             await self.refresh_universe()
 
-        with PostgresAcquisitionState(self.config.database_url) as state:
+        with PostgresAcquisitionState(
+            self.config.database_url, ensure_schema=False
+        ) as state:
             state.ensure_scan_years(self.config.target_years)
             filing_year = state.active_backfill_year(self.config.target_years)
             maintenance = filing_year is None
@@ -100,7 +110,9 @@ class AsyncSecAcquisitionRunner:
             )
 
         status = "complete" if counts["errors"] == 0 else "partial"
-        with PostgresAcquisitionState(self.config.database_url) as state:
+        with PostgresAcquisitionState(
+            self.config.database_url, ensure_schema=False
+        ) as state:
             state.finish_run(run_id, status, counts)
             final_stats = state.stats()
         return {

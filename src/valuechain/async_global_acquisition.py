@@ -11,6 +11,7 @@ from gcu.models import EntityRef, FilingRef
 from gcu_priority_markets.adapters.cninfo import CninfoAdapter
 from gcu_priority_markets.adapters.esef import PriorityEsefAdapter
 from gcu_priority_markets.registry import PatchRegistry
+from valuechain.acquisition_schema import AcquisitionSchemaGuard
 from valuechain.acquisition_state import AcquisitionIssuer
 from valuechain.async_http import AdaptiveRateLimiter, AsyncHttpClient
 from valuechain.global_acquisition import (
@@ -41,6 +42,7 @@ class AsyncGlobalAcquisitionRunner:
             raise RuntimeError("VALUECHAIN_PROXY_POOL_URL is required")
         self.proxy_pool = ProxyPoolClient(self.settings.proxy_pool_url)
         self.definition = PatchRegistry().get(source_id)
+        self.schema_guard = AcquisitionSchemaGuard(config.database_url)
         target_rps = (
             config.cninfo_requests_per_second
             if source_id == CNINFO_SOURCE
@@ -60,6 +62,7 @@ class AsyncGlobalAcquisitionRunner:
         )
 
     async def run_batch(self) -> dict[str, Any]:
+        await self.schema_guard.prepare()
         if self.source_id == CNINFO_SOURCE:
             return await self._run_cninfo_batch()
         return await self._run_esef_batch()
@@ -68,10 +71,10 @@ class AsyncGlobalAcquisitionRunner:
         counts = {"issuers": 0, "filings": 0, "documents": 0, "errors": 0}
         with (
             GlobalSourceAcquisitionState(
-                self.config.database_url, CNINFO_SOURCE
+                self.config.database_url, CNINFO_SOURCE, False
             ) as state,
             PostgresAcquisitionState(
-                self.config.database_url, CNINFO_SOURCE
+                self.config.database_url, CNINFO_SOURCE, False
             ) as queue_state,
         ):
             state.ensure_source(self.definition)
@@ -105,10 +108,10 @@ class AsyncGlobalAcquisitionRunner:
         status = "complete" if counts["errors"] == 0 else "partial"
         with (
             PostgresAcquisitionState(
-                self.config.database_url, CNINFO_SOURCE
+                self.config.database_url, CNINFO_SOURCE, False
             ) as queue_state,
             GlobalSourceAcquisitionState(
-                self.config.database_url, CNINFO_SOURCE
+                self.config.database_url, CNINFO_SOURCE, False
             ) as state,
         ):
             queue_state.finish_run(run_id, status, counts)
@@ -299,7 +302,7 @@ class AsyncGlobalAcquisitionRunner:
     async def _run_esef_batch(self) -> dict[str, Any]:
         counts = {"discovered": 0, "filings": 0, "documents": 0, "errors": 0}
         with GlobalSourceAcquisitionState(
-            self.config.database_url, ESEF_SOURCE
+            self.config.database_url, ESEF_SOURCE, False
         ) as state:
             state.ensure_source(self.definition)
             state.recover_downloading_filings(
@@ -311,7 +314,7 @@ class AsyncGlobalAcquisitionRunner:
         claimed: list[dict[str, Any]] = []
         target_year = self.config.target_years[0]
         with GlobalSourceAcquisitionState(
-            self.config.database_url, ESEF_SOURCE
+            self.config.database_url, ESEF_SOURCE, False
         ) as state:
             for year in self.config.target_years:
                 claimed = state.claim_filings(year, self.config.esef_filing_limit)
@@ -328,7 +331,7 @@ class AsyncGlobalAcquisitionRunner:
                 *(self._esef_worker(queue, counts) for _ in range(worker_count))
             )
         with GlobalSourceAcquisitionState(
-            self.config.database_url, ESEF_SOURCE
+            self.config.database_url, ESEF_SOURCE, False
         ) as state:
             stats = state.stats()
         return {
@@ -344,7 +347,7 @@ class AsyncGlobalAcquisitionRunner:
     async def _discover_esef_year(self, year: int) -> int:
         checkpoint = f"filing-index:{year}"
         with GlobalSourceAcquisitionState(
-            self.config.database_url, ESEF_SOURCE
+            self.config.database_url, ESEF_SOURCE, False
         ) as state:
             if not state.checkpoint_due(
                 checkpoint, self.config.discovery_refresh_hours
@@ -377,7 +380,7 @@ class AsyncGlobalAcquisitionRunner:
                 )
                 valid.append(filing)
             with GlobalSourceAcquisitionState(
-                self.config.database_url, ESEF_SOURCE
+                self.config.database_url, ESEF_SOURCE, False
             ) as state:
                 state.upsert_entities(entities.values())
                 count = state.upsert_filings(valid, self.config.raw_root)
@@ -388,7 +391,7 @@ class AsyncGlobalAcquisitionRunner:
             return count
         except Exception as exc:
             with GlobalSourceAcquisitionState(
-                self.config.database_url, ESEF_SOURCE
+                self.config.database_url, ESEF_SOURCE, False
             ) as state:
                 state.fail_checkpoint(checkpoint, f"{type(exc).__name__}: {exc}")
             raise
