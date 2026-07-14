@@ -1,0 +1,15 @@
+[Unit]
+Description=ValueChain acquisition database, worker and storage health monitor
+After=network-online.target valuechain-sec-acquisition.service valuechain-cninfo-acquisition.service valuechain-esef-acquisition.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/pi/ValueChain
+EnvironmentFile=/home/pi/ValueChain/.env
+ExecStart=/home/pi/ValueChain/.venv/bin/valuechain-monitor
+Nice=10
+IOSchedulingClass=idle
+IOSchedulingPriority=7
+TimeoutStartSec=2min
+
