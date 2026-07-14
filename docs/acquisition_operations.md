@@ -211,6 +211,11 @@ the authority requires it), then filter before any issuer or filing is stored.
 This is materially cheaper than polling every company separately and ensures
 that domestic small-company records never enter the queue.
 
+Discovery and downloads are recent-first. The current year takes precedence
+over historical years, discovery walks backward from the latest date, and each
+year's filing queue claims `filing_date DESC, source_filing_id DESC`. Completed
+documents remain idempotent and are never downloaded again when ordering changes.
+
 OpenDART refreshes the corporation-code master weekly using resumable transfer,
 maps the Korean ticker catalog to corporation codes, and downloads only original
 disclosure packages for matched companies. Its internal safety ceiling is 10,000

@@ -10,7 +10,10 @@ from valuechain.global_acquisition import (
     require_proxy,
     safe_filename,
 )
-from valuechain.global_acquisition_state import filing_local_dir
+from valuechain.global_acquisition_state import (
+    FILING_CLAIM_ORDER_SQL,
+    filing_local_dir,
+)
 
 
 def test_global_acquisition_config_preserves_year_priority(monkeypatch) -> None:
@@ -19,6 +22,10 @@ def test_global_acquisition_config_preserves_year_priority(monkeypatch) -> None:
     config = GlobalAcquisitionConfig.from_env()
 
     assert config.target_years == (2026, 2025)
+
+
+def test_global_filing_queue_claims_newest_filings_first() -> None:
+    assert FILING_CLAIM_ORDER_SQL == "filing_date DESC, source_filing_id DESC"
 
 
 def test_global_acquisition_caps_async_workers_at_four(monkeypatch) -> None:

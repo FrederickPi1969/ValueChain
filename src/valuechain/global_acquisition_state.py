@@ -12,6 +12,9 @@ from gcu.models import EntityRef, FilingRef, SourceDefinition
 from valuechain.acquisition_schema import ensure_acquisition_schema
 
 
+FILING_CLAIM_ORDER_SQL = "filing_date DESC, source_filing_id DESC"
+
+
 def filing_local_dir(
     raw_root: Path,
     source_id: str,
@@ -329,13 +332,13 @@ class GlobalSourceAcquisitionState:
     def claim_filings(self, filing_year: int, limit: int) -> list[dict[str, Any]]:
         with self.connection.transaction():
             rows = self.connection.execute(
-                """
+                f"""
                 SELECT * FROM acquisition_filings
                 WHERE source_id = %s
                   AND EXTRACT(YEAR FROM filing_date) = %s
                   AND status IN ('discovered', 'retry')
                   AND (next_attempt_at IS NULL OR next_attempt_at <= now())
-                ORDER BY filing_date, source_filing_id
+                ORDER BY {FILING_CLAIM_ORDER_SQL}
                 FOR UPDATE SKIP LOCKED
                 LIMIT %s
                 """,
