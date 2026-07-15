@@ -368,6 +368,11 @@ The 100-company first-step pilot is intentionally separate from PostgreSQL. It c
 inline-XBRL facts with evidence-backed company profiles and material filing signals, writing only reviewable
 JSONL/CSV artifacts. See `docs/financial_ie_pilot.md`.
 
+The no-database multilingual experiment adds native Simplified Chinese, Traditional Chinese, Japanese, and
+Korean parsing, Unicode-aware retrieval, one unified schema, conditional citation repair, semantic relation
+direction, and graph-readiness guards. Its 16-document audit and manually reviewed accuracy sample are documented
+in `docs/multilingual_financial_ie_experiment.md`.
+
 ## Unified Disclosure API
 
 The local-first cross-market report resolver, canonical document taxonomy,

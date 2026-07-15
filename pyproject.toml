@@ -13,6 +13,7 @@ dependencies = [
   "pandas>=2.0",
   "psycopg[binary]>=3.2",
   "psycopg-pool>=3.2",
+  "pypdf>=5.0",
   "pydantic-settings>=2.4",
   "pyyaml>=6.0",
   "requests>=2.31",
