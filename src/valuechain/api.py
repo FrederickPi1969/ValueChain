@@ -16,6 +16,7 @@ from valuechain.acquisition_resolver_api import router as acquisition_resolver_r
 from valuechain.acquisition_schema import prepare_acquisition_schema
 from valuechain.dashboard import build_dashboard_data
 from valuechain.models import Company, GraphEdge, RelationEvidence, SourceDocument
+from valuechain.universe_policy_api import router as universe_policy_router
 
 
 settings = Settings()
@@ -25,6 +26,18 @@ API_DESCRIPTION = """
 
 This API serves the evidence corpus, source inventory, extracted dependency
 data, and a **local-first unified disclosure resolver**.
+
+### Company coverage
+
+The long-term target is the complete SEC issuer universe, the complete mainland
+China CNINFO issuer universe, and a versioned **Global Strategic 1000**. The
+strategic universe is counted by issuer group rather than ticker and covers
+technology, energy, power, transportation, industrial equipment, materials,
+financial infrastructure, healthcare, telecommunications, food systems,
+defense, and physical infrastructure. Call
+`GET /api/acquisition/universe-policy` for regional and sector quotas, scoring,
+mandatory overrides, monitoring tiers, update cadence, retention, and storage
+assumptions.
 
 ### Recommended disclosure workflow
 
@@ -36,6 +49,17 @@ data, and a **local-first unified disclosure resolver**.
    and returns `202` when it outlives `wait_seconds`.
 4. Poll `GET /api/acquisition/requests/{request_id}` until `complete`, then use
    the returned `download_url`.
+
+### Monitoring and universe updates
+
+New-filing discovery runs at the fastest lawful source-specific cadence. Issuer
+registries refresh daily where machine endpoints support it. The Global
+Strategic 1000 is rebalanced quarterly, corporate actions are reconciled as
+events arrive, and the methodology is reviewed annually. Tier S retains all
+material disclosures, Tier A retains periodic and selected material reports,
+and Tier B retains annual/interim reports while leaving other documents on
+demand. Historical files are never deleted merely because an issuer exits the
+current universe.
 
 ### Authentication
 
@@ -64,6 +88,10 @@ OPENAPI_TAGS = [
     {
         "name": "acquisition-files",
         "description": "Source, issuer, filing, document, snapshot, object, and byte-range download APIs.",
+    },
+    {
+        "name": "universe-policy",
+        "description": "Company coverage, strategic selection, monitoring tiers, refresh cadence, deduplication, and retention policy.",
     },
 ]
 
@@ -109,6 +137,7 @@ app.add_middleware(
 )
 app.include_router(acquisition_router)
 app.include_router(acquisition_resolver_router)
+app.include_router(universe_policy_router)
 
 
 @app.get("/api/health")

@@ -9,6 +9,7 @@ the Cosmos Tailscale address and protects every `/api/acquisition/*` route with
 
 ```text
 GET  /api/acquisition/sources
+GET  /api/acquisition/universe-policy
 GET  /api/acquisition/issuers
 GET  /api/acquisition/filings
 GET  /api/acquisition/filings/{source_id}/{filing_id}
@@ -22,6 +23,11 @@ GET  /api/acquisition/objects
 GET  /api/acquisition/objects/{source_id}/{object_key}/download
 HEAD /api/acquisition/objects/{source_id}/{object_key}/download
 ```
+
+`universe-policy` exposes the machine-readable company coverage contract:
+complete US and mainland-China universes plus the Global Strategic 1000,
+regional and sector allocations, strategic scoring, S/A/B monitoring tiers,
+quarterly updates, identity deduplication, retention, and storage assumptions.
 
 `documents` are filing-scoped files such as SEC primary documents, complete
 submissions, archive indexes, CNINFO PDFs, and EDINET/OpenDART packages.

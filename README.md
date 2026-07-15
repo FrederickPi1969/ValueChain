@@ -324,6 +324,14 @@ identifiers, source definitions, filing discovery state, snapshot hashes, and
 row counts. See `docs/global_universe_acquisition.md` for source coverage,
 acceptance checks, and import operations.
 
+The long-term company scope is defined as complete US and mainland-China
+universes plus a versioned Global Strategic 1000. The strategic universe spans
+technology, energy, transportation, industrials, materials, financial
+infrastructure, healthcare, telecommunications, food systems, defense, and
+physical infrastructure. See `docs/global_strategic_universe.md` for regional
+and sector allocations, selection scoring, monitoring tiers, identity
+deduplication, quarterly governance, and storage assumptions.
+
 The graph build separates raw extraction from graph-ready evidence. Raw records
 are written to `relation_evidence_raw.jsonl`; schema-aware denoising
 canonicalizes aliases, removes generic placeholder objects that are not graph
