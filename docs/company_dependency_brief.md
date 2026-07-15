@@ -68,7 +68,7 @@ Calls go through the Endeavor aggregate OpenAI-compatible endpoint configured by
 `VALUECHAIN_LLM_BASE_URL`, which defaults to:
 
 ```text
-http://192.168.50.18:31969/v1
+http://100.114.26.88:31969/v1
 ```
 
 The request keeps `chat_template_kwargs.enable_thinking=false`, because the

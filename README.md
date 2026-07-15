@@ -345,7 +345,7 @@ industry chokepoints.
 LLM and hybrid extraction use an async OpenAI-compatible client with connection
 pooling and a semaphore-controlled request limit. The default extraction route
 uses Endeavor's Local LLM aggregate proxy directly,
-`http://192.168.50.18:31969/v1`, with `Qwen/Qwen3.5-4B`; the larger 35B model
+`http://100.114.26.88:31969/v1`, with `Qwen/Qwen3.5-4B`; the larger 35B model
 remains configured separately for later complex steps. The default concurrency is conservative:
 
 ```bash
@@ -357,6 +357,16 @@ Raise it per run only when the endpoint can handle the load:
 ```bash
 valuechain run --priority 1 --extractor hybrid --llm-concurrency 8 --max-filings-per-company 1 --write-postgres
 ```
+
+## Financial IE Audit
+
+The standalone benchmark harness compares 4B direct extraction, 35B direct extraction,
+constrained prompts, calculator execution, two-pass relation extraction, and full-PDF retrieval.
+See `docs/financial_ie_benchmark_2026-07-15.md` for the protocol, subset results, and failure cases.
+
+The 100-company first-step pilot is intentionally separate from PostgreSQL. It combines deterministic
+inline-XBRL facts with evidence-backed company profiles and material filing signals, writing only reviewable
+JSONL/CSV artifacts. See `docs/financial_ie_pilot.md`.
 
 ## Unified Disclosure API
 
