@@ -107,6 +107,38 @@ docker compose ps
 curl http://100.102.250.107:18018/api/health
 ```
 
+## Cloudflare Tunnel
+
+The public API hostname uses a dedicated locally-managed Cloudflare Tunnel:
+
+```text
+hostname: fintelligence.frederickpi.com
+tunnel: b2ca88b6-fa7e-4edd-9caa-2dd93d20d8b3
+DNS CNAME target: b2ca88b6-fa7e-4edd-9caa-2dd93d20d8b3.cfargotunnel.com
+origin: http://100.102.250.107:18018
+```
+
+The Cosmos connector runs as the user service
+`valuechain-cloudflared.service`. Its tunnel-specific credential is stored at
+`/home/pi/.cloudflared/b2ca88b6-fa7e-4edd-9caa-2dd93d20d8b3.json` with mode
+`0600`; the Cloudflare account-level `cert.pem` is not copied to Cosmos.
+
+Deploy or refresh the non-secret config and unit:
+
+```bash
+install -m 600 deploy/cloudflare/fintelligence.yml ~/.cloudflared/fintelligence.yml
+install -m 644 deploy/systemd/valuechain-cloudflared.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now valuechain-cloudflared.service
+```
+
+Check the connector and public hostname:
+
+```bash
+systemctl --user status valuechain-cloudflared.service
+curl https://fintelligence.frederickpi.com/api/health
+```
+
 The API container mounts SEC and global-acquisition HDD roots read-only. Set
 `VALUECHAIN_FILE_API_TOKEN`, `VALUECHAIN_FILE_HOST_SEC_ROOT`, and
 `VALUECHAIN_FILE_HOST_VALUECHAIN_ROOT` in the uncommitted Cosmos `.env` before

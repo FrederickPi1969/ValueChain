@@ -1,0 +1,15 @@
+[Unit]
+Description=ValueChain fintelligence.frederickpi.com Cloudflare Tunnel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/home/pi/.local/bin/cloudflared --no-autoupdate tunnel --config /home/pi/.cloudflared/fintelligence.yml run
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=0
+
+[Install]
+WantedBy=default.target
+

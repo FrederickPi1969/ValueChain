@@ -1,0 +1,8 @@
+tunnel: b2ca88b6-fa7e-4edd-9caa-2dd93d20d8b3
+credentials-file: /home/pi/.cloudflared/b2ca88b6-fa7e-4edd-9caa-2dd93d20d8b3.json
+
+ingress:
+  - hostname: fintelligence.frederickpi.com
+    service: http://100.102.250.107:18018
+  - service: http_status:404
+
