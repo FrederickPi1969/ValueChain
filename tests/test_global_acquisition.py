@@ -87,11 +87,20 @@ def test_new_public_source_runtime_rates_are_conservatively_capped(monkeypatch) 
     assert config.cvm_requests_per_second == 1.0
 
 
-def test_global_acquisition_requires_proxy() -> None:
+def test_global_acquisition_requires_proxy_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("VALUECHAIN_ACQUISITION_USE_PROXY", raising=False)
     settings = Settings(_env_file=None, proxy_pool_url=None)
 
     with pytest.raises(RuntimeError, match="VALUECHAIN_PROXY_POOL_URL is required"):
         require_proxy(settings)
+
+
+def test_global_acquisition_can_disable_proxy(monkeypatch) -> None:
+    monkeypatch.setenv("VALUECHAIN_ACQUISITION_USE_PROXY", "false")
+    settings = Settings(_env_file=None, proxy_pool_url="https://proxy.example")
+
+    assert require_proxy(settings) is settings
+    assert settings.proxy_pool_url is None
 
 
 def test_global_acquisition_accepts_configured_proxy() -> None:

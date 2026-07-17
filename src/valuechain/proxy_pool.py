@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass
 from urllib.parse import quote
@@ -9,6 +10,19 @@ import requests
 
 class ProxyPoolError(RuntimeError):
     pass
+
+
+FALSE_VALUES = {"0", "false", "no", "off", "direct", "disabled"}
+
+
+def acquisition_uses_proxy(default: bool = True) -> bool:
+    """Return whether acquisition workers should route requests through the proxy pool."""
+    value = os.getenv("VALUECHAIN_ACQUISITION_USE_PROXY", "")
+    if not value:
+        value = os.getenv("VALUECHAIN_USE_PROXY", "")
+    if not value:
+        return default
+    return value.strip().casefold() not in FALSE_VALUES
 
 
 @dataclass(frozen=True)

@@ -32,7 +32,7 @@ from valuechain.global_acquisition_state import (
     filing_local_dir,
 )
 from valuechain.postgres_acquisition_state import PostgresAcquisitionState
-from valuechain.proxy_pool import ProxyPoolClient
+from valuechain.proxy_pool import ProxyPoolClient, acquisition_uses_proxy
 from valuechain.sec_acquisition import atomic_write_json
 
 
@@ -45,9 +45,13 @@ class AsyncGlobalAcquisitionRunner:
         self.source_id = source_id
         self.config = config
         self.settings = Settings()
-        if not self.settings.proxy_pool_url:
+        if acquisition_uses_proxy() and not self.settings.proxy_pool_url:
             raise RuntimeError("VALUECHAIN_PROXY_POOL_URL is required")
-        self.proxy_pool = ProxyPoolClient(self.settings.proxy_pool_url)
+        self.proxy_pool = (
+            ProxyPoolClient(self.settings.proxy_pool_url)
+            if acquisition_uses_proxy()
+            else None
+        )
         self.definition = PatchRegistry().get(source_id)
         self.schema_guard = AcquisitionSchemaGuard(config.database_url)
         target_rps = (
@@ -58,8 +62,17 @@ class AsyncGlobalAcquisitionRunner:
         self.limiter = AdaptiveRateLimiter(target_rps)
 
     async def _new_client(self) -> AsyncHttpClient:
-        return await AsyncHttpClient.create(
-            proxy_pool=self.proxy_pool,
+        if self.proxy_pool is not None:
+            return await AsyncHttpClient.create(
+                proxy_pool=self.proxy_pool,
+                limiter=self.limiter,
+                user_agent=self.settings.user_agent,
+                contact_email=self.settings.contact_email,
+                timeout_seconds=self.settings.http_timeout_seconds,
+                max_retries=self.settings.http_max_retries,
+                verify_tls=self.settings.verify_tls,
+            )
+        return AsyncHttpClient(
             limiter=self.limiter,
             user_agent=self.settings.user_agent,
             contact_email=self.settings.contact_email,

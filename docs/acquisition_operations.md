@@ -19,19 +19,23 @@ submission text, primary document, and a hash-bearing `filing.json` manifest.
 
 ## Network Contract
 
-All SEC requests use a normal proxy obtained from:
+Scheduled workers use the rotating proxy pool by default:
 
 ```text
 https://proxy.frederickpi.com/proxy/random/normal
 ```
 
+Set `VALUECHAIN_ACQUISITION_USE_PROXY=false` to run acquisition workers direct
+from the host network. Keep `VALUECHAIN_PROXY_POOL_URL` configured so proxy mode
+can be re-enabled without redeploying code.
+
 The asynchronous worker pool is hard-capped at eight workers. Each worker owns
-its proxy and HTTP session, while all workers share one adaptive SEC rate limiter
-that can start at up to eight requests per second, below SEC's global ten
-requests-per-second ceiling. HTTP 429 and retryable 5xx responses
-reduce the shared rate; sustained successful requests gradually restore it.
-The worker rotates proxies after request failures and never falls back to a
-direct SEC request. Proxy credentials are not logged or persisted.
+its HTTP session and, in proxy mode, its proxy. All workers share one adaptive
+SEC rate limiter that can start at up to eight requests per second, below SEC's
+global ten requests-per-second ceiling. HTTP 429 and retryable 5xx responses
+reduce the shared rate; sustained successful requests gradually restore it. In
+proxy mode the worker rotates proxies after request failures. Proxy credentials
+are not logged or persisted.
 
 ## Storage
 

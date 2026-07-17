@@ -22,7 +22,7 @@ from valuechain.global_acquisition import (
 from valuechain.global_acquisition_state import (
     GlobalSourceAcquisitionState,
 )
-from valuechain.proxy_pool import ProxyPoolClient
+from valuechain.proxy_pool import ProxyPoolClient, acquisition_uses_proxy
 from valuechain.request_budget import (
     PostgresDailyRequestBudget,
     RequestBudgetExceeded,
@@ -50,12 +50,16 @@ class OpenDartAcquisitionRunner:
     def __init__(self, config: GlobalAcquisitionConfig) -> None:
         self.config = config
         self.settings = Settings()
-        if not self.settings.proxy_pool_url:
+        if acquisition_uses_proxy() and not self.settings.proxy_pool_url:
             raise RuntimeError("VALUECHAIN_PROXY_POOL_URL is required")
         if not self.settings.opendart_api_key:
             raise RuntimeError("OPENDART_API_KEY is required")
         self.definition = SourceRegistry.load().get(OPENDART_SOURCE)
-        self.proxy_pool = ProxyPoolClient(self.settings.proxy_pool_url)
+        self.proxy_pool = (
+            ProxyPoolClient(self.settings.proxy_pool_url)
+            if acquisition_uses_proxy()
+            else None
+        )
         self.limiter = AdaptiveRateLimiter(config.opendart_requests_per_second)
         self.schema_guard = AcquisitionSchemaGuard(config.database_url)
         self.budget = PostgresDailyRequestBudget(
@@ -75,8 +79,18 @@ class OpenDartAcquisitionRunner:
         await asyncio.to_thread(self.budget.reserve)
 
     async def _new_client(self) -> AsyncHttpClient:
-        return await AsyncHttpClient.create(
-            proxy_pool=self.proxy_pool,
+        if self.proxy_pool is not None:
+            return await AsyncHttpClient.create(
+                proxy_pool=self.proxy_pool,
+                limiter=self.limiter,
+                user_agent=self.settings.user_agent,
+                contact_email=self.settings.contact_email,
+                timeout_seconds=self.settings.http_timeout_seconds,
+                max_retries=self.settings.http_max_retries,
+                verify_tls=self.settings.verify_tls,
+                before_request=self._reserve_request,
+            )
+        return AsyncHttpClient(
             limiter=self.limiter,
             user_agent=self.settings.user_agent,
             contact_email=self.settings.contact_email,

@@ -38,12 +38,15 @@ imports idempotent. A rerun updates metadata but does not duplicate rows.
 
 ## Commands
 
-Use the mandatory proxy pool for live requests:
+Use the proxy pool for live requests when it is enabled:
 
 ```bash
+export VALUECHAIN_ACQUISITION_USE_PROXY=true
 export VALUECHAIN_PROXY_POOL_URL=https://proxy.frederickpi.com
 valuechain-global smoke --live --source cninfo --source krx_kind --source tmx_issuer_lists
 ```
+
+Set `VALUECHAIN_ACQUISITION_USE_PROXY=false` to run direct from the host network.
 
 Generate and import a universe snapshot:
 

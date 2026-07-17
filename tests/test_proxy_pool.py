@@ -1,7 +1,12 @@
 import pytest
 import requests
 
-from valuechain.proxy_pool import ProxyPoolClient, ProxyPoolError, parse_normal_proxy
+from valuechain.proxy_pool import (
+    ProxyPoolClient,
+    ProxyPoolError,
+    acquisition_uses_proxy,
+    parse_normal_proxy,
+)
 
 
 def test_parse_normal_proxy_masks_credentials_and_encodes_url() -> None:
@@ -18,6 +23,20 @@ def test_parse_normal_proxy_masks_credentials_and_encodes_url() -> None:
 def test_parse_normal_proxy_rejects_invalid_values(value: str) -> None:
     with pytest.raises(ProxyPoolError):
         parse_normal_proxy(value)
+
+
+def test_acquisition_proxy_switch_defaults_on(monkeypatch) -> None:
+    monkeypatch.delenv("VALUECHAIN_ACQUISITION_USE_PROXY", raising=False)
+    monkeypatch.delenv("VALUECHAIN_USE_PROXY", raising=False)
+
+    assert acquisition_uses_proxy()
+
+
+@pytest.mark.parametrize("value", ["0", "false", "no", "off", "direct", "disabled"])
+def test_acquisition_proxy_switch_can_disable_proxy(monkeypatch, value: str) -> None:
+    monkeypatch.setenv("VALUECHAIN_ACQUISITION_USE_PROXY", value)
+
+    assert not acquisition_uses_proxy()
 
 
 def test_proxy_pool_retries_transient_control_plane_failure(monkeypatch) -> None:
