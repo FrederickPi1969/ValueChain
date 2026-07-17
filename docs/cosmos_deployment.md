@@ -81,13 +81,14 @@ have a different configured threshold. The production worker therefore uses a
 10,000-request daily hard budget in the `Asia/Seoul` timezone, reserves one unit
 before every real HTTP attempt (including retries), and stops before the next
 request when the budget is exhausted. Its default transport limit is 1 request
-per second with at most two workers. The defaults can only be reduced at runtime:
+per second. The current Cosmos runtime uses one worker for this lane:
 
 ```dotenv
 OPENDART_API_KEY=...
 VALUECHAIN_OPENDART_DAILY_REQUEST_BUDGET=10000
 VALUECHAIN_OPENDART_REQUESTS_PER_SECOND=1.0
-VALUECHAIN_OPENDART_CONCURRENCY=2
+VALUECHAIN_OPENDART_CONCURRENCY=1
+VALUECHAIN_OPENDART_FILING_LIMIT=8
 VALUECHAIN_OPENDART_DISCOVERY_LOOKBACK_DAYS=3
 VALUECHAIN_OPENDART_DISCOVERY_REFRESH_HOURS=1
 VALUECHAIN_OPENDART_UNIVERSE_REFRESH_HOURS=168
