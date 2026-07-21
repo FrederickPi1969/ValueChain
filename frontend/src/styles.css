@@ -590,6 +590,172 @@ tbody tr:hover {
   color: var(--amber);
 }
 
+.state-page.embedded {
+  min-height: 260px;
+  padding: 30px;
+}
+
+.filing-browser {
+  display: grid;
+  gap: 14px;
+}
+
+.filing-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.1fr) minmax(150px, 0.8fr) 100px minmax(160px, 0.7fr) 120px minmax(260px, 1.5fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.filing-toolbar label,
+.filing-token label {
+  display: grid;
+  gap: 4px;
+}
+
+.filing-toolbar label > span,
+.filing-token label > span,
+.filing-meta span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.filing-token {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: end;
+}
+
+.filing-query {
+  min-width: 0;
+}
+
+.source-strip {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.source-tile {
+  display: grid;
+  gap: 2px;
+  min-height: 76px;
+  padding: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.source-tile span {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.source-tile strong {
+  font-size: 20px;
+}
+
+.source-tile small {
+  color: var(--muted);
+}
+
+.source-tile.empty {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  grid-column: span 2;
+}
+
+.filing-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.9fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.filing-table {
+  max-height: 680px;
+}
+
+.filing-table table {
+  min-width: 820px;
+}
+
+.filing-table tbody tr {
+  cursor: pointer;
+}
+
+.filing-table td strong,
+.filing-table td small {
+  display: block;
+}
+
+.filing-table td small {
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.selected-row {
+  background: #eef9f7;
+}
+
+.filing-detail {
+  position: sticky;
+  top: 72px;
+  display: grid;
+  gap: 12px;
+}
+
+.filing-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.filing-meta div {
+  display: grid;
+  gap: 2px;
+  padding: 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.filing-meta strong {
+  overflow-wrap: anywhere;
+}
+
+.document-list {
+  display: grid;
+  gap: 8px;
+}
+
+.document-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.document-row div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.document-row span,
+.document-row small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 .drawer {
   position: fixed;
   top: 0;
@@ -702,10 +868,18 @@ tbody tr:hover {
   }
   .brief-layout,
   .brief-analyst,
-  .brief-section-grid {
+  .brief-section-grid,
+  .filing-toolbar,
+  .filing-layout {
     grid-template-columns: 1fr;
   }
+  .source-strip {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
   .brief-sidebar {
+    position: static;
+  }
+  .filing-detail {
     position: static;
   }
 }
@@ -732,5 +906,9 @@ tbody tr:hover {
   }
   table {
     min-width: 760px;
+  }
+  .source-strip,
+  .filing-meta {
+    grid-template-columns: 1fr;
   }
 }

@@ -75,20 +75,41 @@ Set a random PostgreSQL password and a real SEC contact identity before starting
 automated collection. Keep SEC traffic globally rate-limited; worker concurrency
 must not multiply the configured request rate.
 
+When the Frederick proxy pool is healthy, Cosmos uses the normal acquisition
+throughput profile below. These values restore the post-proxy speed while
+leaving source-specific request-per-second limits, quota guards, retry caps, and
+resumable job state in control.
+
+```dotenv
+VALUECHAIN_ACQUISITION_USE_PROXY=true
+VALUECHAIN_PROXY_POOL_URL=https://proxy.frederickpi.com
+VALUECHAIN_ACQUISITION_SEC_RPS=8.0
+VALUECHAIN_ACQUISITION_CONCURRENCY=8
+VALUECHAIN_ACQUISITION_ISSUER_LIMIT=32
+VALUECHAIN_GLOBAL_CONCURRENCY=4
+VALUECHAIN_CNINFO_ISSUER_LIMIT=16
+VALUECHAIN_ESEF_FILING_LIMIT=16
+VALUECHAIN_OPENDART_CONCURRENCY=2
+VALUECHAIN_OPENDART_FILING_LIMIT=16
+VALUECHAIN_EDINET_CONCURRENCY=2
+VALUECHAIN_EDINET_FILING_LIMIT=16
+VALUECHAIN_ACQUISITION_RETRIES=5
+```
+
 OpenDART's official error-code documentation says status `020` is generally
 returned after at least 20,000 requests, while explicitly warning that a key can
 have a different configured threshold. The production worker therefore uses a
 10,000-request daily hard budget in the `Asia/Seoul` timezone, reserves one unit
 before every real HTTP attempt (including retries), and stops before the next
 request when the budget is exhausted. Its default transport limit is 1 request
-per second. The current Cosmos runtime uses one worker for this lane:
+per second. The current Cosmos runtime uses two workers for this lane:
 
 ```dotenv
 OPENDART_API_KEY=...
 VALUECHAIN_OPENDART_DAILY_REQUEST_BUDGET=10000
 VALUECHAIN_OPENDART_REQUESTS_PER_SECOND=1.0
-VALUECHAIN_OPENDART_CONCURRENCY=1
-VALUECHAIN_OPENDART_FILING_LIMIT=8
+VALUECHAIN_OPENDART_CONCURRENCY=2
+VALUECHAIN_OPENDART_FILING_LIMIT=16
 VALUECHAIN_OPENDART_DISCOVERY_LOOKBACK_DAYS=3
 VALUECHAIN_OPENDART_DISCOVERY_REFRESH_HOURS=1
 VALUECHAIN_OPENDART_UNIVERSE_REFRESH_HOURS=168

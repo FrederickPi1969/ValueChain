@@ -13,10 +13,12 @@ import { Bottlenecks } from './views/Bottlenecks.jsx';
 import { Companies } from './views/Companies.jsx';
 import { Edges } from './views/Edges.jsx';
 import { Evidence } from './views/Evidence.jsx';
+import { Filings } from './views/Filings.jsx';
 import { Overview } from './views/Overview.jsx';
 
 const EMPTY_FILTERS = { query: '', company: '', relation: '', modality: '' };
 const TABS = [
+  { id: 'filings', label: 'Filing Library' },
   { id: 'overview', label: 'Overview' },
   { id: 'companies', label: 'Companies' },
   { id: 'briefs', label: 'Briefs' },
@@ -30,7 +32,7 @@ export function App() {
   const [selectedRunId, setSelectedRunId] = useState('');
   const [data, setData] = useState(null);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('filings');
   const [selectedEvidence, setSelectedEvidence] = useState(null);
   const [briefIndex, setBriefIndex] = useState([]);
   const [selectedBriefTicker, setSelectedBriefTicker] = useState('');
@@ -150,7 +152,7 @@ export function App() {
     setActiveTab('briefs');
   };
 
-  if (error) {
+  if (error && activeTab !== 'filings') {
     return (
       <div className="state-page">
         <AlertTriangle size={28} />
@@ -165,28 +167,33 @@ export function App() {
     <div className="app-shell">
       <RunSelector runs={runs} selectedRunId={selectedRunId} onSelect={setSelectedRunId} onRefresh={loadRuns} />
       {loading && <div className="loading-bar" />}
-      {data ? (
+      {data || activeTab === 'filings' ? (
         <>
-          <FilterBar
-            data={data}
-            filters={filters}
-            onChange={updateFilters}
-            onReset={() => setFilters(EMPTY_FILTERS)}
-            onCurrentFacts={() => updateFilters({ modality: 'current_fact' })}
-            onExport={() => exportCsv('filtered_edges.csv', filteredEdges)}
-          />
-          <main>
-            <MetricStrip
+          {data && activeTab !== 'filings' && (
+            <FilterBar
               data={data}
-              filteredCompanies={filteredCompanies}
-              filteredEdges={filteredEdges}
-              filteredEvidence={filteredEvidence}
-              filteredBottlenecks={filteredBottlenecks}
+              filters={filters}
+              onChange={updateFilters}
+              onReset={() => setFilters(EMPTY_FILTERS)}
+              onCurrentFacts={() => updateFilters({ modality: 'current_fact' })}
+              onExport={() => exportCsv('filtered_edges.csv', filteredEdges)}
             />
+          )}
+          <main>
+            {data && activeTab !== 'filings' && (
+              <MetricStrip
+                data={data}
+                filteredCompanies={filteredCompanies}
+                filteredEdges={filteredEdges}
+                filteredEvidence={filteredEvidence}
+                filteredBottlenecks={filteredBottlenecks}
+              />
+            )}
             <section className="workbench">
               <Tabs tabs={TABS} active={activeTab} onChange={setActiveTab} />
               <div className="tab-body">
-                {activeTab === 'overview' && <Overview edges={filteredEdges} evidence={filteredEvidence} />}
+                {activeTab === 'filings' && <Filings />}
+                {activeTab === 'overview' && data && <Overview edges={filteredEdges} evidence={filteredEvidence} />}
                 {activeTab === 'companies' && (
                   <Companies
                     companies={filteredCompanies}
@@ -206,9 +213,16 @@ export function App() {
                     onCompanyFilter={(company) => updateFilters({ company })}
                   />
                 )}
-                {activeTab === 'bottlenecks' && <Bottlenecks rows={filteredBottlenecks} />}
-                {activeTab === 'edges' && <Edges rows={filteredEdges} />}
-                {activeTab === 'evidence' && <Evidence rows={filteredEvidence} onInspect={setSelectedEvidence} />}
+                {activeTab === 'bottlenecks' && data && <Bottlenecks rows={filteredBottlenecks} />}
+                {activeTab === 'edges' && data && <Edges rows={filteredEdges} />}
+                {activeTab === 'evidence' && data && <Evidence rows={filteredEvidence} onInspect={setSelectedEvidence} />}
+                {activeTab !== 'filings' && !data && (
+                  <div className="state-page embedded">
+                    <AlertTriangle size={24} />
+                    <h1>Dashboard data is not loaded</h1>
+                    <p>{error || 'Generate an extraction run or switch back to Filing Library.'}</p>
+                  </div>
+                )}
               </div>
             </section>
           </main>

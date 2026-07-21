@@ -13,5 +13,5 @@ data/raw
 data/processed
 reports
 frontend/node_modules
-frontend/dist
+frontend/dist/data
 frontend/public/data

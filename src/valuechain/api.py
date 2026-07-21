@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import asyncio
+from pathlib import Path
 from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
@@ -20,6 +23,8 @@ from valuechain.universe_policy_api import router as universe_policy_router
 
 
 settings = Settings()
+FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+FRONTEND_INDEX = FRONTEND_DIST / "index.html"
 
 API_DESCRIPTION = """
 ## Disclosure-derived AI value-chain data service
@@ -139,6 +144,13 @@ app.include_router(acquisition_router)
 app.include_router(acquisition_resolver_router)
 app.include_router(universe_policy_router)
 
+if (FRONTEND_DIST / "assets").is_dir():
+    app.mount(
+        "/assets",
+        StaticFiles(directory=str(FRONTEND_DIST / "assets")),
+        name="frontend-assets",
+    )
+
 
 @app.get("/api/health")
 async def health(request: Request) -> dict[str, Any]:
@@ -146,6 +158,13 @@ async def health(request: Request) -> dict[str, Any]:
         row = await conn.execute("SELECT 1 AS ok")
         result = await row.fetchone()
     return {"ok": result["ok"] == 1}
+
+
+@app.get("/", include_in_schema=False)
+async def frontend_index() -> FileResponse:
+    if not FRONTEND_INDEX.is_file():
+        raise HTTPException(status_code=404, detail="Frontend build is not available")
+    return FileResponse(FRONTEND_INDEX)
 
 
 @app.get("/api/runs")
@@ -416,6 +435,16 @@ async def fetch_one(request: Request, query: str, params: tuple[Any, ...] = ()) 
         cursor = await conn.execute(query, params)
         row = await cursor.fetchone()
     return dict(row) if row else None
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def frontend_spa_fallback(full_path: str) -> FileResponse:
+    reserved = {"api", "docs", "redoc", "openapi.json"}
+    if full_path.split("/", 1)[0] in reserved:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not FRONTEND_INDEX.is_file():
+        raise HTTPException(status_code=404, detail="Frontend build is not available")
+    return FileResponse(FRONTEND_INDEX)
 
 
 def main() -> None:
