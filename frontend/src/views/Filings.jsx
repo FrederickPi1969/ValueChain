@@ -7,10 +7,12 @@ import {
   fetchAcquisitionSources,
 } from '../api/data.js';
 import { truncate } from '../components/format.js';
+import { IssuerSearch } from '../components/IssuerSearch.jsx';
 
 const TOKEN_STORAGE_KEY = 'valuechain.fileApiToken';
 const DEFAULT_FILTERS = {
   source_id: '',
+  issuer_id: '',
   year: new Date().getFullYear(),
   q: '',
   form: '',
@@ -42,6 +44,7 @@ export function Filings() {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_STORAGE_KEY) || '');
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [sources, setSources] = useState([]);
+  const [selectedIssuer, setSelectedIssuer] = useState(null);
   const [filings, setFilings] = useState([]);
   const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -118,6 +121,18 @@ export function Filings() {
   }, [selected, token]);
 
   const updateFilter = (key, value) => setFilters((current) => ({ ...current, [key]: value }));
+  const updateSource = (value) => {
+    setSelectedIssuer(null);
+    setFilters((current) => ({ ...current, source_id: value, issuer_id: '' }));
+  };
+  const updateIssuer = (issuer) => {
+    setSelectedIssuer(issuer);
+    setFilters((current) => ({
+      ...current,
+      source_id: issuer?.source_id || current.source_id,
+      issuer_id: issuer?.source_issuer_id || '',
+    }));
+  };
 
   const openDocument = async (fileRecord) => {
     try {
@@ -152,7 +167,7 @@ export function Filings() {
         </div>
         <label>
           <span>Source</span>
-          <select value={filters.source_id} onChange={(event) => updateFilter('source_id', event.target.value)}>
+          <select value={filters.source_id} onChange={(event) => updateSource(event.target.value)}>
             <option value="">All sources</option>
             {sources.map((source) => (
               <option key={source.source_id} value={source.source_id}>
@@ -184,11 +199,12 @@ export function Filings() {
             <option value="failed">Failed</option>
           </select>
         </label>
+        <IssuerSearch token={token} sourceId={filters.source_id} selectedIssuer={selectedIssuer} onSelect={updateIssuer} />
         <label className="filing-query">
-          <span>Company / ticker / filing id</span>
+          <span>Filing id / free text</span>
           <div className="input-with-icon">
             <Search size={16} />
-            <input value={filters.q} placeholder="NVIDIA, 0000320193, ASML..." onChange={(event) => updateFilter('q', event.target.value)} />
+            <input value={filters.q} placeholder="Accession, source filing id, form..." onChange={(event) => updateFilter('q', event.target.value)} />
           </div>
         </label>
         <button onClick={loadFilings} disabled={loading}>

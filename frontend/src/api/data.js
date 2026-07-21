@@ -15,10 +15,11 @@ export function buildAcquisitionFilingQuery(filters = {}) {
   return params.toString();
 }
 
-async function fetchAcquisitionJson(path, token) {
+async function fetchAcquisitionJson(path, token, options = {}) {
   const response = await fetch(`${API_BASE}${path}`, {
     cache: 'no-store',
     headers: acquisitionHeaders(token),
+    signal: options.signal,
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => '');
@@ -29,6 +30,11 @@ async function fetchAcquisitionJson(path, token) {
 
 export async function fetchAcquisitionSources(token) {
   return fetchAcquisitionJson('/api/acquisition/sources', token);
+}
+
+export async function fetchAcquisitionIssuers(filters, token, options = {}) {
+  const query = buildAcquisitionFilingQuery({ limit: 50, ...filters });
+  return fetchAcquisitionJson(`/api/acquisition/issuers?${query}`, token, options);
 }
 
 export async function fetchAcquisitionFilings(filters, token) {

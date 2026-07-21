@@ -602,19 +602,29 @@ tbody tr:hover {
 
 .filing-toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 1.1fr) minmax(150px, 0.8fr) 100px minmax(160px, 0.7fr) 120px minmax(260px, 1.5fr) auto;
+  grid-template-columns:
+    minmax(220px, 1fr)
+    minmax(130px, 0.55fr)
+    92px
+    minmax(150px, 0.65fr)
+    116px
+    minmax(300px, 1.4fr)
+    minmax(230px, 0.9fr)
+    auto;
   gap: 10px;
   align-items: end;
 }
 
 .filing-toolbar label,
-.filing-token label {
+.filing-token label,
+.issuer-search label {
   display: grid;
   gap: 4px;
 }
 
 .filing-toolbar label > span,
 .filing-token label > span,
+.issuer-search label > span,
 .filing-meta span {
   color: var(--muted);
   font-size: 11px;
@@ -631,6 +641,98 @@ tbody tr:hover {
 
 .filing-query {
   min-width: 0;
+}
+
+.issuer-search {
+  position: relative;
+  min-width: 0;
+}
+
+.issuer-input-wrap {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 36px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: #fff;
+  padding: 0 7px 0 9px;
+}
+
+.issuer-input-wrap:focus-within {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.14);
+}
+
+.issuer-input-wrap input {
+  border: 0;
+  outline: 0;
+  padding: 0;
+}
+
+.issuer-clear {
+  width: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
+  color: var(--muted);
+}
+
+.issuer-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 25;
+  max-height: 390px;
+  overflow: auto;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.16);
+}
+
+.issuer-menu button {
+  display: grid;
+  justify-items: start;
+  gap: 2px;
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  box-shadow: none;
+  text-align: left;
+}
+
+.issuer-menu button:hover,
+.issuer-menu button.active {
+  background: #eef9f7;
+  border-color: #b7e4dc;
+}
+
+.issuer-menu button strong {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.issuer-menu button span,
+.issuer-menu button small,
+.issuer-menu-state {
+  color: var(--muted);
+}
+
+.issuer-menu-state {
+  padding: 12px;
+}
+
+.issuer-menu-state.error {
+  color: var(--red);
 }
 
 .source-strip {
