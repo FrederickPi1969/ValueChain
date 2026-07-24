@@ -410,10 +410,15 @@ class AsyncGlobalAcquisitionRunner:
         with GlobalSourceAcquisitionState(
             self.config.database_url, ESEF_SOURCE, False
         ) as state:
-            for year in self.config.target_years:
-                claimed = state.claim_filings(year, self.config.esef_filing_limit)
+            for statuses in (("discovered",), ("retry",)):
+                for year in self.config.target_years:
+                    claimed = state.claim_filings(
+                        year, self.config.esef_filing_limit, statuses=statuses
+                    )
+                    if claimed:
+                        target_year = year
+                        break
                 if claimed:
-                    target_year = year
                     break
 
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()

@@ -478,10 +478,15 @@ class EsefAcquisitionRunner:
                 counts["discovered"] += self._discover_year(adapter, state, year)
             claimed: list[dict[str, Any]] = []
             target_year = self.config.target_years[0]
-            for year in self.config.target_years:
-                claimed = state.claim_filings(year, self.config.esef_filing_limit)
+            for statuses in (("discovered",), ("retry",)):
+                for year in self.config.target_years:
+                    claimed = state.claim_filings(
+                        year, self.config.esef_filing_limit, statuses=statuses
+                    )
+                    if claimed:
+                        target_year = year
+                        break
                 if claimed:
-                    target_year = year
                     break
             for filing in claimed:
                 counts["filings"] += 1

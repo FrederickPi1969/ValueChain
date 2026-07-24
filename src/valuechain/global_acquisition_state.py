@@ -336,20 +336,27 @@ class GlobalSourceAcquisitionState:
             ),
         )
 
-    def claim_filings(self, filing_year: int, limit: int) -> list[dict[str, Any]]:
+    def claim_filings(
+        self,
+        filing_year: int,
+        limit: int,
+        statuses: tuple[str, ...] = ("discovered", "retry"),
+    ) -> list[dict[str, Any]]:
+        if not statuses:
+            return []
         with self.connection.transaction():
             rows = self.connection.execute(
                 f"""
                 SELECT * FROM acquisition_filings
                 WHERE source_id = %s
                   AND EXTRACT(YEAR FROM filing_date) = %s
-                  AND status IN ('discovered', 'retry')
+                  AND status = ANY(%s)
                   AND (next_attempt_at IS NULL OR next_attempt_at <= now())
                 ORDER BY {FILING_CLAIM_ORDER_SQL}
                 FOR UPDATE SKIP LOCKED
                 LIMIT %s
                 """,
-                (self.source_id, filing_year, limit),
+                (self.source_id, filing_year, list(statuses), limit),
             ).fetchall()
             if rows:
                 with self.connection.cursor() as cursor:

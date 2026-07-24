@@ -120,8 +120,8 @@ class PostgresAcquisitionState:
                   )
                 ORDER BY
                   CASE ys.status
-                    WHEN 'running' THEN 0 WHEN 'retry' THEN 1
-                    WHEN 'pending' THEN 2 ELSE 3
+                    WHEN 'running' THEN 0 WHEN 'pending' THEN 1
+                    WHEN 'retry' THEN 2 ELSE 3
                   END,
                   i.priority,
                   ys.scanned_at NULLS FIRST,
@@ -187,12 +187,16 @@ class PostgresAcquisitionState:
         return {row["status"]: row["count"] for row in rows}
 
     def active_backfill_year(self, years: Iterable[int]) -> int | None:
-        for year in years:
-            progress = self.year_progress(year)
-            incomplete = sum(
-                count for status, count in progress.items() if status != "complete"
-            )
-            if not progress or incomplete:
+        progress_by_year = [(year, self.year_progress(year)) for year in years]
+        for year, progress in progress_by_year:
+            if not progress or any(
+                count
+                for status, count in progress.items()
+                if status in {"pending", "running"}
+            ):
+                return year
+        for year, progress in progress_by_year:
+            if progress.get("retry", 0):
                 return year
         return None
 
