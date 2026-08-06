@@ -1,0 +1,89 @@
+{
+  "tasks": {
+    "financebench": {
+      "count": 30,
+      "errors": 0,
+      "avg_latency_s": 2.717,
+      "metrics": {
+        "answer_correct": 0.333333,
+        "chunk_count": 532.466667,
+        "citation_page_hit": 0.521739,
+        "expression_valid": 0.391304,
+        "final_page_hit_at_3": 0.366667,
+        "final_page_hit_at_8": 0.5,
+        "lexical_page_hit_at_3": 0.1,
+        "lexical_page_hit_at_8": 0.333333,
+        "tool_answer_correct": 0.217391
+      },
+      "micro_metrics": {}
+    },
+    "finben_fnxl": {
+      "count": 20,
+      "errors": 0,
+      "avg_latency_s": 1.0787,
+      "metrics": {
+        "f1": 0.608333,
+        "precision": 0.6,
+        "recall": 0.666667,
+        "token_accuracy": 0.970943
+      },
+      "micro_metrics": {
+        "precision": 0.678571,
+        "recall": 0.678571,
+        "f1": 0.678571
+      }
+    },
+    "finben_ner": {
+      "count": 30,
+      "errors": 0,
+      "avg_latency_s": 2.3846,
+      "metrics": {
+        "f1": 0.677477,
+        "precision": 0.650759,
+        "recall": 0.783016
+      },
+      "micro_metrics": {
+        "precision": 0.53125,
+        "recall": 0.701031,
+        "f1": 0.604444
+      }
+    },
+    "finqa": {
+      "count": 30,
+      "errors": 0,
+      "avg_latency_s": 2.0625,
+      "metrics": {
+        "answer_correct": 0.666667,
+        "expression_valid": 0.633333,
+        "tool_answer_correct": 0.5
+      },
+      "micro_metrics": {}
+    },
+    "fire_joint_re": {
+      "count": 30,
+      "errors": 0,
+      "avg_latency_s": 5.8183,
+      "metrics": {
+        "entity_f1": 0.563882,
+        "entity_precision": 0.571244,
+        "entity_recall": 0.600473,
+        "relation_f1": 0.262191,
+        "relation_precision": 0.260111,
+        "relation_recall": 0.311667
+      },
+      "micro_metrics": {
+        "entity_precision": 0.561404,
+        "entity_recall": 0.631579,
+        "entity_f1": 0.594427,
+        "relation_precision": 0.271028,
+        "relation_recall": 0.315217,
+        "relation_f1": 0.291457
+      }
+    }
+  },
+  "runner_version": "financial-ie-benchmark-v0.1",
+  "model": "Qwen/Qwen3.6-35B-A3B",
+  "style": "workflow",
+  "case_count": 140,
+  "completed_at": "2026-07-15T12:14:59.057599+00:00"
+}

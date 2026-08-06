@@ -1,0 +1,74 @@
+{
+  "tasks": {
+    "financebench": {
+      "count": 5,
+      "errors": 0,
+      "avg_latency_s": 2.5284,
+      "metrics": {
+        "answer_correct": 0.2,
+        "citation_page_hit": 0.0,
+        "operation_valid": 0.0
+      }
+    },
+    "finben_fnxl": {
+      "count": 5,
+      "errors": 0,
+      "avg_latency_s": 1.5439,
+      "metrics": {
+        "f1": 0.0,
+        "fn": 1.8,
+        "fp": 1.2,
+        "precision": 0.0,
+        "recall": 0.0,
+        "token_accuracy": 0.879681,
+        "tp": 0.0
+      }
+    },
+    "finben_ner": {
+      "count": 5,
+      "errors": 0,
+      "avg_latency_s": 4.3525,
+      "metrics": {
+        "f1": 0.326667,
+        "fn": 2.0,
+        "fp": 2.8,
+        "precision": 0.3,
+        "recall": 0.46,
+        "tp": 1.2
+      }
+    },
+    "finqa": {
+      "count": 5,
+      "errors": 0,
+      "avg_latency_s": 2.5391,
+      "metrics": {
+        "answer_correct": 0.2,
+        "operation_valid": 0.2
+      }
+    },
+    "fire_joint_re": {
+      "count": 5,
+      "errors": 0,
+      "avg_latency_s": 3.248,
+      "metrics": {
+        "entity_f1": 0.389091,
+        "entity_fn": 3.4,
+        "entity_fp": 2.0,
+        "entity_precision": 0.430952,
+        "entity_recall": 0.366667,
+        "entity_tp": 2.4,
+        "relation_f1": 0.107143,
+        "relation_fn": 3.4,
+        "relation_fp": 1.2,
+        "relation_precision": 0.166667,
+        "relation_recall": 0.08,
+        "relation_tp": 0.4
+      }
+    }
+  },
+  "runner_version": "financial-ie-benchmark-v0.1",
+  "model": "Qwen/Qwen3.6-35B-A3B",
+  "style": "structured",
+  "case_count": 25,
+  "completed_at": "2026-07-15T11:59:33.465533+00:00"
+}

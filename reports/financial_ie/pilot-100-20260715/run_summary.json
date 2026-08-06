@@ -1,0 +1,95 @@
+{
+  "pilot_version": "financial-ie-pilot-v0.1",
+  "generated_at": "2026-07-15T13:16:45.488350+00:00",
+  "model": "Qwen/Qwen3.6-35B-A3B",
+  "requested_companies": 100,
+  "catalog_ready": 100,
+  "completed_companies": 100,
+  "failed_or_missing_companies": 0,
+  "profile_industry_coverage": 1.0,
+  "financial_fact_count": 922,
+  "financial_fact_company_coverage": {
+    "capital_expenditure": 93,
+    "cash_and_equivalents": 99,
+    "employees": 1,
+    "net_income": 99,
+    "operating_cash_flow": 99,
+    "operating_income": 86,
+    "research_and_development": 67,
+    "revenue": 99,
+    "stockholders_equity": 99,
+    "total_assets": 99,
+    "total_liabilities": 81
+  },
+  "material_signal_count": 772,
+  "material_signal_categories": {
+    "capacity_and_supply": 66,
+    "capital_allocation": 92,
+    "customer_concentration": 68,
+    "demand_and_revenue": 98,
+    "liquidity_and_balance_sheet": 82,
+    "partnership_or_mna": 57,
+    "pricing_and_margin": 69,
+    "regulatory_or_geopolitical": 88,
+    "supplier_or_infrastructure_dependency": 69,
+    "technology_and_product": 83
+  },
+  "signal_evidence_valid_count": 626,
+  "signal_evidence_total_count": 772,
+  "signal_evidence_valid_rate": 0.8109,
+  "signal_evidence_failure_reasons": {
+    "quote_not_found": 143,
+    "unknown_chunk_id": 3
+  },
+  "profile_evidence_valid_count": 339,
+  "profile_evidence_total_count": 400,
+  "profile_evidence_valid_rate": 0.8475,
+  "profile_evidence_failure_reasons": {
+    "quote_not_found": 58,
+    "unknown_chunk_id": 3
+  },
+  "evidence_valid_count": 965,
+  "evidence_total_count": 1172,
+  "evidence_valid_rate": 0.8234,
+  "companies_with_no_signals": [],
+  "companies_with_fewer_than_five_signals": [
+    "GOOGL"
+  ],
+  "companies_with_parser_warnings": [
+    "ASML",
+    "BE",
+    "HON",
+    "INTC"
+  ],
+  "companies_with_partial_signal_recovery": [
+    "GOOGL",
+    "UPS"
+  ],
+  "database_writes": 0,
+  "quality_issue_count": 256,
+  "quality_issue_types": {
+    "accounting_identity_mismatch": 2,
+    "current_fact_contains_risk_language": 34,
+    "high_importance_profile_unverified": 19,
+    "missing_core_fact": 4,
+    "parser_fallback_or_warning": 4,
+    "partial_signal_json_recovery": 2,
+    "profile_evidence_unverified": 45,
+    "signal_evidence_unverified": 146
+  },
+  "quality_issue_severities": {
+    "error": 85,
+    "warning": 171
+  },
+  "companies_with_quality_issues": 84,
+  "artifacts": {
+    "manifest": "filing_manifest.jsonl",
+    "company_records": "company_records.jsonl",
+    "financial_facts": "financial_facts.jsonl",
+    "material_signals": "material_signals.jsonl",
+    "coverage": "coverage.csv",
+    "review_sample": "review_sample.csv",
+    "profile_review_sample": "profile_review_sample.csv",
+    "quality_issues": "quality_issues.csv"
+  }
+}

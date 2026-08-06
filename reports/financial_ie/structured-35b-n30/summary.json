@@ -1,0 +1,117 @@
+{
+  "tasks": {
+    "financebench": {
+      "count": 30,
+      "errors": 0,
+      "avg_latency_s": 1.9548,
+      "metrics": {
+        "answer_correct": 0.533333,
+        "expression_valid": 0.733333,
+        "harness_answer_correct": 0.766667,
+        "tool_answer_correct": 0.5
+      },
+      "metric_counts": {
+        "answer_correct": 30,
+        "expression_valid": 30,
+        "harness_answer_correct": 30,
+        "tool_answer_correct": 30
+      },
+      "micro_metrics": {}
+    },
+    "finben_fnxl": {
+      "count": 20,
+      "errors": 0,
+      "avg_latency_s": 1.6539,
+      "metrics": {
+        "f1": 0.475,
+        "precision": 0.475,
+        "recall": 0.516667,
+        "token_accuracy": 0.965775
+      },
+      "metric_counts": {
+        "f1": 20,
+        "precision": 20,
+        "recall": 20,
+        "token_accuracy": 20
+      },
+      "micro_metrics": {
+        "precision": 0.535714,
+        "recall": 0.535714,
+        "f1": 0.535714
+      }
+    },
+    "finben_ner": {
+      "count": 30,
+      "errors": 0,
+      "avg_latency_s": 2.1213,
+      "metrics": {
+        "f1": 0.663949,
+        "precision": 0.631743,
+        "recall": 0.788571
+      },
+      "metric_counts": {
+        "f1": 30,
+        "precision": 30,
+        "recall": 30
+      },
+      "micro_metrics": {
+        "precision": 0.51938,
+        "recall": 0.690722,
+        "f1": 0.59292
+      }
+    },
+    "finqa": {
+      "count": 30,
+      "errors": 0,
+      "avg_latency_s": 2.1017,
+      "metrics": {
+        "answer_correct": 0.666667,
+        "expression_valid": 0.633333,
+        "harness_answer_correct": 0.633333,
+        "tool_answer_correct": 0.433333
+      },
+      "metric_counts": {
+        "answer_correct": 30,
+        "expression_valid": 30,
+        "harness_answer_correct": 30,
+        "tool_answer_correct": 30
+      },
+      "micro_metrics": {}
+    },
+    "fire_joint_re": {
+      "count": 30,
+      "errors": 0,
+      "avg_latency_s": 4.2017,
+      "metrics": {
+        "entity_f1": 0.554542,
+        "entity_precision": 0.569149,
+        "entity_recall": 0.568182,
+        "relation_f1": 0.202862,
+        "relation_precision": 0.223993,
+        "relation_recall": 0.237222
+      },
+      "metric_counts": {
+        "entity_f1": 30,
+        "entity_precision": 30,
+        "entity_recall": 30,
+        "relation_f1": 30,
+        "relation_precision": 30,
+        "relation_recall": 30
+      },
+      "micro_metrics": {
+        "entity_precision": 0.573248,
+        "entity_recall": 0.592105,
+        "entity_f1": 0.582524,
+        "relation_precision": 0.191489,
+        "relation_recall": 0.195652,
+        "relation_f1": 0.193548
+      }
+    }
+  },
+  "runner_version": "financial-ie-benchmark-v0.1",
+  "scorer_version": "financial-ie-scorer-v0.2",
+  "model": "Qwen/Qwen3.6-35B-A3B",
+  "style": "structured",
+  "case_count": 140,
+  "completed_at": "2026-07-15T12:22:57.819964+00:00"
+}

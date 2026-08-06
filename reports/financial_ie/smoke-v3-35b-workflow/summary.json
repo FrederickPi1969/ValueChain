@@ -1,0 +1,83 @@
+{
+  "tasks": {
+    "financebench": {
+      "count": 5,
+      "errors": 0,
+      "avg_latency_s": 1.301,
+      "metrics": {
+        "answer_correct": 0.6,
+        "chunk_count": 453.8,
+        "citation_page_hit": 0.4,
+        "expression_valid": 0.4,
+        "final_page_hit_at_3": 0.4,
+        "final_page_hit_at_8": 0.6,
+        "lexical_page_hit_at_3": 0.2,
+        "lexical_page_hit_at_8": 0.2,
+        "tool_answer": 2745.807515,
+        "tool_answer_correct": 0.2
+      }
+    },
+    "finben_fnxl": {
+      "count": 5,
+      "errors": 0,
+      "avg_latency_s": 2.0157,
+      "metrics": {
+        "f1": 0.633333,
+        "fn": 0.4,
+        "fp": 0.6,
+        "precision": 0.566667,
+        "recall": 0.8,
+        "token_accuracy": 0.950778,
+        "tp": 1.4
+      }
+    },
+    "finben_ner": {
+      "count": 5,
+      "errors": 0,
+      "avg_latency_s": 2.0615,
+      "metrics": {
+        "f1": 0.726667,
+        "fn": 0.4,
+        "fp": 1.2,
+        "precision": 0.7,
+        "recall": 0.86,
+        "tp": 2.8
+      }
+    },
+    "finqa": {
+      "count": 5,
+      "errors": 0,
+      "avg_latency_s": 1.6692,
+      "metrics": {
+        "answer_correct": 0.4,
+        "expression_valid": 0.6,
+        "tool_answer": 20.812737,
+        "tool_answer_correct": 0.4
+      }
+    },
+    "fire_joint_re": {
+      "count": 5,
+      "errors": 0,
+      "avg_latency_s": 4.7396,
+      "metrics": {
+        "entity_f1": 0.505953,
+        "entity_fn": 2.0,
+        "entity_fp": 3.0,
+        "entity_precision": 0.443804,
+        "entity_recall": 0.594048,
+        "entity_tp": 3.8,
+        "relation_f1": 0.164444,
+        "relation_fn": 2.8,
+        "relation_fp": 3.4,
+        "relation_precision": 0.144545,
+        "relation_recall": 0.23,
+        "relation_tp": 1.0
+      }
+    }
+  },
+  "runner_version": "financial-ie-benchmark-v0.1",
+  "model": "Qwen/Qwen3.6-35B-A3B",
+  "style": "workflow",
+  "case_count": 25,
+  "completed_at": "2026-07-15T12:05:28.885703+00:00"
+}
