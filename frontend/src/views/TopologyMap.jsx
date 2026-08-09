@@ -1,252 +1,144 @@
-import { useEffect, useMemo, useState } from 'react';
-import {
-  Background,
-  Controls,
-  Handle,
-  MarkerType,
-  MiniMap,
-  Position,
-  ReactFlow,
-} from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { MultiDirectedGraph } from 'graphology';
+import forceAtlas2 from 'graphology-layout-forceatlas2';
+import Sigma from 'sigma';
 import { Network, Radio, ShieldCheck } from 'lucide-react';
 import { shortRelation } from '../components/format.js';
 import { confirmationStatus } from '../lib/filters.js';
 
-const MAX_TOPOLOGY_EDGES = 140;
-const NODE_TYPES = { topology: TopologyNode };
+const MAX_TOPOLOGY_EDGES = 220;
+const RELATION_COLORS = {
+  supplies_to: '#38bdf8', supplier_dependency: '#38bdf8', manufacturing_dependency: '#a78bfa', foundry_dependency: '#a78bfa',
+  customer_dependency: '#fbbf24', purchases_from: '#fbbf24', cloud_or_hosting_dependency: '#34d399',
+  data_center_dependency: '#34d399', power_or_utility_dependency: '#fb7185', network_or_interconnection_dependency: '#f97316',
+  distribution_or_channel_dependency: '#e879f9', licensing_dependency: '#60a5fa', strategic_partner: '#22d3ee', co_investment: '#f472b6',
+};
 
 export function TopologyMap({ edges = [], networkEdges = [], companies = [] }) {
   const [focus, setFocus] = useState('');
   const [depth, setDepth] = useState(1);
   const [showExposure, setShowExposure] = useState(false);
+  const [enabledTypes, setEnabledTypes] = useState([]);
   const [selectedEdge, setSelectedEdge] = useState(null);
   const sourceEdges = networkEdges.length ? networkEdges : edges;
   const issuerNames = useMemo(() => companies.map((company) => company.company).filter(Boolean), [companies]);
   const options = useMemo(() => focusOptions(sourceEdges, issuerNames), [sourceEdges, issuerNames]);
+  const availableTypes = useMemo(() => relationTypes(sourceEdges), [sourceEdges]);
 
   useEffect(() => {
-    if (focus && options.includes(focus)) return;
-    setFocus(options.includes('NVIDIA Corporation') ? 'NVIDIA Corporation' : options[0] || '');
+    if (!focus || !options.includes(focus)) setFocus(options.includes('NVIDIA Corporation') ? 'NVIDIA Corporation' : options[0] || '');
   }, [focus, options]);
+  useEffect(() => setEnabledTypes(availableTypes.map((row) => row.type)), [availableTypes]);
 
   const topology = useMemo(
-    () => buildTopology(sourceEdges, issuerNames, focus, depth, showExposure),
-    [sourceEdges, issuerNames, focus, depth, showExposure],
+    () => buildTopology(sourceEdges, issuerNames, focus, depth, showExposure, enabledTypes),
+    [sourceEdges, issuerNames, focus, depth, showExposure, enabledTypes],
   );
-  const detail = selectedEdge ? topology.edgeById.get(selectedEdge.id) : null;
 
   if (!sourceEdges.length) return <div className="empty topology-empty">No relationship edges match the active filters.</div>;
-
   return (
-    <section className="topology-lab">
+    <section className="topology-lab force-topology">
       <div className="topology-toolbar">
         <div>
-          <h2><Network size={18} /> Supply-chain topology lab</h2>
-          <p>Interactive evidence map. Arrow direction is disclosed dependency source → reporting issuer; class exposures are visually distinct from named counterparties.</p>
+          <h2><Network size={18} /> Supply-chain knowledge graph</h2>
+          <p>ForceAtlas2 layout: nearby nodes have denser disclosed relationships. Arrow direction is dependency source → reporting issuer; click or hover an edge to inspect its evidence.</p>
         </div>
-        <label><span>Focus company</span>
-          <select value={focus} onChange={(event) => { setFocus(event.target.value); setSelectedEdge(null); }}>
-            {options.map((name) => <option key={name} value={name}>{name}</option>)}
-          </select>
-        </label>
-        <label><span>Topology radius</span>
-          <select value={depth} onChange={(event) => setDepth(Number(event.target.value))}>
-            <option value={1}>One hop</option><option value={2}>Two hops</option>
-          </select>
-        </label>
+        <label><span>Focus company</span><select value={focus} onChange={(event) => { setFocus(event.target.value); setSelectedEdge(null); }}>{options.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+        <label><span>Graph radius</span><select value={depth} onChange={(event) => setDepth(Number(event.target.value))}><option value={1}>One hop</option><option value={2}>Two hops</option></select></label>
         <label className="topology-checkbox"><input type="checkbox" checked={showExposure} onChange={(event) => setShowExposure(event.target.checked)} /><span>Include anonymous / low-quality objects</span></label>
       </div>
       <div className="topology-stats">
-        <span><b>{topology.companyCount}</b> company / organization nodes</span>
-        <span><b>{topology.exposureCount}</b> anonymous / low-quality nodes</span>
-        <span><b>{topology.edges.length}</b> displayed relations (of {sourceEdges.length} after global filters)</span>
-        <span>{networkEdges.length ? <><ShieldCheck size={14} /> canonical candidates; review status still applies</> : <><Radio size={14} /> raw extraction signals; not all are verified counterparties</>}</span>
+        <span><b>{topology.companyCount}</b> named entities</span><span><b>{topology.exposureCount}</b> hidden-class eligible nodes</span><span><b>{topology.rows.length}</b> displayed relations</span>
+        <span>{networkEdges.length ? <><ShieldCheck size={14} /> canonical candidates; review state applies</> : <><Radio size={14} /> raw extraction; not verified counterparties</>}</span>
+      </div>
+      <div className="relation-legend" aria-label="Relationship type filters">
+        {availableTypes.map(({ type, count }) => <button key={type} type="button" className={enabledTypes.includes(type) ? 'active' : ''} onClick={() => setEnabledTypes((current) => current.includes(type) ? current.filter((item) => item !== type) : [...current, type])}>
+          <i style={{ background: relationColor(type) }} />{shortRelation(type)} <b>{count}</b>
+        </button>)}
       </div>
       <div className="topology-layout">
-        <div className="topology-canvas">
-          <ReactFlow
-            nodes={topology.nodes}
-            edges={topology.edges}
-            nodeTypes={NODE_TYPES}
-            fitView
-            fitViewOptions={{ padding: 0.18 }}
-            minZoom={0.12}
-            onEdgeClick={(_, edge) => setSelectedEdge(edge)}
-            onPaneClick={() => setSelectedEdge(null)}
-            proOptions={{ hideAttribution: true }}
-          >
-            <Background gap={22} size={1} color="#dce5ed" />
-            <MiniMap nodeColor={(node) => miniMapColor(node.data.kind)} maskColor="rgba(241, 245, 249, .62)" />
-            <Controls showInteractive={false} />
-          </ReactFlow>
-        </div>
+        <ForceGraph topology={topology} onSelect={setSelectedEdge} />
         <aside className="topology-detail panel">
-          <div className="panel-head"><h2>{detail ? 'Selected relationship' : 'How to read this map'}</h2></div>
-          {detail ? <EdgeDetail edge={detail} /> : <TopologyLegend networkReady={Boolean(networkEdges.length)} />}
+          <div className="panel-head"><h2>{selectedEdge ? 'Selected relationship' : 'Reading the graph'}</h2></div>
+          {selectedEdge ? <EdgeDetail edge={selectedEdge} /> : <TopologyLegend networkReady={Boolean(networkEdges.length)} />}
         </aside>
       </div>
     </section>
   );
 }
 
-function TopologyNode({ data }) {
-  return <div className={`topology-node ${data.kind} ${data.focus ? 'focus' : ''}`}>
-    <Handle type="target" position={Position.Left} />
-    <strong>{data.label}</strong><small>{data.meta}</small>
-    <Handle type="source" position={Position.Right} />
-  </div>;
+function ForceGraph({ topology, onSelect }) {
+  const containerRef = useRef(null);
+  useEffect(() => {
+    if (!containerRef.current || !topology.rows.length) return undefined;
+    const graph = new MultiDirectedGraph();
+    topology.nodes.forEach((node) => graph.addNode(node.id, node));
+    topology.rows.forEach((edge, index) => graph.addDirectedEdgeWithKey(edge.id || `edge-${index}`, edge.objectId, edge.subjectId, {
+      color: relationColor(edge.relation_type), size: Math.min(4, 0.8 + Math.log2(Number(edge.evidence_count || 1) + 1)), type: 'arrow', edge,
+    }));
+    forceAtlas2.assign(graph, { iterations: Math.min(280, 80 + graph.order * 5), settings: { ...forceAtlas2.inferSettings(graph), gravity: 1.3, scalingRatio: 7, slowDown: 2 } });
+    let hoveredNode = null;
+    const renderer = new Sigma(graph, containerRef.current, {
+      renderEdgeLabels: false, enableEdgeEvents: true, zIndex: true, defaultEdgeType: 'arrow', labelColor: { color: '#e2e8f0' }, labelFont: 'Inter, ui-sans-serif, system-ui', labelSize: 13, labelWeight: '600', labelRenderedSizeThreshold: 10, stagePadding: 38,
+      nodeReducer: (node, data) => {
+        if (!hoveredNode) return data;
+        const connected = node === hoveredNode || graph.areNeighbors(node, hoveredNode);
+        return connected ? data : { ...data, color: '#334155', label: '', zIndex: 0 };
+      },
+      edgeReducer: (edge, data) => {
+        if (!hoveredNode) return data;
+        const [source, target] = graph.extremities(edge);
+        return source === hoveredNode || target === hoveredNode ? { ...data, size: data.size + 1.1 } : { ...data, color: '#334155', size: 0.35, zIndex: 0 };
+      },
+    });
+    renderer.on('enterNode', ({ node }) => { hoveredNode = node; renderer.refresh(); });
+    renderer.on('leaveNode', () => { hoveredNode = null; renderer.refresh(); });
+    renderer.on('enterEdge', ({ edge }) => onSelect(graph.getEdgeAttribute(edge, 'edge')));
+    renderer.on('clickEdge', ({ edge }) => onSelect(graph.getEdgeAttribute(edge, 'edge')));
+    renderer.on('clickNode', ({ node }) => {
+      const nodeEdges = graph.edges(node).map((edge) => graph.getEdgeAttribute(edge, 'edge'));
+      if (nodeEdges.length) onSelect(nodeEdges.sort((a, b) => Number(b.evidence_count || 0) - Number(a.evidence_count || 0))[0]);
+    });
+    return () => renderer.kill();
+  }, [topology, onSelect]);
+  return <div className="topology-canvas sigma-canvas" ref={containerRef} />;
 }
 
 function EdgeDetail({ edge }) {
-  return <div className="topology-edge-detail">
-    <strong>{edge.object} <span>→</span> {edge.subject}</strong>
-    <dl>
-      <div><dt>Relation</dt><dd>{shortRelation(edge.relation_type)}</dd></div>
-      <div><dt>Modality</dt><dd>{edge.modality || 'not recorded'}</dd></div>
-      <div><dt>Evidence</dt><dd>{edge.evidence_count || 1} supporting passage{Number(edge.evidence_count || 1) === 1 ? '' : 's'}</dd></div>
-      <div><dt>Status</dt><dd>{confirmationStatus(edge)}</dd></div>
-      {edge.product_or_service && <div><dt>Product / service</dt><dd>{edge.product_or_service}</dd></div>}
-      {edge.risk_flags?.length > 0 && <div><dt>Audit flags</dt><dd>{edge.risk_flags.join(', ')}</dd></div>}
-    </dl>
-    {edge.source_urls && <a href={String(edge.source_urls).split(';')[0]} target="_blank" rel="noreferrer">Open supporting SEC filing</a>}
-  </div>;
+  return <div className="topology-edge-detail"><strong>{edge.object} <span>→</span> {edge.subject}</strong><dl>
+    <div><dt>Relation</dt><dd><i className="relation-dot" style={{ background: relationColor(edge.relation_type) }} /> {shortRelation(edge.relation_type)}</dd></div>
+    <div><dt>Modality</dt><dd>{edge.modality || 'not recorded'}</dd></div><div><dt>Evidence</dt><dd>{edge.evidence_count || 1} supporting passage{Number(edge.evidence_count || 1) === 1 ? '' : 's'}</dd></div>
+    <div><dt>Status</dt><dd>{confirmationStatus(edge)}</dd></div>{edge.product_or_service && <div><dt>Product / service</dt><dd>{edge.product_or_service}</dd></div>}{edge.risk_flags?.length > 0 && <div><dt>Audit flags</dt><dd>{edge.risk_flags.join(', ')}</dd></div>}
+  </dl>{edge.source_urls && <a href={String(edge.source_urls).split(';')[0]} target="_blank" rel="noreferrer">Open supporting SEC filing</a>}</div>;
 }
 
 function TopologyLegend({ networkReady }) {
-  return <div className="topology-legend">
-    <p><b>Solid teal nodes</b> are issuers in the selected company universe. Dark blue nodes are named organizations. Dashed amber nodes are anonymous disclosure classes or low-quality parsed objects; they are hidden by default.</p>
-    <p><b>Line color</b> denotes modality: green current fact, amber forward-looking, red risk/hypothetical, blue strategic. Width is logarithmic evidence count.</p>
-    <p>{networkReady ? 'This run has a canonical network projection, so generic unresolved objects have already been excluded. Canonical is a normalized candidate layer, not a claim that every displayed edge is verified; inspect each edge status before using it as fact.' : 'This older/raw run is useful for exploring disclosure coverage, but a visual edge is not a verified supplier/customer fact.'}</p>
-  </div>;
+  return <div className="topology-legend"><p><b>Node color:</b> teal is an issuer in the chosen universe; blue is a named external organization; amber is an anonymous/class object and is hidden by default. Larger nodes have more relationships in the selected subgraph.</p><p><b>Edge color:</b> encodes the relationship type shown in the filter legend—not confidence. Hover or click an edge to see the exact type, direction, status, and supporting evidence.</p><p>{networkReady ? 'The graph is a normalized candidate layer. “accepted” is an explicit review state; all other edges remain candidates.' : 'This raw graph is for exploration only, not a verified supplier/customer dataset.'}</p></div>;
 }
 
-function buildTopology(rows, issuerNames, focus, depth, showExposure) {
-  const issuers = new Set(issuerNames);
-  const normalized = collapseRows(rows, issuers, showExposure);
-  const ego = selectEgo(normalized, focus, depth);
-  const capped = ego.sort((a, b) => Number(b.evidence_count || 0) - Number(a.evidence_count || 0)).slice(0, MAX_TOPOLOGY_EDGES);
-  const visible = new Set(capped.flatMap((edge) => [edge.object, edge.subject]));
-  if (focus) visible.add(focus);
-  const nodeStats = new Map([...visible].map((name) => [name, { in: 0, out: 0, evidence: 0 }]));
-  capped.forEach((edge) => {
-    const weight = Number(edge.evidence_count || 1);
-    nodeStats.get(edge.object).out += 1; nodeStats.get(edge.object).evidence += weight;
-    nodeStats.get(edge.subject).in += 1; nodeStats.get(edge.subject).evidence += weight;
-  });
-  const positions = topologyPositions([...visible], focus, normalized, nodeStats);
-  const nodes = [...visible].map((name) => {
-    const stats = nodeStats.get(name) || { in: 0, out: 0, evidence: 0 };
-    const kind = nodeKind(name, issuers);
-    return { id: nodeId(name), type: 'topology', position: positions.get(name) || { x: 0, y: 0 }, data: { label: trim(name, 34), meta: `${stats.in} in · ${stats.out} out · ${stats.evidence} evidence`, kind, focus: name === focus } };
-  });
-  const edgeById = new Map();
-  const flowEdges = capped.map((edge) => {
-    const id = `${nodeId(edge.object)}>${nodeId(edge.subject)}>${edge.relation_type}:${edge.modality}`;
-    edgeById.set(id, edge);
-    return {
-      id,
-      source: nodeId(edge.object),
-      target: nodeId(edge.subject),
-      type: 'smoothstep',
-      label: edgeLabel(edge),
-      labelShowBg: true,
-      labelBgPadding: [4, 3],
-      labelBgBorderRadius: 4,
-      labelBgStyle: { fill: '#ffffff', fillOpacity: 0.92 },
-      labelStyle: { fill: '#263747', fontSize: 10, fontWeight: 650 },
-      markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
-      style: edgeStyle(edge),
-      className: `topology-edge ${edge.modality || ''}`,
-    };
-  });
-  return { nodes, edges: flowEdges, edgeById, companyCount: nodes.filter((node) => node.data.kind !== 'exposure').length, exposureCount: nodes.filter((node) => node.data.kind === 'exposure').length };
+function buildTopology(rows, issuerNames, focus, depth, showExposure, enabledTypes) {
+  const issuers = new Set(issuerNames); const allowed = new Set(enabledTypes);
+  const normalized = collapseRows(rows, issuers, showExposure).filter((edge) => allowed.has(edge.relation_type));
+  const ego = selectEgo(normalized, focus, depth).sort((a, b) => Number(b.evidence_count || 0) - Number(a.evidence_count || 0)).slice(0, MAX_TOPOLOGY_EDGES);
+  const names = new Set(ego.flatMap((edge) => [edge.object, edge.subject])); if (focus) names.add(focus);
+  const stats = new Map([...names].map((name) => [name, { degree: 0, evidence: 0 }]));
+  ego.forEach((edge) => { const weight = Number(edge.evidence_count || 1); [edge.object, edge.subject].forEach((name) => { const stat = stats.get(name); stat.degree += 1; stat.evidence += weight; }); });
+  const nodes = [...names].map((name) => { const stat = stats.get(name) || { degree: 0, evidence: 0 }; const kind = nodeKind(name, issuers); return { id: nodeId(name), label: trim(name, 34), x: seededCoordinate(name, 1), y: seededCoordinate(name, 2), size: 5 + Math.min(13, Math.sqrt(stat.degree) * 3), color: nodeColor(kind), forceLabel: name === focus || stat.degree >= 4, zIndex: name === focus ? 3 : 1, kind }; });
+  const nodeByName = new Map(nodes.map((node) => [decodeNodeId(node.id), node.id]));
+  const graphRows = ego.map((edge, index) => ({ ...edge, id: `rel-${index}-${nodeId(edge.object)}-${nodeId(edge.subject)}-${edge.relation_type}`, objectId: nodeByName.get(edge.object), subjectId: nodeByName.get(edge.subject) })).filter((edge) => edge.objectId && edge.subjectId);
+  return { rows: graphRows, nodes, companyCount: nodes.filter((node) => node.kind !== 'exposure').length, exposureCount: nodes.filter((node) => node.kind === 'exposure').length };
 }
 
-function collapseRows(rows, issuers, showExposure) {
-  const index = new Map();
-  rows.forEach((row) => {
-    const object = String(row.object || '').trim();
-    const subject = String(row.subject || '').trim();
-    if (!object || !subject || object === subject) return;
-    const exposure = nodeKind(object, issuers) === 'exposure';
-    if (!showExposure && exposure) return;
-    const relation_type = String(row.relation_type || row.relationship_type || 'dependency');
-    const modality = String(row.modality || 'not_recorded');
-    const key = `${object}|${subject}|${relation_type}|${modality}`;
-    const previous = index.get(key);
-    index.set(key, previous ? { ...previous, evidence_count: Number(previous.evidence_count || 0) + Number(row.evidence_count || 1), source_urls: joinValues(previous.source_urls, row.source_urls) } : { ...row, object, subject, relation_type, modality, evidence_count: Number(row.evidence_count || 1) });
-  });
-  return [...index.values()];
-}
-
-function selectEgo(rows, focus, depth) {
-  if (!focus) return rows.slice(0, MAX_TOPOLOGY_EDGES);
-  const distance = new Map([[focus, 0]]);
-  let frontier = new Set([focus]);
-  for (let hop = 1; hop <= depth; hop += 1) {
-    const next = new Set();
-    rows.forEach((edge) => { if (frontier.has(edge.object)) next.add(edge.subject); if (frontier.has(edge.subject)) next.add(edge.object); });
-    next.forEach((name) => { if (!distance.has(name)) distance.set(name, hop); });
-    frontier = next;
-  }
-  return rows.filter((edge) => distance.has(edge.object) && distance.has(edge.subject));
-}
-
-function topologyPositions(names, focus, rows, stats) {
-  const positions = new Map();
-  if (!names.length) return positions;
-  const root = focus && names.includes(focus) ? focus : names[0];
-  positions.set(root, { x: 0, y: 0 });
-  const distances = distancesFrom(root, rows);
-  const rings = new Map();
-  names.filter((name) => name !== root).forEach((name) => { const ring = Math.min(distances.get(name) || 2, 2); rings.set(ring, [...(rings.get(ring) || []), name]); });
-  [1, 2].forEach((ring) => {
-    const radius = ring === 1 ? 350 : 690;
-    const items = (rings.get(ring) || []).sort((a, b) => (stats.get(b)?.evidence || 0) - (stats.get(a)?.evidence || 0) || a.localeCompare(b));
-    items.forEach((name, index) => { const angle = -Math.PI / 2 + (Math.PI * 2 * index) / Math.max(items.length, 1); positions.set(name, { x: Math.round(Math.cos(angle) * radius), y: Math.round(Math.sin(angle) * radius) }); });
-  });
-  return positions;
-}
-
-function distancesFrom(root, rows) {
-  const result = new Map([[root, 0]]); let frontier = new Set([root]);
-  for (let hop = 1; hop <= 2; hop += 1) {
-    const next = new Set();
-    rows.forEach((edge) => { if (frontier.has(edge.object) && !result.has(edge.subject)) next.add(edge.subject); if (frontier.has(edge.subject) && !result.has(edge.object)) next.add(edge.object); });
-    next.forEach((name) => result.set(name, hop)); frontier = next;
-  }
-  return result;
-}
-
-function focusOptions(rows, issuerNames) {
-  const issuerSet = new Set(issuerNames); const candidates = new Set(issuerNames);
-  rows.forEach((edge) => { candidates.add(edge.subject); if (nodeKind(edge.object, issuerSet) !== 'exposure') candidates.add(edge.object); });
-  return [...candidates].filter(Boolean).sort((a, b) => a.localeCompare(b));
-}
-
-function nodeKind(name, issuers) {
-  if (issuers.has(name)) return 'issuer';
-  if (isAnonymousOrLowQuality(name)) return 'exposure';
-  return 'counterparty';
-}
-
-function isAnonymousOrLowQuality(name) {
-  const value = String(name || '').trim();
-  return /^(customer|supplier|vendor|company|partner)\s+[a-z0-9]+$/i.test(value)
-    || /^(a small number of customers|supplier dependency class|data center or compute capacity class|power, utility, or cooling supply class)$/i.test(value)
-    || /^(contents?|table of contents)\b/i.test(value)
-    || /^(pte\.?|pty\.?|ltd\.?|inc\.?)\s*(ltd\.?|limited)?$/i.test(value)
-    || /\b(class|dependency class|capacity class)\b/i.test(value);
-}
-
-function edgeStyle(edge) {
-  const color = { current_fact: '#15803d', forward_looking: '#b45309', risk_hypothetical: '#b42318', strategic: '#1d4ed8' }[edge.modality] || '#5b6b7b';
-  return { stroke: color, strokeWidth: Math.min(6, 1.3 + Math.log2(Number(edge.evidence_count || 1))), strokeDasharray: edge.modality === 'risk_hypothetical' ? '7 5' : edge.modality === 'forward_looking' ? '3 5' : undefined };
-}
-
-function miniMapColor(kind) { return { issuer: '#0f766e', counterparty: '#1d4ed8', exposure: '#b45309' }[kind] || '#5b6b7b'; }
-function edgeLabel(edge) { return `${shortRelation(edge.relation_type)} · ${Number(edge.evidence_count || 1)} ev · ${confirmationStatus(edge)}`; }
+function collapseRows(rows, issuers, showExposure) { const index = new Map(); rows.forEach((row) => { const object = String(row.object || '').trim(); const subject = String(row.subject || '').trim(); if (!object || !subject || object === subject || (!showExposure && nodeKind(object, issuers) === 'exposure')) return; const relation_type = String(row.relation_type || row.relationship_type || 'dependency'); const modality = String(row.modality || 'not_recorded'); const key = `${object}|${subject}|${relation_type}|${modality}`; const prior = index.get(key); index.set(key, prior ? { ...prior, evidence_count: Number(prior.evidence_count || 0) + Number(row.evidence_count || 1), source_urls: joinValues(prior.source_urls, row.source_urls) } : { ...row, object, subject, relation_type, modality, evidence_count: Number(row.evidence_count || 1) }); }); return [...index.values()]; }
+function selectEgo(rows, focus, depth) { if (!focus) return rows; const distance = new Map([[focus, 0]]); let frontier = new Set([focus]); for (let hop = 1; hop <= depth; hop += 1) { const next = new Set(); rows.forEach((edge) => { if (frontier.has(edge.object)) next.add(edge.subject); if (frontier.has(edge.subject)) next.add(edge.object); }); next.forEach((name) => { if (!distance.has(name)) distance.set(name, hop); }); frontier = next; } return rows.filter((edge) => distance.has(edge.object) && distance.has(edge.subject)); }
+function relationTypes(rows) { const counts = new Map(); rows.forEach((row) => { const type = String(row.relation_type || row.relationship_type || 'dependency'); counts.set(type, (counts.get(type) || 0) + 1); }); return [...counts].map(([type, count]) => ({ type, count })).sort((a, b) => b.count - a.count || a.type.localeCompare(b.type)); }
+function focusOptions(rows, issuers) { const issuerSet = new Set(issuers); const names = new Set(issuers); rows.forEach((edge) => { names.add(edge.subject); if (nodeKind(edge.object, issuerSet) !== 'exposure') names.add(edge.object); }); return [...names].filter(Boolean).sort((a, b) => a.localeCompare(b)); }
+function nodeKind(name, issuers) { if (issuers.has(name)) return 'issuer'; return isAnonymousOrLowQuality(name) ? 'exposure' : 'counterparty'; }
+function isAnonymousOrLowQuality(name) { const value = String(name || '').trim(); return /^(customer|supplier|vendor|company|partner)\s+[a-z0-9]+$/i.test(value) || /^(a small number of customers|supplier dependency class|data center or compute capacity class|power, utility, or cooling supply class)$/i.test(value) || /^(contents?|table of contents)\b/i.test(value) || /^(pte\.?|pty\.?|ltd\.?|inc\.?)\s*(ltd\.?|limited)?$/i.test(value) || /\b(class|dependency class|capacity class)\b/i.test(value); }
+function relationColor(type) { return RELATION_COLORS[type] || '#94a3b8'; }
+function nodeColor(kind) { return { issuer: '#2dd4bf', counterparty: '#60a5fa', exposure: '#fbbf24' }[kind] || '#94a3b8'; }
 function nodeId(value) { return `node:${encodeURIComponent(value)}`; }
+function decodeNodeId(value) { return decodeURIComponent(String(value).replace(/^node:/, '')); }
+function seededCoordinate(value, salt) { let hash = 2166136261 + salt; for (let i = 0; i < value.length; i += 1) { hash ^= value.charCodeAt(i); hash = Math.imul(hash, 16777619); } return ((hash >>> 0) % 1000) / 1000; }
 function trim(value, limit) { return value.length > limit ? `${value.slice(0, limit - 1)}…` : value; }
 function joinValues(first, second) { return [...new Set(`${first || ''};${second || ''}`.split(';').filter(Boolean))].join(';'); }
