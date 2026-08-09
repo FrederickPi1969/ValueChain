@@ -118,6 +118,7 @@ def build_parser() -> argparse.ArgumentParser:
     enrich.add_argument("--run-id", required=True, help="Existing run id with canonical_relationship_audit.json.")
     refresh_canonical = sub.add_parser("refresh-canonical", help="Rebuild canonical entities/relationships from saved evidence without re-downloading SEC filings.")
     refresh_canonical.add_argument("--run-id", required=True, help="Existing run id to refresh.")
+    refresh_canonical.add_argument("--write-postgres", action="store_true", help="Also synchronize the rebuilt canonical layer to shared Postgres.")
     refresh_mentions = sub.add_parser("refresh-mentions", help="Build the persisted Mention / Cluster layer from saved passages without downloading SEC filings.")
     refresh_mentions.add_argument("--run-id", required=True, help="Existing run id to refresh.")
     refresh_mentions.add_argument("--write-postgres", action="store_true", help="Also synchronize the mention layer to shared Postgres.")
@@ -456,7 +457,8 @@ def main(argv: list[str] | None = None) -> None:
         write_jsonl(run_dir / "relationship_lineage_events.jsonl", lineage)
         write_csv(run_dir / "canonicalization_diagnostics.csv", diagnostics)
         write_csv(run_dir / "relationship_review_queue.csv", relationship_review_queue(relationships))
-        publish_relationship_projection(settings, args.run_id, entities, relationships, lineage)
+        if args.write_postgres:
+            publish_relationship_projection(settings, args.run_id, entities, relationships, lineage)
         updated = refresh_canonical_dashboard(settings, args.run_id, entities, relationships, diagnostics)
         accepted = sum(1 for row in relationships if row.get("review_status") == "accepted")
         print(json.dumps({"relationships": len(relationships), "accepted": accepted, "diagnostics": len(diagnostics)}, ensure_ascii=False))
