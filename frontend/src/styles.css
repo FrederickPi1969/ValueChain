@@ -341,7 +341,8 @@ main {
 .network-empty { padding: 42px; }
 
 .topology-lab { display: grid; gap: 14px; }
-.topology-toolbar { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(220px, .7fr) minmax(130px, .35fr) auto; gap: 12px; align-items: end; padding: 2px 2px 0; }
+.topology-toolbar { display: grid; grid-template-columns: minmax(310px, 1fr) minmax(185px, .5fr) minmax(185px, .5fr) minmax(130px, .35fr) auto; gap: 12px; align-items: end; padding: 2px 2px 0; }
+.topology-scope-note { align-self: end; min-height: 36px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); background: var(--surface-2); font-size: 12px; white-space: nowrap; }
 .topology-toolbar h2 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 18px; }
 .topology-toolbar p { margin: 5px 0 0; max-width: 690px; color: var(--muted); font-size: 13px; }
 .topology-toolbar label { display: grid; gap: 4px; }
