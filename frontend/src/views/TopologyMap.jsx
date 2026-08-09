@@ -61,7 +61,7 @@ export function TopologyMap({ edges = [], networkEdges = [], companies = [] }) {
         <span><b>{topology.companyCount}</b> company / organization nodes</span>
         <span><b>{topology.exposureCount}</b> anonymous dependency-class nodes</span>
         <span><b>{topology.edges.length}</b> displayed relations (of {sourceEdges.length} after global filters)</span>
-        <span>{networkEdges.length ? <><ShieldCheck size={14} /> canonical / network-ready inputs</> : <><Radio size={14} /> raw extraction signals; not all are verified counterparties</>}</span>
+        <span>{networkEdges.length ? <><ShieldCheck size={14} /> canonical candidates; review status still applies</> : <><Radio size={14} /> raw extraction signals; not all are verified counterparties</>}</span>
       </div>
       <div className="topology-layout">
         <div className="topology-canvas">
@@ -117,7 +117,7 @@ function TopologyLegend({ networkReady }) {
   return <div className="topology-legend">
     <p><b>Solid teal nodes</b> are issuers in the selected company universe. Dark blue nodes are named organizations; dashed amber nodes are disclosed but anonymous classes such as “supplier dependency class.”</p>
     <p><b>Line color</b> denotes modality: green current fact, amber forward-looking, red risk/hypothetical, blue strategic. Width is logarithmic evidence count.</p>
-    <p>{networkReady ? 'This run has a canonical network projection, so generic unresolved objects have already been excluded.' : 'This older/raw run is useful for exploring disclosure coverage, but a visual edge is not a verified supplier/customer fact.'}</p>
+    <p>{networkReady ? 'This run has a canonical network projection, so generic unresolved objects have already been excluded. Canonical is a normalized candidate layer, not a claim that every displayed edge is verified; inspect each edge status before using it as fact.' : 'This older/raw run is useful for exploring disclosure coverage, but a visual edge is not a verified supplier/customer fact.'}</p>
   </div>;
 }
 
