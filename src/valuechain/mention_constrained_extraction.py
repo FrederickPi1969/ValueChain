@@ -30,7 +30,12 @@ class MentionConstrainedExtractor:
         return self._constrain(passage, self.extractor.extract(passage))
 
     async def extract_async(self, passage: Passage) -> list[RelationEvidence]:
-        return self._constrain(passage, await self.extractor.extract_async(passage))
+        # The wrapper presents one interface to the pipeline, but rules mode is
+        # deliberately synchronous. Do not make a saved-passage re-extraction
+        # fail merely because the wrapper itself has an async method.
+        if hasattr(self.extractor, "extract_async"):
+            return self._constrain(passage, await self.extractor.extract_async(passage))
+        return self.extract(passage)
 
     async def aclose(self) -> None:
         if hasattr(self.extractor, "aclose"):
@@ -69,7 +74,9 @@ def constrain_relation_records(
         mentions = [row for row in mentions_by_passage.get(record.passage_id, []) if row.mention_kind == "named_entity"]
         match = matching_mention(record.object, mentions)
         if match:
-            kept.append(replace(record, object=match.normalized_name))
+            # Exhibit 21 frequently adds a footnote marker to the legal name;
+            # retain it in the source passage, never in the graph entity.
+            kept.append(replace(record, object=_strip_footnote_marker(match.normalized_name)))
             continue
         object_info = normalize_dependency_object(record.object, subject=record.subject, evidence_text=record.evidence_text)
         if object_info.is_generic or object_info.object_kind == "geography" or not object_looks_named(record.object):

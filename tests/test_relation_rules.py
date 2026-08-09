@@ -86,6 +86,13 @@ def test_rules_capture_product_and_direction_proposal_from_purchase_clause() -> 
     assert supplier.evidence_quote
 
 
+def test_product_extraction_rejects_generic_or_transactional_purchase_spans() -> None:
+    extractor = RuleBasedRelationExtractor(EntityResolver([]))
+    generic = extractor.extract(make_passage("Our customers may purchase products from other suppliers."))
+    transactional = extractor.extract(make_passage("We purchased property and equipment, partially offset by proceeds from a sale."))
+    assert all(not record.product_or_service for record in generic + transactional)
+
+
 def test_rules_extract_power_fuel_transportation_dependency_class() -> None:
     extractor = RuleBasedRelationExtractor(EntityResolver([]))
     records = extractor.extract(

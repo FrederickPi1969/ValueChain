@@ -1,3 +1,5 @@
+import asyncio
+
 from valuechain.mention_constrained_extraction import MentionConstrainedExtractor
 from valuechain.models import EntityMention, Passage, RelationEvidence
 
@@ -27,6 +29,13 @@ def test_named_object_must_be_mentioned_and_alias_is_normalized():
 def test_generic_dependency_object_is_retained_without_named_mention():
     extractor = MentionConstrainedExtractor(StaticExtractor([record("limited number of suppliers")]), {"p": []})
     assert extractor.extract(passage())[0].object == "limited number of suppliers"
+
+
+def test_async_wrapper_falls_back_to_a_synchronous_rules_extractor():
+    samsung = EntityMention("Samsung", "company", "Samsung Electronics Co., Ltd", mention_kind="named_entity", passage_id="p")
+    extractor = MentionConstrainedExtractor(StaticExtractor([record("Samsung")]), {"p": [samsung]})
+    rows = asyncio.run(extractor.extract_async(passage()))
+    assert rows[0].object == "Samsung Electronics Co., Ltd"
 
 
 def test_exhibit_footnote_marker_matches_the_underlying_legal_name():

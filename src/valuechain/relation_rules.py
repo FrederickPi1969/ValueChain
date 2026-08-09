@@ -181,7 +181,7 @@ class RuleBasedRelationExtractor:
                         source_document=passage.source_document, source_document_type=passage.source_document_type,
                         evidence_quote=context[:700], direction_candidate=orientation_for_raw(relation_type),
                         trigger_text=match.group(0)[:160] if match else "", extractor_provenance=[EXTRACTOR_VERSION],
-                        product_or_service=extract_product_or_service(context),
+                        product_or_service=extract_product_or_service(context, relation_type),
                     ))
         return dedupe_records(records)
 
@@ -216,14 +216,24 @@ def infer_temporal_scope(lowered_text: str) -> str:
     return match.group(0) if match else "as_disclosed"
 
 
-def extract_product_or_service(context: str) -> str:
+def extract_product_or_service(context: str, relation_type: str = "") -> str:
     """Conservative generic product span recovery; empty is preferable to guessing."""
-    match = re.search(r"\b(?:purchase|purchases|purchased|procure|obtain|source)\s+(.{2,120}?)\s+\bfrom\b", context, re.IGNORECASE)
-    if not match:
-        match = re.search(r"\bfor\s+(assembly, testing and packaging|wafer fabrication|semiconductor wafers?|memory|[A-Za-z][A-Za-z -]{2,70}\bcapacity)\b", context, re.IGNORECASE)
+    if relation_type not in {"supplier_dependency", "foundry_dependency", "packaging_or_assembly_dependency"}:
+        return ""
+    if relation_type == "foundry_dependency":
+        match = re.search(r"\b(wafer fabrication|semiconductor wafers?|wafers?)\b", context, re.IGNORECASE)
+        return match.group(1) if match else ""
+    if relation_type == "packaging_or_assembly_dependency":
+        match = re.search(r"\b(assembly, testing and packaging)\b", context, re.IGNORECASE)
+        return match.group(1) if match else ""
+    match = re.search(r"\b(?:purchase|purchases|purchased|procure|obtain|source)\s+(.{2,80}?)\s+\bfrom\b", context, re.IGNORECASE)
     if not match:
         return ""
     value = re.sub(r"\s+", " ", match.group(1)).strip(" ,.;:")
+    generic = {"product", "products", "capacity", "any specific capacity"}
+    invalid_markers = ("from ", "purchase", "commitment", "obligation", "proceed", "competitor", "customer", "directly", "indirectly")
+    if value.casefold() in generic or any(marker in value.casefold() for marker in invalid_markers):
+        return ""
     return value[:160]
 
 
