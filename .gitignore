@@ -16,6 +16,10 @@ __pycache__/
 
 data/raw/**
 data/processed/**
+# Runtime retrieval corpora and SQLite queue state are stored in Cosmos/local
+# disks, never in source-control commits.
+data/annual_filings/
+data/earnings_calls/
 reports/**
 logs/
 !data/universe/
