@@ -14,6 +14,7 @@ from hashlib import sha256
 import re
 
 from valuechain.edge_quality import normalize_dependency_object, object_key
+from valuechain.evidence_identity import stable_evidence_id
 from valuechain.models import Company, RelationEvidence
 from valuechain.ontology import blocking_risk_flags, canonical_relation_for_raw, category_for_raw, orientation_for_raw, raw_relation_spec
 
@@ -116,14 +117,16 @@ def relation_risk_flags(record: RelationEvidence) -> set[str]:
 
 def canonical_merge_key(
     source_id: str, target_id: str, relationship_type: str, modality: str,
-    product_or_service: str, relationship_family: str,
-) -> tuple[str, str, str, str, str, str]:
+    product_or_service: str = "", relationship_family: str = "supply_chain",
+) -> tuple[str, str, str, str, str]:
     """Stable conservative merge key for evidence-backed canonical facts.
 
-    Different direction, family/type, modality, or explicit product/service are
-    distinct claims.  Evidence is only unioned after all of these agree.
+    Product/service is an evidence-backed attribute, not part of the identity
+    of a business fact.  Keeping it out of the key means later extraction
+    enrichment cannot replace an accepted relationship with a new ID.
     """
-    return (source_id, target_id, relationship_type, modality, product_or_service.strip().casefold(), relationship_family)
+    del product_or_service  # Backward-compatible parameter; attributes do not define identity.
+    return (source_id, target_id, relationship_type, modality, relationship_family)
 
 
 def orient_relation(relation_type: str, subject_id: str, object_id: str) -> tuple[str, str]:
@@ -157,13 +160,16 @@ def add_entity(
 
 
 def relationship_from_group(
-    key: tuple[str, str, str, str, str, str], rows: list[RelationEvidence], entities: dict[str, dict[str, object]]
+    key: tuple[str, str, str, str, str], rows: list[RelationEvidence], entities: dict[str, dict[str, object]]
 ) -> dict[str, object]:
-    supplier_id, customer_id, relationship_type, modality, product_or_service, relationship_family = key
+    supplier_id, customer_id, relationship_type, modality, relationship_family = key
+    product_or_service = selected_product_or_service(rows)
     source_role, target_role = endpoint_roles(relationship_family, relationship_type)
-    evidence_ids = sorted({row.passage_id for row in rows})
+    evidence_ids = sorted({stable_evidence_id(row) for row in rows})
     dates = sorted({row.filing_date for row in rows if row.filing_date})
-    fingerprint = "|".join([supplier_id, customer_id, relationship_type, modality, product_or_service, relationship_family])
+    # Keep the historical empty-product fingerprint.  Old accepted IDs remain
+    # valid while product/service can be enriched as an attribute.
+    fingerprint = "|".join([supplier_id, customer_id, relationship_type, modality, "", relationship_family])
     return {
         "relationship_id": f"rel:{sha256(fingerprint.encode()).hexdigest()[:16]}",
         "supplier_entity_id": supplier_id,
@@ -195,6 +201,20 @@ def relationship_from_group(
         "resolution_status": "canonical",
         "risk_flags": sorted({flag for row in rows for flag in row.risk_flags}),
     }
+
+
+def selected_product_or_service(rows: list[RelationEvidence]) -> str:
+    """Choose a stated product deterministically without promoting a guess."""
+    values = [row.product_or_service.strip() for row in rows if row.product_or_service.strip()]
+    if not values:
+        return ""
+    counts = defaultdict(int)
+    display: dict[str, str] = {}
+    for value in values:
+        key = value.casefold()
+        counts[key] += 1
+        display.setdefault(key, value)
+    return display[sorted(counts, key=lambda key: (-counts[key], key))[0]]
 
 
 def endpoint_roles(family: str, relationship_type: str) -> tuple[str, str]:

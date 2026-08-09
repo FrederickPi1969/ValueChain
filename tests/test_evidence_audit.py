@@ -1,4 +1,4 @@
-from valuechain.evidence_audit import apply_latest_audit_decisions, automatic_cross_filing_audit, audit_payload, build_direction_correction_proposals, evidence_for_relationship, merge_audit_history, normalize_audit, normalize_follow_up
+from valuechain.evidence_audit import apply_latest_audit_decisions, automatic_cross_filing_audit, audit_payload, build_direction_correction_proposals, evidence_for_relationship, merge_audit_history, migrate_relationship_evidence_ids, normalize_audit, normalize_follow_up
 
 
 def test_audit_payload_only_includes_relationship_evidence() -> None:
@@ -24,6 +24,22 @@ def test_relationship_evidence_is_bound_to_its_supplier_not_shared_passage() -> 
         {"p1": [{"object": "Taiwan Semiconductor Manufacturing Company Limited"}, {"object": "Micron Technology, Inc"}]},
     )
     assert rows == [{"object": "Micron Technology, Inc"}]
+
+
+def test_audit_can_load_assertion_level_evidence_ids() -> None:
+    rows = evidence_for_relationship(
+        {"supplier_name": "Micron Technology, Inc", "customer_name": "NVIDIA", "evidence_ids": ["evidence:micron"]},
+        {"evidence:micron": [{"object": "Micron Technology, Inc"}]},
+    )
+    assert rows == [{"object": "Micron Technology, Inc"}]
+
+
+def test_direction_correction_migrates_legacy_passage_evidence_ids() -> None:
+    migrated = migrate_relationship_evidence_ids(
+        [{"supplier_name": "AMD", "customer_name": "OpenAI", "evidence_ids": ["p1"]}],
+        [{"passage_id": "p1", "subject": "AMD", "object": "OpenAI", "relation_type": "supplier_dependency", "direction": "subject_depends_on_object"}],
+    )
+    assert migrated[0]["evidence_ids"][0].startswith("evidence:")
 
 
 def test_follow_up_normalization_keeps_valid_recommendation() -> None:

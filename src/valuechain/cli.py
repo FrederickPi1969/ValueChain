@@ -9,7 +9,7 @@ from valuechain.canonicalization import build_canonical_layer, relationship_revi
 from valuechain.config import MAX_LLM_CONCURRENCY, Settings, ensure_dirs
 from valuechain.dashboard import canonical_network_edges
 from valuechain.evaluation import evaluate_canonical_relationships, load_gold
-from valuechain.evidence_audit import apply_latest_audit_decisions, audit_canonical_relationships, audit_summary, attach_audits_to_dashboard, attach_enrichment_to_dashboard, build_direction_correction_proposals, merge_audit_history
+from valuechain.evidence_audit import apply_latest_audit_decisions, audit_canonical_relationships, audit_summary, attach_audits_to_dashboard, attach_enrichment_to_dashboard, build_direction_correction_proposals, merge_audit_history, migrate_relationship_evidence_ids
 from valuechain.human_review import VALID_STATUSES, apply_human_reviews, inherit_prior_reviews, publish_human_review_to_dashboard, read_review_csv
 from valuechain.gleif import (
     EntityObjectContext,
@@ -388,6 +388,13 @@ def main(argv: list[str] | None = None) -> None:
         ensure_dirs(settings)
         run_dir = settings.processed_dir / "runs" / args.run_id
         evidence = [RelationEvidence(**row) for row in read_jsonl(run_dir / "relation_evidence.jsonl")]
+        # Migrate legacy artifacts in place: passage IDs remain source-span
+        # references, while each assertion gets a deterministic evidence ID.
+        write_jsonl(run_dir / "relation_evidence.jsonl", [row.to_dict() for row in evidence])
+        raw_evidence_path = run_dir / "relation_evidence_raw.jsonl"
+        if raw_evidence_path.exists():
+            raw_evidence = [RelationEvidence(**row) for row in read_jsonl(raw_evidence_path)]
+            write_jsonl(raw_evidence_path, [row.to_dict() for row in raw_evidence])
         accepted_mappings = {str(row.get("mention_text", "")).casefold(): str(row.get("canonical_name", "")) for row in read_jsonl(run_dir / "entity_resolution_accepted_mappings.jsonl") if row.get("canonical_name")}
         if accepted_mappings:
             evidence = [replace(row, object=accepted_mappings.get(row.object.casefold(), row.object)) for row in evidence]
@@ -407,20 +414,30 @@ def main(argv: list[str] | None = None) -> None:
         # A canonical rebuild must never demote a previously audited conclusion.
         # Prefer the shared audit ledger because old local JSON snapshots can be
         # incomplete after a partial audit run.
+        local_audit_path = run_dir / "canonical_relationship_audit.json"
+        local_audits = json.loads(local_audit_path.read_text(encoding="utf-8")).get("rows", []) if local_audit_path.exists() else []
         durable_audits = load_relationship_audits_from_postgres(settings.database_url, args.run_id)
+        # The database is the shared ledger when available, but local audit
+        # artifacts make an exported run self-contained and reproducible.
+        audits_by_id = {str(row.get("relationship_id", "")): row for row in local_audits}
+        audits_by_id.update({str(row.get("relationship_id", "")): row for row in durable_audits})
+        durable_audits = list(audits_by_id.values())
         if durable_audits:
             relationships = apply_latest_audit_decisions(relationships, durable_audits)
         # Direction corrections are derived audit artifacts, not raw extractor
         # output. Reattach their durable proposal ledger after rebuilding raw
         # canonical candidates, without allowing a duplicate id.
         correction_path = run_dir / "direction_correction_proposals.jsonl"
-        corrections = read_jsonl(correction_path)
+        corrections = migrate_relationship_evidence_ids(read_jsonl(correction_path), [row.to_dict() for row in evidence])
+        if corrections:
+            write_jsonl(correction_path, corrections)
         existing_ids = {str(row.get("relationship_id", "")) for row in relationships}
         relationships.extend(row for row in corrections if str(row.get("relationship_id", "")) not in existing_ids)
         if durable_audits and corrections:
             relationships = apply_latest_audit_decisions(relationships, durable_audits)
         write_jsonl(run_dir / "canonical_entities.jsonl", entities)
         write_jsonl(run_dir / "canonical_relationships.jsonl", relationships)
+        write_jsonl(run_dir / "canonical_relationships_reviewed.jsonl", relationships)
         audit_ids = {str(row.get("relationship_id", "")) for row in durable_audits}
         replayed_audit_rows = [row for row in relationships if str(row.get("relationship_id", "")) in audit_ids]
         lineage_current = relationship_lineage_events(relationships, "canonical_refreshed")

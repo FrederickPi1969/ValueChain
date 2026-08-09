@@ -36,9 +36,9 @@ def test_clusters_join_aliases_but_keep_unresolved_names():
     assert next(cluster for cluster in clusters if cluster.cluster_id == tsmc[0].cluster_id).mention_count == 2
 
 
-def test_canonical_merge_key_does_not_merge_distinct_products_or_directions():
+def test_canonical_merge_key_merges_product_attributes_but_not_directions():
     memory = canonical_merge_key("supplier", "customer", "supplies_to", "current", "Memory", "supply_chain")
     wafer = canonical_merge_key("supplier", "customer", "supplies_to", "current", "Wafers", "supply_chain")
     reverse = canonical_merge_key("customer", "supplier", "supplies_to", "current", "Memory", "supply_chain")
-    assert memory != wafer
+    assert memory == wafer
     assert memory != reverse

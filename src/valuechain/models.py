@@ -180,6 +180,9 @@ class RelationEvidence:
     paragraph_offset: int
     parser_name: str
     parser_version: str
+    # Unlike passage_id, this identifies one subject-relation-object assertion.
+    # It is populated deterministically on serialization for older artifacts.
+    evidence_id: str = ""
     source_document: str = ""
     source_document_type: str = ""
     product_or_service: str = ""
@@ -191,7 +194,12 @@ class RelationEvidence:
     risk_flags: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        payload = asdict(self)
+        if not payload["evidence_id"]:
+            from valuechain.evidence_identity import stable_evidence_id
+
+            payload["evidence_id"] = stable_evidence_id(payload)
+        return payload
 
 
 @dataclass(slots=True)

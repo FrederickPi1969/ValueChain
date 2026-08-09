@@ -12,6 +12,7 @@ from typing import Any
 
 from valuechain.dashboard import canonical_network_edges
 from valuechain.edge_quality import object_key
+from valuechain.evidence_identity import stable_evidence_id
 from valuechain.llm_client import MAX_LLM_CONCURRENCY
 
 
@@ -51,6 +52,9 @@ async def audit_canonical_relationships_async(
 ) -> list[dict[str, Any]]:
     evidence_by_id: dict[str, list[dict[str, Any]]] = {}
     for row in evidence:
+        # Retain the legacy passage index while new canonical relationships use
+        # assertion-level IDs.  This keeps old runs auditable during migration.
+        evidence_by_id.setdefault(stable_evidence_id(row), []).append(row)
         evidence_by_id.setdefault(str(row.get("passage_id", "")), []).append(row)
     semaphore = asyncio.Semaphore(concurrency)
 
@@ -121,6 +125,38 @@ def evidence_for_relationship(
     customer_key = object_key(str(relationship.get("customer_name", "")))
     direct = [row for row in rows if object_key(str(row.get("object", ""))) == customer_key]
     return direct or rows
+
+
+def migrate_relationship_evidence_ids(
+    relationships: list[dict[str, Any]], evidence: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Upgrade legacy passage pointers in durable direction-correction records."""
+    by_passage: dict[str, list[dict[str, Any]]] = {}
+    available = {stable_evidence_id(row) for row in evidence}
+    for item in evidence:
+        by_passage.setdefault(str(item.get("passage_id", "")), []).append(item)
+    migrated: list[dict[str, Any]] = []
+    for relationship in relationships:
+        row = dict(relationship)
+        source_key = object_key(str(row.get("source_entity_name") or row.get("supplier_name") or ""))
+        target_key = object_key(str(row.get("target_entity_name") or row.get("customer_name") or ""))
+        upgraded: list[str] = []
+        for legacy_id in row.get("evidence_ids", []):
+            legacy_id = str(legacy_id)
+            if legacy_id in available:
+                upgraded.append(legacy_id)
+                continue
+            candidates = by_passage.get(legacy_id, [])
+            exact = [
+                item for item in candidates
+                if {source_key, target_key}.issubset({object_key(str(item.get("subject", ""))), object_key(str(item.get("object", "")))})
+            ]
+            upgraded.extend(stable_evidence_id(item) for item in (exact or candidates))
+        if upgraded:
+            row["evidence_ids"] = sorted(set(upgraded))
+            row["evidence_count"] = len(row["evidence_ids"])
+        migrated.append(row)
+    return migrated
 
 
 def audit_payload(relationship: dict[str, Any], evidence: list[dict[str, Any]]) -> dict[str, Any]:

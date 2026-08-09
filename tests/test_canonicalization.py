@@ -50,6 +50,17 @@ def test_canonical_layer_auto_verifies_two_independent_issuer_disclosures() -> N
     assert relationships[0]["decision"] == "accept"
 
 
+def test_product_enrichment_does_not_change_canonical_identity_and_evidence_is_assertion_level() -> None:
+    first = record("TSMC", "foundry_dependency")
+    first.product_or_service = "wafer fabrication"
+    second = record("TSMC", "foundry_dependency")
+    _, enriched, _ = build_canonical_layer([Company("NVDA", "NVIDIA Corporation", cik="1")], [first])
+    _, legacy, _ = build_canonical_layer([Company("NVDA", "NVIDIA Corporation", cik="1")], [second])
+    assert enriched[0]["relationship_id"] == legacy[0]["relationship_id"]
+    assert enriched[0]["product_or_service"] == "wafer fabrication"
+    assert enriched[0]["evidence_ids"][0].startswith("evidence:")
+
+
 def test_cross_filing_does_not_auto_accept_a_direction_risk() -> None:
     first = record("Meta Platforms, Inc.", "data_center_dependency")
     second = record("Meta Platforms, Inc.", "data_center_dependency")
