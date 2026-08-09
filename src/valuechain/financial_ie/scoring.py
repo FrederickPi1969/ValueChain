@@ -40,10 +40,19 @@ def score_fire(gold: dict[str, Any], content: str) -> dict[str, Any]:
         payload = {}
     predicted_entities = payload.get("entities") if isinstance(payload.get("entities"), list) else []
     predicted_relations = payload.get("relations") if isinstance(payload.get("relations"), list) else []
-    entity_metrics = score_entities(gold["entities"], predicted_entities)
-    gold_relations = {relation_key(item) for item in gold["relations"]}
+    if all(has_entity_span(item) for item in gold["entities"]) and all(
+        has_entity_span(item) for item in predicted_entities
+    ):
+        entity_metrics = score_strict_fire_entities(gold["entities"], predicted_entities)
+    else:
+        entity_metrics = score_entities(gold["entities"], predicted_entities)
+    strict_relations = all(has_relation_spans(item) for item in gold["relations"]) and all(
+        has_relation_spans(item) for item in predicted_relations
+    )
+    relation_key_fn = strict_relation_key if strict_relations else relation_key
+    gold_relations = {relation_key_fn(item) for item in gold["relations"]}
     pred_relations = {
-        relation_key(item) for item in predicted_relations if isinstance(item, dict)
+        relation_key_fn(item) for item in predicted_relations if isinstance(item, dict)
     }
     tp = len(gold_relations & pred_relations)
     relation_metrics = prf(tp, len(pred_relations - gold_relations), len(gold_relations - pred_relations))
@@ -51,6 +60,51 @@ def score_fire(gold: dict[str, Any], content: str) -> dict[str, Any]:
         **{f"entity_{key}": value for key, value in entity_metrics.items()},
         **{f"relation_{key}": value for key, value in relation_metrics.items()},
     }
+
+
+def score_strict_fire_entities(
+    gold: list[dict[str, Any]],
+    predicted: list[dict[str, Any]],
+) -> dict[str, Any]:
+    gold_items = {strict_entity_key(item) for item in gold if isinstance(item, dict)}
+    predicted_items = {strict_entity_key(item) for item in predicted if isinstance(item, dict)}
+    tp = len(gold_items & predicted_items)
+    return prf(tp, len(predicted_items - gold_items), len(gold_items - predicted_items))
+
+
+def has_entity_span(item: Any) -> bool:
+    return isinstance(item, dict) and all(key in item for key in ("start", "end", "type"))
+
+
+def strict_entity_key(item: dict[str, Any]) -> tuple[int, int, str]:
+    return int(item["start"]), int(item["end"]), str(item["type"]).strip().lower()
+
+
+def has_relation_spans(item: Any) -> bool:
+    return isinstance(item, dict) and all(
+        key in item
+        for key in (
+            "head_start",
+            "head_end",
+            "head_type",
+            "tail_start",
+            "tail_end",
+            "tail_type",
+            "type",
+        )
+    )
+
+
+def strict_relation_key(item: dict[str, Any]) -> tuple[Any, ...]:
+    return (
+        int(item["head_start"]),
+        int(item["head_end"]),
+        str(item["head_type"]).strip().lower(),
+        str(item["type"]).strip().lower(),
+        int(item["tail_start"]),
+        int(item["tail_end"]),
+        str(item["tail_type"]).strip().lower(),
+    )
 
 
 def score_fnxl(gold: dict[str, Any], content: str) -> dict[str, Any]:

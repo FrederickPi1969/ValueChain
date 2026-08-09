@@ -91,6 +91,9 @@ Recall-first rules:
 9. Do not output the subject company, its own products, its business segments, or its internal brands as objects.
    Every named-company or named-organization object must reference its ENTITY CATALOG object_id. Never create a
    named object that is absent from that catalog.
+   Treat we, our, us, and an unambiguous "the company" as the disclosed subject company. Resolve it, its, they,
+   or their to a catalog entity only when the marked passage has one grammatically unambiguous antecedent; use
+   that antecedent's object_id. Otherwise omit the relation instead of guessing. Never emit a pronoun as object.
 10. When in doubt between [] and a directly supported class-level exposure, output the exposure with
     lower confidence rather than returning [].
 11. When A, B, and C occur in a coordinated list that shares one directly stated action or role, emit a
@@ -201,6 +204,7 @@ class LLMRelationExtractor:
 
 def build_prompt(passage: Passage, entity_catalog: list[dict[str, str]] | None = None) -> str:
     catalog = entity_catalog or []
+    marked_passage = mark_entity_catalog_text(passage.text[:3500], catalog)
     return (
         f"Subject company: {passage.company_name}\n"
         f"Form: {passage.form}\n"
@@ -209,7 +213,8 @@ def build_prompt(passage: Passage, entity_catalog: list[dict[str, str]] | None =
         f"Source document type: {passage.source_document_type or 'PRIMARY'}\n"
         "ENTITY CATALOG (named objects must use one of these IDs):\n"
         f"{json.dumps(catalog, ensure_ascii=False)}\n"
-        f"Passage:\n{passage.text[:3500]}"
+        "MARKED PASSAGE (entity tags are annotations, not source text):\n"
+        f"{marked_passage}"
     )
 
 
@@ -300,9 +305,40 @@ def build_entity_catalog(
                 "text": mention.text.strip(),
                 "normalized_name": normalized_name,
                 "entity_type": mention.entity_type,
+                "start_offset": str(mention.start_offset),
+                "end_offset": str(mention.end_offset),
             }
         )
     return catalog
+
+
+def mark_entity_catalog_text(text: str, catalog: list[dict[str, str]]) -> str:
+    spans: list[tuple[int, int, str, str]] = []
+    occupied: list[tuple[int, int]] = []
+    for entity in catalog:
+        mention = str(entity.get("text") or "").strip()
+        try:
+            start = int(entity.get("start_offset", "-1"))
+            end = int(entity.get("end_offset", "-1"))
+        except (TypeError, ValueError):
+            start = end = -1
+        if not (0 <= start < end <= len(text)) or text[start:end].casefold() != mention.casefold():
+            start = text.casefold().find(mention.casefold()) if mention else -1
+            end = start + len(mention) if start >= 0 else -1
+        if start < 0 or end <= start or any(start < prior_end and end > prior_start for prior_start, prior_end in occupied):
+            continue
+        occupied.append((start, end))
+        spans.append((start, end, str(entity.get("id") or ""), str(entity.get("entity_type") or "entity")))
+    marked = text
+    for start, end, entity_id, entity_type in sorted(spans, reverse=True):
+        marked = (
+            marked[:start]
+            + f'<entity id="{entity_id}" type="{entity_type}">'
+            + marked[start:end]
+            + "</entity>"
+            + marked[end:]
+        )
+    return marked
 
 
 def normalize_object_payload(value) -> str:

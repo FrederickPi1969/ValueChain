@@ -55,6 +55,9 @@ def test_load_fire_preserves_canonical_tokens(tmp_path) -> None:
     cases = load_fire(data_path, types_path, limit=1)
 
     assert cases[0].metadata["tokens"] == ["Acme", "sold", "chips", "."]
+    assert cases[0].metadata["gold_entity_spans"] == [
+        {"text": "Acme", "type": "Company", "start": 0, "end": 1}
+    ]
 
 
 def test_retrieve_fire_examples_prefers_rare_matching_terms() -> None:
@@ -70,3 +73,11 @@ def test_retrieve_fire_examples_prefers_rare_matching_terms() -> None:
     )
 
     assert selected[0]["text"] == "Acme sold chips"
+
+    bm25_selected = retrieve_fire_examples(
+        {"tokens": ["The", "company", "sold", "its", "chips"]},
+        examples,
+        limit=1,
+        strategy="bm25",
+    )
+    assert bm25_selected[0]["text"] == "Acme sold chips"

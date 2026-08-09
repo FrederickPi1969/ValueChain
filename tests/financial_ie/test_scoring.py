@@ -51,6 +51,42 @@ def test_fire_scoring_preserves_relation_direction() -> None:
     assert score["relation_fn"] == 1
 
 
+def test_fire_strict_scoring_requires_entity_positions_and_endpoint_types() -> None:
+    case = BenchmarkCase(
+        "1",
+        "fire_joint_re",
+        "test",
+        "Acme and Acme sell chips",
+        gold={
+            "entities": [{"text": "Acme", "type": "Company", "start": 0, "end": 1}],
+            "relations": [{
+                "head": "chips",
+                "tail": "Acme",
+                "type": "Productof",
+                "head_start": 4,
+                "head_end": 5,
+                "head_type": "Product",
+                "tail_start": 0,
+                "tail_end": 1,
+                "tail_type": "Company",
+            }],
+        },
+    )
+    prediction = """{
+      "entities":[{"text":"Acme","type":"Company","start":2,"end":3}],
+      "relations":[{
+        "head":"chips","tail":"Acme","type":"Productof",
+        "head_start":4,"head_end":5,"head_type":"Product",
+        "tail_start":2,"tail_end":3,"tail_type":"Company"
+      }]
+    }"""
+
+    score = score_prediction(case, prediction)
+
+    assert score["entity_tp"] == 0
+    assert score["relation_tp"] == 0
+
+
 def test_financebench_percentage_tolerance_respects_reported_precision() -> None:
     assert answers_equivalent("16.5%", "16.52%", financebench=True)
     assert not answers_equivalent("0.4%", "0.9%", financebench=True)

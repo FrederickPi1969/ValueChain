@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from valuechain.embeddings import EmbeddingConfig, OpenAIEmbeddingClient
-from valuechain.financial_ie.llm import AsyncLLMClient, AsyncLLMConfig
+from valuechain.financial_ie.llm import AsyncLLMClient, AsyncLLMConfig, LLMResponse
 from valuechain.financial_ie.json_utils import parse_json_payload
 from valuechain.financial_ie.models import BenchmarkCase, DocumentChunk
 from valuechain.financial_ie.prompts import build_benchmark_prompt
@@ -25,8 +25,8 @@ from valuechain.financial_ie.retrieval import (
 from valuechain.financial_ie.scoring import score_prediction
 
 
-BENCHMARK_RUNNER_VERSION = "financial-ie-benchmark-v0.3"
-BENCHMARK_SCORER_VERSION = "financial-ie-scorer-v0.2"
+BENCHMARK_RUNNER_VERSION = "financial-ie-benchmark-v0.4"
+BENCHMARK_SCORER_VERSION = "financial-ie-scorer-v0.3"
 
 
 # Observed FIRE schema signatures. These are structural constraints, not text
@@ -107,6 +107,11 @@ FIRE_RELATION_SIGNATURES: dict[str, set[tuple[str, str]]] = {
     "Valuein": {("Money", "Date"), ("Quantity", "Date")},
 }
 
+# The audit pass helps boundary-heavy semantic categories, but on the pilot it
+# over-edits already reliable literal categories such as Money, Date, and
+# Person. Replace only the categories for which review adds information.
+FIRE_NER_REVIEW_REPLACE_TYPES = {"Company", "FinancialEntity", "Product", "Sector"}
+
 
 @dataclass(frozen=True, slots=True)
 class BenchmarkRunConfig:
@@ -118,12 +123,20 @@ class BenchmarkRunConfig:
     concurrency: int = 4
     use_embeddings: bool = True
     embedding_model: str = "qwen3-embed-0.6b"
+    fire_use_gold_entities: bool = False
+    fire_mark_entities: bool = True
+    fire_candidate_pairs: bool = False
+    fire_entity_predictions_path: Path | None = None
+    fire_ner_review: bool = False
 
 
 class BenchmarkRunner:
     def __init__(self, config: BenchmarkRunConfig) -> None:
         self.config = config
         self._pdf_cache: dict[str, list[DocumentChunk]] = {}
+        self._fire_entity_predictions = load_fire_entity_predictions(
+            config.fire_entity_predictions_path
+        )
         self._embedding_client = OpenAIEmbeddingClient(
             EmbeddingConfig(
                 base_url=config.base_url,
@@ -161,6 +174,13 @@ class BenchmarkRunner:
                 "scorer_version": BENCHMARK_SCORER_VERSION,
                 "model": self.config.model,
                 "style": self.config.style,
+                "fire_use_gold_entities": self.config.fire_use_gold_entities,
+                "fire_mark_entities": self.config.fire_mark_entities,
+                "fire_candidate_pairs": self.config.fire_candidate_pairs,
+                "fire_entity_predictions_path": str(
+                    self.config.fire_entity_predictions_path or ""
+                ),
+                "fire_ner_review": self.config.fire_ner_review,
                 "case_count": len(rows),
                 "completed_at": datetime.now(UTC).isoformat(),
             }
@@ -333,24 +353,123 @@ TEXT:
 
 TRAINING EXAMPLES:
 {ner_examples}"""
-        first = await client.complete(
-            "You are a strict financial NER engine. Return valid JSON only.",
-            entity_user,
-            max_tokens=1200,
-        )
-        try:
-            entity_payload = parse_json_payload(first.content)
-        except ValueError:
-            entity_payload = {}
-        raw_entities = entity_payload.get("entities", []) if isinstance(entity_payload, dict) else []
-        internal_entities = align_fire_text_entities(
-            raw_entities,
-            tokens,
-            set(case.metadata["entity_types"]),
-        )
+        cached_entities = self._fire_entity_predictions.get(case.case_id)
+        entity_responses: list[LLMResponse] = []
+        review_content = ""
+        if cached_entities is not None:
+            internal_entities = cached_entities
+            first = LLMResponse(
+                content=json.dumps({"entities": internal_entities}, ensure_ascii=False),
+                latency_s=0.0,
+                usage={},
+                attempts=0,
+            )
+            entity_responses.append(first)
+        elif self.config.fire_use_gold_entities:
+            internal_entities = fire_entities_from_spans(
+                case.metadata.get("gold_entity_spans", []),
+                tokens,
+                set(case.metadata["entity_types"]),
+            )
+            first = LLMResponse(
+                content=json.dumps({"entities": internal_entities}, ensure_ascii=False),
+                latency_s=0.0,
+                usage={},
+                attempts=0,
+            )
+            entity_responses.append(first)
+        else:
+            first = await client.complete(
+                "You are a strict financial NER engine. Return valid JSON only.",
+                entity_user,
+                max_tokens=1200,
+            )
+            try:
+                entity_payload = parse_json_payload(first.content)
+            except ValueError:
+                entity_payload = {}
+            raw_entities = entity_payload.get("entities", []) if isinstance(entity_payload, dict) else []
+            internal_entities = align_fire_text_entities(
+                raw_entities,
+                tokens,
+                set(case.metadata["entity_types"]),
+            )
+            entity_responses.append(first)
+            if self.config.fire_ner_review:
+                draft_entities = internal_entities
+                review_user = f"""Audit and replace a draft FIRE entity extraction.
+
+Return the complete corrected entity list as JSON only:
+{{"entities":[{{"text":"exact source span","type":"Company"}}]}}
+Allowed entity types: {entity_types}
+
+Check every draft item, then inspect the source again for omissions. Correct boundaries and types; add missing
+entities; remove invented entities. Copy every span verbatim. Pay special attention to:
+- transaction/event words such as acquisition, acquire, sold, merger, transfer, and increase as Action;
+- complete offered goods or services as Product, including descriptive service phrases;
+- financial measures, accounts, securities, assets, liabilities, revenue/cost items, and investments as FinancialEntity;
+- job, contractual, ownership, and competitive roles as Designation;
+- the industry phrase itself as Sector, excluding trailing words like market or industry when they are not part of the label;
+- organizational divisions as BusinessUnit. Do not treat an external company as a BusinessUnit.
+Repeated source mentions remain separate. Do not create implicit entities or resolve pronouns.
+
+DRAFT ENTITY CATALOG:
+{json.dumps(internal_entities, ensure_ascii=False)}
+
+DRAFT-MARKED TEXT:
+{mark_fire_entities(tokens, internal_entities)}
+
+SOURCE TEXT:
+{case.text}
+
+TRAINING EXAMPLES:
+{ner_examples}"""
+                review = await client.complete(
+                    "You are a strict financial NER auditor. Return valid JSON only.",
+                    review_user,
+                    max_tokens=1400,
+                )
+                entity_responses.append(review)
+                review_content = review.content
+                try:
+                    review_payload = parse_json_payload(review.content)
+                except ValueError:
+                    review_payload = {}
+                reviewed_entities = (
+                    review_payload.get("entities", [])
+                    if isinstance(review_payload, dict)
+                    else []
+                )
+                reviewed_entities = align_fire_text_entities(
+                    reviewed_entities,
+                    tokens,
+                    set(case.metadata["entity_types"]),
+                )
+                internal_entities = merge_fire_entity_review(
+                    draft_entities,
+                    reviewed_entities,
+                    replace_types=FIRE_NER_REVIEW_REPLACE_TYPES,
+                )
 
         relation_types = ", ".join(case.metadata["relation_types"])
         relation_examples = render_fire_relation_examples(few_shot_examples)
+        marked_text = (
+            mark_fire_entities(tokens, internal_entities)
+            if self.config.fire_mark_entities
+            else case.text
+        )
+        candidate_pairs = (
+            build_fire_candidate_pairs(internal_entities)
+            if self.config.fire_candidate_pairs
+            else []
+        )
+        candidate_instruction = (
+            "\nCandidate endpoint pairs and their legal labels are listed below. "
+            "Evaluate every candidate; output only relations explicitly expressed by the sentence.\n"
+            f"CANDIDATE PAIRS:\n{json.dumps(candidate_pairs, ensure_ascii=False)}\n"
+            if candidate_pairs
+            else ""
+        )
         relation_user = f"""Extract every explicitly supported directed FIRE relation from the text.
 Use only entity IDs from ENTITY CATALOG; never output text spans as endpoints.
 Return JSON only:
@@ -375,12 +494,13 @@ Precision rules:
 - Extract only relations directly stated by this sentence, not plausible business knowledge.
 - Do not turn ordinary descriptive verbs into Action unless the sentence presents a financial/corporate event.
 - It is valid to return an empty list.
+{candidate_instruction}
 
 ENTITY CATALOG:
 {json.dumps(internal_entities, ensure_ascii=False)}
 
 TEXT:
-{case.text}
+{marked_text}
 
 TRAINING EXAMPLES:
 {relation_examples}"""
@@ -399,10 +519,7 @@ TRAINING EXAMPLES:
             internal_entities,
             set(case.metadata["relation_types"]),
         )
-        entities = [
-            {"text": entity["text"], "type": entity["type"]}
-            for entity in internal_entities
-        ]
+        entities = internal_entities
         content = json.dumps({"entities": entities, "relations": relations}, ensure_ascii=False)
         scores = score_prediction(case, content)
         return {
@@ -418,6 +535,7 @@ TRAINING EXAMPLES:
             "prediction": content,
             "intermediate_predictions": {
                 "entities": first.content,
+                "entity_review": review_content,
                 "normalized_entities": internal_entities,
                 "relations": second.content,
             },
@@ -425,9 +543,9 @@ TRAINING EXAMPLES:
             "retrieval": {},
             "retrieved_chunks": [],
             "prompt_sha256": hashlib.sha256(f"{entity_user}\n{relation_user}".encode()).hexdigest(),
-            "latency_s": round(first.latency_s + second.latency_s, 4),
-            "usage": merge_usage(first.usage, second.usage),
-            "attempts": first.attempts + second.attempts,
+            "latency_s": round(sum(response.latency_s for response in entity_responses) + second.latency_s, 4),
+            "usage": merge_usage(*(response.usage for response in entity_responses), second.usage),
+            "attempts": sum(response.attempts for response in entity_responses) + second.attempts,
             "error": "",
         }
 
@@ -578,6 +696,21 @@ def merge_usage(*rows: dict[str, Any]) -> dict[str, int]:
     return {key: int(sum(float(row.get(key) or 0) for row in rows)) for key in keys}
 
 
+def load_fire_entity_predictions(path: Path | None) -> dict[str, list[dict[str, Any]]]:
+    if path is None or not path.exists():
+        return {}
+    predictions: dict[str, list[dict[str, Any]]] = {}
+    for row in read_jsonl(path):
+        intermediate = row.get("intermediate_predictions")
+        entities = intermediate.get("normalized_entities") if isinstance(intermediate, dict) else None
+        if not isinstance(entities, list):
+            continue
+        predictions[str(row.get("case_id") or "")] = [
+            dict(entity) for entity in entities if isinstance(entity, dict)
+        ]
+    return predictions
+
+
 def normalize_fire_id_relations(
     rows: Any,
     entities: list[dict[str, Any]],
@@ -608,9 +741,125 @@ def normalize_fire_id_relations(
                 "head": str(head["text"]),
                 "tail": str(tail["text"]),
                 "type": relation_type,
+                "head_id": str(head["id"]),
+                "head_start": int(head["start"]),
+                "head_end": int(head["end"]),
+                "head_type": str(head["type"]),
+                "tail_id": str(tail["id"]),
+                "tail_start": int(tail["start"]),
+                "tail_end": int(tail["end"]),
+                "tail_type": str(tail["type"]),
             }
         )
     return normalized
+
+
+def fire_entities_from_spans(
+    rows: Any,
+    tokens: list[str],
+    allowed_types: set[str],
+) -> list[dict[str, Any]]:
+    indexed_rows = [
+        {
+            "start": row.get("start"),
+            "end": row.get("end"),
+            "type": row.get("type"),
+        }
+        for row in rows
+        if isinstance(row, dict)
+    ] if isinstance(rows, list) else []
+    normalized: list[dict[str, Any]] = []
+    seen: set[tuple[int, int, str]] = set()
+    for row in indexed_rows:
+        try:
+            start = int(row["start"])
+            end = int(row["end"])
+        except (TypeError, ValueError):
+            continue
+        entity_type = str(row.get("type") or "").strip()
+        key = (start, end, entity_type)
+        if entity_type not in allowed_types or not (0 <= start < end <= len(tokens)) or key in seen:
+            continue
+        seen.add(key)
+        normalized.append(
+            {
+                "id": "",
+                "start": start,
+                "end": end,
+                "text": " ".join(tokens[start:end]),
+                "type": entity_type,
+            }
+        )
+    normalized.sort(key=lambda item: (item["start"], item["end"], item["type"]))
+    for index, entity in enumerate(normalized):
+        entity["id"] = f"e{index}"
+    return normalized
+
+
+def merge_fire_entity_review(
+    draft: list[dict[str, Any]],
+    reviewed: list[dict[str, Any]],
+    *,
+    replace_types: set[str],
+) -> list[dict[str, Any]]:
+    combined = [
+        dict(entity)
+        for entity in draft
+        if str(entity.get("type")) not in replace_types
+    ] + [
+        dict(entity)
+        for entity in reviewed
+        if str(entity.get("type")) in replace_types
+    ]
+    deduped: dict[tuple[int, int, str], dict[str, Any]] = {}
+    for entity in combined:
+        key = (int(entity["start"]), int(entity["end"]), str(entity["type"]))
+        deduped[key] = entity
+    merged = sorted(
+        deduped.values(),
+        key=lambda item: (int(item["start"]), int(item["end"]), str(item["type"])),
+    )
+    for index, entity in enumerate(merged):
+        entity["id"] = f"e{index}"
+    return merged
+
+
+def mark_fire_entities(tokens: list[str], entities: list[dict[str, Any]]) -> str:
+    openings: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    closings: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for entity in entities:
+        openings[int(entity["start"])].append(entity)
+        closings[int(entity["end"])].append(entity)
+    rendered: list[str] = []
+    for index, token in enumerate(tokens):
+        for entity in sorted(openings.get(index, []), key=lambda row: int(row["end"]), reverse=True):
+            rendered.append(f"<entity id=\"{entity['id']}\" type=\"{entity['type']}\">")
+        rendered.append(token)
+        for entity in sorted(closings.get(index + 1, []), key=lambda row: int(row["start"]), reverse=True):
+            rendered.append("</entity>")
+    return " ".join(rendered)
+
+
+def build_fire_candidate_pairs(entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
+    for head in entities:
+        for tail in entities:
+            if head["id"] == tail["id"]:
+                continue
+            allowed = sorted(
+                relation_type
+                for relation_type, signatures in FIRE_RELATION_SIGNATURES.items()
+                if (str(head["type"]), str(tail["type"])) in signatures
+            )
+            if allowed:
+                candidates.append(
+                    {
+                        "head_id": str(head["id"]),
+                        "tail_id": str(tail["id"]),
+                        "allowed_types": allowed,
+                    }
+                )
+    return candidates
 
 
 def align_fire_text_entities(

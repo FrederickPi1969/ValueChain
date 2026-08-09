@@ -2,6 +2,7 @@ from valuechain.models import EntityMention, Passage
 from valuechain.relation_llm import (
     LLMRelationExtractor,
     build_entity_catalog,
+    mark_entity_catalog_text,
     merge_relation_records,
     normalize_object_payload,
     records_from_payload,
@@ -113,7 +114,24 @@ def test_build_entity_catalog_deduplicates_aliases_and_excludes_subject() -> Non
         "text": "Samsung",
         "normalized_name": "Samsung Electronics Co., Ltd",
         "entity_type": "company",
+        "start_offset": "10",
+        "end_offset": "-1",
     }]
+
+
+def test_mark_entity_catalog_text_inserts_stable_id_around_exact_mention() -> None:
+    marked = mark_entity_catalog_text(
+        "We buy chips from Samsung.",
+        [{
+            "id": "e0",
+            "text": "Samsung",
+            "entity_type": "company",
+            "start_offset": "18",
+            "end_offset": "25",
+        }],
+    )
+
+    assert marked == 'We buy chips from <entity id="e0" type="company">Samsung</entity>.'
 
 
 def test_hybrid_merge_uses_llm_to_enrich_rule_fact_fields() -> None:

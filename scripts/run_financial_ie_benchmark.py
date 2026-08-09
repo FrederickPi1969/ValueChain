@@ -35,6 +35,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fire-types", type=Path)
     parser.add_argument("--fire-train-examples", type=Path)
     parser.add_argument("--fire-example-count", type=int, default=3)
+    parser.add_argument("--fire-example-strategy", choices=["idf", "bm25"], default="bm25")
+    parser.add_argument("--fire-gold-entities", action="store_true")
+    parser.add_argument(
+        "--fire-mark-entities",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument("--fire-candidate-pairs", action="store_true")
+    parser.add_argument("--fire-entity-predictions", type=Path)
+    parser.add_argument("--fire-ner-review", action="store_true")
     parser.add_argument("--finqa", type=Path)
     parser.add_argument("--financebench", type=Path)
     parser.add_argument("--financebench-pdfs", type=Path)
@@ -58,6 +68,7 @@ async def run(args: argparse.Namespace) -> dict:
                 limit=args.limit_per_task,
                 examples_path=args.fire_train_examples,
                 example_count=args.fire_example_count,
+                example_strategy=args.fire_example_strategy,
             )
         )
     if args.finqa:
@@ -85,6 +96,11 @@ async def run(args: argparse.Namespace) -> dict:
             api_key=args.api_key,
             concurrency=args.concurrency,
             use_embeddings=not args.no_embeddings,
+            fire_use_gold_entities=args.fire_gold_entities,
+            fire_mark_entities=args.fire_mark_entities,
+            fire_candidate_pairs=args.fire_candidate_pairs,
+            fire_entity_predictions_path=args.fire_entity_predictions,
+            fire_ner_review=args.fire_ner_review,
         )
     )
     return await runner.run(cases)

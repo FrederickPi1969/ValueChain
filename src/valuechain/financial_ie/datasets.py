@@ -70,6 +70,7 @@ def load_fire(
     seed: int = 1969,
     examples_path: Path | None = None,
     example_count: int = 3,
+    example_strategy: str = "bm25",
 ) -> list[BenchmarkCase]:
     rows = json.loads(data_path.read_text(encoding="utf-8"))
     type_catalog = json.loads(types_path.read_text(encoding="utf-8"))
@@ -78,7 +79,12 @@ def load_fire(
     cases: list[BenchmarkCase] = []
     for row in selected:
         entities = [
-            {"text": entity["text"], "type": entity["type"]}
+            {
+                "text": entity["text"],
+                "type": entity["type"],
+                "start": int(entity["start"]),
+                "end": int(entity["end"]),
+            }
             for entity in row["entities"]
         ]
         relations = [
@@ -86,6 +92,12 @@ def load_fire(
                 "head": row["entities"][relation["head"]]["text"],
                 "tail": row["entities"][relation["tail"]]["text"],
                 "type": relation["type"],
+                "head_start": int(row["entities"][relation["head"]]["start"]),
+                "head_end": int(row["entities"][relation["head"]]["end"]),
+                "head_type": row["entities"][relation["head"]]["type"],
+                "tail_start": int(row["entities"][relation["tail"]]["start"]),
+                "tail_end": int(row["entities"][relation["tail"]]["end"]),
+                "tail_type": row["entities"][relation["tail"]]["type"],
             }
             for relation in row["relations"]
         ]
@@ -103,10 +115,12 @@ def load_fire(
                     # exact token boundaries instead of asking an LLM to rewrite
                     # entity strings. The benchmark scorer is exact-span based.
                     "tokens": list(row["tokens"]),
+                    "gold_entity_spans": entities,
                     "few_shot_examples": retrieve_fire_examples(
                         row,
                         example_rows,
                         limit=example_count,
+                        strategy=example_strategy,
                     ),
                 },
             )
@@ -119,18 +133,42 @@ def retrieve_fire_examples(
     examples: list[dict[str, Any]],
     *,
     limit: int,
+    strategy: str = "idf",
 ) -> list[dict[str, Any]]:
     """Retrieve lexical few-shot examples from FIRE's training split only."""
     if not examples or limit <= 0:
         return []
-    document_terms = [set(fire_search_terms(row.get("tokens", []))) for row in examples]
+    tokenized_documents = [fire_search_terms(row.get("tokens", [])) for row in examples]
+    document_terms = [set(terms) for terms in tokenized_documents]
     document_frequency = Counter(term for terms in document_terms for term in terms)
     query_terms = set(fire_search_terms(query.get("tokens", [])))
     total = len(examples)
+    average_length = sum(map(len, tokenized_documents)) / max(1, total)
 
     def score(index: int) -> tuple[float, int]:
+        if strategy == "bm25":
+            frequencies = Counter(tokenized_documents[index])
+            document_length = len(tokenized_documents[index])
+            k1 = 1.2
+            b = 0.75
+            weighted = 0.0
+            for term in query_terms & document_terms[index]:
+                inverse_frequency = math.log(
+                    1 + (total - document_frequency[term] + 0.5) / (document_frequency[term] + 0.5)
+                )
+                frequency = frequencies[term]
+                weighted += inverse_frequency * (
+                    frequency * (k1 + 1)
+                    / (frequency + k1 * (1 - b + b * document_length / max(1, average_length)))
+                )
+            return weighted, -index
+        if strategy != "idf":
+            raise ValueError(f"Unknown FIRE example retrieval strategy: {strategy}")
         overlap = query_terms & document_terms[index]
-        weighted = sum(math.log((total + 1) / (document_frequency[term] + 1)) + 1 for term in overlap)
+        weighted = sum(
+            math.log((total + 1) / (document_frequency[term] + 1)) + 1
+            for term in overlap
+        )
         length_penalty = math.sqrt(max(1, len(document_terms[index])))
         return weighted / length_penalty, -index
 
