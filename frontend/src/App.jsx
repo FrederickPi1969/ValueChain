@@ -20,6 +20,7 @@ import { Resolution } from './views/Resolution.jsx';
 import { TopologyMap } from './views/TopologyMap.jsx';
 
 const EMPTY_FILTERS = { query: '', company: '', relation: '', modality: '', relationshipFamilies: ['supply_chain'], relationshipStatuses: ['confirmed', 'candidate'] };
+const INITIAL_TAB = new URLSearchParams(window.location.search).get('view') === 'topology' ? 'topology' : 'filings';
 const TABS = [
   { id: 'filings', label: 'Filing Library' },
   { id: 'overview', label: 'Overview' },
@@ -39,7 +40,7 @@ export function App() {
   const [data, setData] = useState(null);
   const [resolutionRecords, setResolutionRecords] = useState([]);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const [activeTab, setActiveTab] = useState('filings');
+  const [activeTab, setActiveTab] = useState(INITIAL_TAB);
   const [selectedEvidence, setSelectedEvidence] = useState(null);
   const [briefIndex, setBriefIndex] = useState([]);
   const [selectedBriefTicker, setSelectedBriefTicker] = useState('');
