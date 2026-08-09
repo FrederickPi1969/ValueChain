@@ -18,8 +18,8 @@ const NODE_TYPES = { topology: TopologyNode };
 
 export function TopologyMap({ edges = [], networkEdges = [], companies = [] }) {
   const [focus, setFocus] = useState('');
-  const [depth, setDepth] = useState(2);
-  const [showExposure, setShowExposure] = useState(true);
+  const [depth, setDepth] = useState(1);
+  const [showExposure, setShowExposure] = useState(false);
   const [selectedEdge, setSelectedEdge] = useState(null);
   const sourceEdges = networkEdges.length ? networkEdges : edges;
   const issuerNames = useMemo(() => companies.map((company) => company.company).filter(Boolean), [companies]);
@@ -55,11 +55,11 @@ export function TopologyMap({ edges = [], networkEdges = [], companies = [] }) {
             <option value={1}>One hop</option><option value={2}>Two hops</option>
           </select>
         </label>
-        <label className="topology-checkbox"><input type="checkbox" checked={showExposure} onChange={(event) => setShowExposure(event.target.checked)} /><span>Include dependency classes</span></label>
+        <label className="topology-checkbox"><input type="checkbox" checked={showExposure} onChange={(event) => setShowExposure(event.target.checked)} /><span>Include anonymous / low-quality objects</span></label>
       </div>
       <div className="topology-stats">
         <span><b>{topology.companyCount}</b> company / organization nodes</span>
-        <span><b>{topology.exposureCount}</b> anonymous dependency-class nodes</span>
+        <span><b>{topology.exposureCount}</b> anonymous / low-quality nodes</span>
         <span><b>{topology.edges.length}</b> displayed relations (of {sourceEdges.length} after global filters)</span>
         <span>{networkEdges.length ? <><ShieldCheck size={14} /> canonical candidates; review status still applies</> : <><Radio size={14} /> raw extraction signals; not all are verified counterparties</>}</span>
       </div>
@@ -115,7 +115,7 @@ function EdgeDetail({ edge }) {
 
 function TopologyLegend({ networkReady }) {
   return <div className="topology-legend">
-    <p><b>Solid teal nodes</b> are issuers in the selected company universe. Dark blue nodes are named organizations; dashed amber nodes are disclosed but anonymous classes such as “supplier dependency class.”</p>
+    <p><b>Solid teal nodes</b> are issuers in the selected company universe. Dark blue nodes are named organizations. Dashed amber nodes are anonymous disclosure classes or low-quality parsed objects; they are hidden by default.</p>
     <p><b>Line color</b> denotes modality: green current fact, amber forward-looking, red risk/hypothetical, blue strategic. Width is logarithmic evidence count.</p>
     <p>{networkReady ? 'This run has a canonical network projection, so generic unresolved objects have already been excluded. Canonical is a normalized candidate layer, not a claim that every displayed edge is verified; inspect each edge status before using it as fact.' : 'This older/raw run is useful for exploring disclosure coverage, but a visual edge is not a verified supplier/customer fact.'}</p>
   </div>;
@@ -144,7 +144,21 @@ function buildTopology(rows, issuerNames, focus, depth, showExposure) {
   const flowEdges = capped.map((edge) => {
     const id = `${nodeId(edge.object)}>${nodeId(edge.subject)}>${edge.relation_type}:${edge.modality}`;
     edgeById.set(id, edge);
-    return { id, source: nodeId(edge.object), target: nodeId(edge.subject), label: capped.length <= 32 ? shortRelation(edge.relation_type) : undefined, markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 }, style: edgeStyle(edge), className: `topology-edge ${edge.modality || ''}` };
+    return {
+      id,
+      source: nodeId(edge.object),
+      target: nodeId(edge.subject),
+      type: 'smoothstep',
+      label: edgeLabel(edge),
+      labelShowBg: true,
+      labelBgPadding: [4, 3],
+      labelBgBorderRadius: 4,
+      labelBgStyle: { fill: '#ffffff', fillOpacity: 0.92 },
+      labelStyle: { fill: '#263747', fontSize: 10, fontWeight: 650 },
+      markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 },
+      style: edgeStyle(edge),
+      className: `topology-edge ${edge.modality || ''}`,
+    };
   });
   return { nodes, edges: flowEdges, edgeById, companyCount: nodes.filter((node) => node.data.kind !== 'exposure').length, exposureCount: nodes.filter((node) => node.data.kind === 'exposure').length };
 }
@@ -213,8 +227,17 @@ function focusOptions(rows, issuerNames) {
 
 function nodeKind(name, issuers) {
   if (issuers.has(name)) return 'issuer';
-  if (/\b(class|dependency|capacity|supplier|vendor|customer|provider|contents)\b/i.test(name)) return 'exposure';
+  if (isAnonymousOrLowQuality(name)) return 'exposure';
   return 'counterparty';
+}
+
+function isAnonymousOrLowQuality(name) {
+  const value = String(name || '').trim();
+  return /^(customer|supplier|vendor|company|partner)\s+[a-z0-9]+$/i.test(value)
+    || /^(a small number of customers|supplier dependency class|data center or compute capacity class|power, utility, or cooling supply class)$/i.test(value)
+    || /^(contents?|table of contents)\b/i.test(value)
+    || /^(pte\.?|pty\.?|ltd\.?|inc\.?)\s*(ltd\.?|limited)?$/i.test(value)
+    || /\b(class|dependency class|capacity class)\b/i.test(value);
 }
 
 function edgeStyle(edge) {
@@ -223,6 +246,7 @@ function edgeStyle(edge) {
 }
 
 function miniMapColor(kind) { return { issuer: '#0f766e', counterparty: '#1d4ed8', exposure: '#b45309' }[kind] || '#5b6b7b'; }
+function edgeLabel(edge) { return `${shortRelation(edge.relation_type)} · ${Number(edge.evidence_count || 1)} ev · ${confirmationStatus(edge)}`; }
 function nodeId(value) { return `node:${encodeURIComponent(value)}`; }
 function trim(value, limit) { return value.length > limit ? `${value.slice(0, limit - 1)}…` : value; }
 function joinValues(first, second) { return [...new Set(`${first || ''};${second || ''}`.split(';').filter(Boolean))].join(';'); }

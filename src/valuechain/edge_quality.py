@@ -259,6 +259,57 @@ STRATEGIC_MARKERS = (
     "jointly invest",
 )
 
+# A named counterparty must be tied to the reporting issuer by a cue in the
+# same local span.  A generic "we rely on suppliers" disclosure followed by a
+# competitor list is not evidence that every company in that list is a
+# supplier.  These are intentionally relationship-specific rather than the
+# broad DEPENDENCY_MARKERS used for class-level risk disclosures.
+DIRECT_COUNTERPARTY_CUES: dict[str, tuple[str, ...]] = {
+    "supplier_dependency": (
+        "rely on", "source from", "sources from", "sourced from", "purchase from", "purchases from",
+        "obtain from", "procure from", "procures from", "supplied by", "supply agreement",
+    ),
+    "manufacturing_dependency": (
+        "manufactured by", "manufacture for us", "contract manufacturer", "foundry", "fabrication",
+        "supply agreement", "produced by",
+    ),
+    "foundry_dependency": (
+        "foundry", "wafer fabrication", "fabricated by", "manufactured by", "manufacture for us",
+        "supply agreement",
+    ),
+    "packaging_or_assembly_dependency": (
+        "packaging", "assembly", "test provider", "assembled by", "supply agreement",
+    ),
+    "cloud_or_hosting_dependency": (
+        "hosted by", "hosted on", "cloud services agreement", "cloud provider", "cloud computing platform",
+        "infrastructure provided by",
+    ),
+    "data_center_dependency": (
+        "leased data center", "data center provider", "colocation", "co-location", "hosted by",
+        "capacity agreement",
+    ),
+    "power_or_utility_dependency": (
+        "power purchase agreement", "electricity supplied", "energy supply", "utility service", "provided power",
+    ),
+    "network_or_interconnection_dependency": (
+        "interconnection agreement", "peering agreement", "carrier service", "bandwidth provided", "network provided",
+    ),
+    "distribution_or_channel_dependency": (
+        "distribution agreement", "reseller agreement", "channel partner", "distributes our", "resells our",
+    ),
+    "licensing_dependency": (
+        "licensed from", "license from", "license agreement", "licensed technology", "intellectual property licensed",
+    ),
+    "customer_dependency": (
+        "customer", "revenue from", "sales to", "accounted for", "accounts for", "purchased our",
+    ),
+    "concentration_risk": (
+        "customer", "supplier", "accounted for", "accounts for", "concentration", "revenue from", "sales to",
+    ),
+    "strategic_partner": STRATEGIC_MARKERS,
+    "co_investment": STRATEGIC_MARKERS,
+}
+
 SELF_PRODUCT_MARKERS = (
     "we offer",
     "we provide",
@@ -431,16 +482,12 @@ def evaluate_relation_evidence(record: RelationEvidence) -> EvidenceDecision:
     text = record.evidence_text.lower()
     score = evidence_quality_score(record, info)
     reason = keep_or_drop_reason(record, info, score, text)
-    # Competition context is an ambiguity signal, not proof that a relation is
-    # false. Retain the named candidate for evidence-grounded adjudication.
-    flagged = (
-        reason == "competition_context_without_dependency"
-        or (record.relation_type in COUNTERPARTY_RELATIONS and info.object_kind in {"company", "organization"} and is_competition_context(text))
-    )
-    if flagged:
+    # Competition language is retained in the raw evidence artifact for audit,
+    # but is not graph-ready unless a direct issuer↔counterparty cue survives
+    # the strict local check below.
+    if reason == "kept" and is_competition_context(text) and record.relation_type in COUNTERPARTY_RELATIONS:
         normalized_record = replace(normalized_record, risk_flags=sorted(set(normalized_record.risk_flags) | {"competitor_or_market_context"}))
-        reason = "flagged_competitor_or_market_context"
-    action = "keep" if reason == "kept" or flagged else "drop"
+    action = "keep" if reason == "kept" else "drop"
     return EvidenceDecision(
         original=record,
         record=normalized_record,
@@ -793,11 +840,7 @@ def object_supported_for_counterparty_relation(
     text: str,
 ) -> bool:
     if info.object_kind == "company":
-        if record.relation_type in {"strategic_partner", "co_investment"}:
-            return object_appears_near_markers(text, info.display_name, STRATEGIC_MARKERS)
-        if record.relation_type in {"customer_dependency", "concentration_risk"}:
-            return has_concentration_signal(text) or has_strong_dependency_signal(text)
-        return has_strong_dependency_signal(text) or named_company_supported_by_relation_context(record.relation_type, text)
+        return named_counterparty_has_direct_relation_cue(record.relation_type, text, info.display_name)
     if record.relation_type == "facility_or_geographic_exposure":
         return info.object_kind == "geography" or (
             info.object_kind == "organization" and looks_like_legal_entity(info.display_name)
@@ -806,25 +849,29 @@ def object_supported_for_counterparty_relation(
         return False
     if info.object_kind == "organization":
         if looks_like_legal_entity(info.display_name):
-            if record.relation_type in {"strategic_partner", "co_investment"}:
-                return object_appears_near_markers(text, info.display_name, STRATEGIC_MARKERS)
-            if record.relation_type in {"customer_dependency", "concentration_risk"}:
-                return has_concentration_signal(text) or has_strong_dependency_signal(text)
-            return (
-                record.relation_type not in COUNTERPARTY_RELATIONS
-                or has_strong_dependency_signal(text)
-                or named_company_supported_by_relation_context(record.relation_type, text)
-            )
-        if appears_in_counterparty_list(text, info.display_name) and has_strong_dependency_signal(text):
-            return True
-        if record.relation_type in {"strategic_partner", "co_investment"} and any(
-            marker in text for marker in ["partnership", "collaboration", "alliance", "joint"]
-        ):
-            return object_appears_near_markers(text, info.display_name, STRATEGIC_MARKERS)
+            return named_counterparty_has_direct_relation_cue(record.relation_type, text, info.display_name)
         return False
     if info.object_kind == "unknown":
         return False
     return True
+
+
+def named_counterparty_has_direct_relation_cue(relation_type: str, text: str, display_name: str) -> bool:
+    """Require the entity mention and its relationship verb in one local span."""
+    markers = DIRECT_COUNTERPARTY_CUES.get(relation_type, ())
+    if not markers:
+        return False
+    lowered = text.lower()
+    aliases = object_aliases(display_name)
+    # Do not let a broad cue in a neighboring sentence validate a market list:
+    # e.g. "we rely on suppliers. Competitors include Microsoft ...".
+    for sentence in re.split(r"(?<=[.!?])\s+", lowered):
+        sentence_key = object_key(sentence)
+        if not any(alias in sentence or object_key(alias) in sentence_key for alias in aliases):
+            continue
+        if any(marker in sentence for marker in markers):
+            return True
+    return False
 
 
 def named_company_supported_by_relation_context(relation_type: str, text: str) -> bool:

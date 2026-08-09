@@ -136,12 +136,27 @@ def test_competition_context_is_retained_as_a_flagged_candidate() -> None:
     assert decision.reason == "strategic_language_required"
 
 
-def test_competitor_counterparty_is_not_silently_discarded() -> None:
+def test_competitor_list_is_dropped_without_local_relationship_cue() -> None:
     decision = evaluate_relation_evidence(
-        evidence("Microsoft Corporation", "supplier_dependency", "Microsoft Corporation is a competitor in our market.")
+        evidence(
+            "Microsoft Corporation",
+            "supplier_dependency",
+            "We rely on a limited number of suppliers. Competition includes Microsoft Corporation and other cloud companies.",
+        )
+    )
+    assert decision.action == "drop"
+    assert decision.reason == "object_not_supported_for_relation"
+
+
+def test_named_counterparty_requires_local_direct_cue() -> None:
+    decision = evaluate_relation_evidence(
+        evidence(
+            "TSMC",
+            "foundry_dependency",
+            "We rely on Taiwan Semiconductor Manufacturing Company Limited for wafer fabrication capacity.",
+        )
     )
     assert decision.action == "keep"
-    assert "competitor_or_market_context" in decision.record.risk_flags
 
 
 def test_quality_drops_repeated_table_of_contents_header_as_counterparty() -> None:
