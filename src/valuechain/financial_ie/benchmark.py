@@ -25,8 +25,87 @@ from valuechain.financial_ie.retrieval import (
 from valuechain.financial_ie.scoring import score_prediction
 
 
-BENCHMARK_RUNNER_VERSION = "financial-ie-benchmark-v0.2"
+BENCHMARK_RUNNER_VERSION = "financial-ie-benchmark-v0.3"
 BENCHMARK_SCORER_VERSION = "financial-ie-scorer-v0.2"
+
+
+# Observed FIRE schema signatures. These are structural constraints, not text
+# heuristics: a candidate relation with incompatible endpoint types cannot be a
+# valid FIRE relation. Keeping this in code prevents prompt drift and makes the
+# validator independently testable.
+FIRE_RELATION_SIGNATURES: dict[str, set[tuple[str, str]]] = {
+    "ActionBuy": {
+        (actor, target)
+        for actor in ("Company", "Person")
+        for target in ("Company", "FinancialEntity", "BusinessUnit", "Product")
+    },
+    "ActionSell": {
+        (actor, target)
+        for actor in ("Company", "Person")
+        for target in ("Company", "FinancialEntity", "BusinessUnit", "Product")
+    },
+    "ActionMerge": {("Company", "Company")},
+    "Actionin": {("Action", "Date")},
+    "Actionto": {
+        ("Action", "Company"),
+        ("Action", "FinancialEntity"),
+        ("Action", "BusinessUnit"),
+    },
+    "Constituentof": {
+        ("FinancialEntity", "FinancialEntity"),
+        ("BusinessUnit", "Company"),
+        ("BusinessUnit", "BusinessUnit"),
+    },
+    "Designation": {("Person", "Designation"), ("Company", "Designation")},
+    "Employeeof": {("Person", "Company"), ("Person", "BusinessUnit")},
+    "Locatedin": {
+        (head, tail)
+        for head in ("Company", "BusinessUnit", "Location", "GeopoliticalEntity", "Money", "Quantity")
+        for tail in ("Location", "GeopoliticalEntity")
+    },
+    "Productof": {("Product", "Company")},
+    "Propertyof": {
+        ("Action", "Company"),
+        ("Action", "Product"),
+        ("Action", "Person"),
+        ("Action", "BusinessUnit"),
+        ("Action", "FinancialEntity"),
+        ("FinancialEntity", "Product"),
+        ("FinancialEntity", "FinancialEntity"),
+        ("FinancialEntity", "Company"),
+        ("FinancialEntity", "BusinessUnit"),
+        ("FinancialEntity", "Person"),
+        ("BusinessUnit", "Company"),
+        ("BusinessUnit", "BusinessUnit"),
+    },
+    "Quantity": {
+        ("FinancialEntity", "Quantity"),
+        ("BusinessUnit", "Quantity"),
+        ("Product", "Quantity"),
+    },
+    "Sector": {("Company", "Sector")},
+    "Subsidiaryof": {("Company", "Company")},
+    "Value": {
+        ("FinancialEntity", "Money"),
+        ("FinancialEntity", "Quantity"),
+        ("BusinessUnit", "Money"),
+        ("BusinessUnit", "Quantity"),
+        ("Product", "Money"),
+        ("Product", "Quantity"),
+        ("Company", "Money"),
+    },
+    "ValueChangeDecreaseby": {
+        ("FinancialEntity", "Money"),
+        ("FinancialEntity", "Quantity"),
+        ("BusinessUnit", "Quantity"),
+    },
+    "ValueChangeIncreaseby": {
+        ("FinancialEntity", "Money"),
+        ("FinancialEntity", "Quantity"),
+        ("BusinessUnit", "Quantity"),
+    },
+    "Valuein": {("Money", "Date"), ("Quantity", "Date")},
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,11 +173,17 @@ class BenchmarkRunner:
     async def _run_case(self, case: BenchmarkCase, client: AsyncLLMClient) -> dict[str, Any]:
         retrieved: list[DocumentChunk] | None = None
         retrieval_metrics: dict[str, Any] = {}
-        if self.config.style in {"retrieval", "workflow"} and case.task == "financebench":
+        if self.config.style in {"retrieval", "workflow", "workflow_v2"} and case.task == "financebench":
             retrieved, retrieval_metrics = await self._retrieve_financebench(case)
         if self.config.style == "workflow" and case.task == "fire_joint_re":
             return await self._run_fire_workflow(case, client)
-        prompt_style = "structured" if self.config.style in {"retrieval", "workflow"} else self.config.style
+        if self.config.style == "workflow_v2" and case.task == "fire_joint_re":
+            return await self._run_fire_workflow_v2(case, client)
+        prompt_style = (
+            "structured"
+            if self.config.style in {"retrieval", "workflow", "workflow_v2"}
+            else self.config.style
+        )
         system, user, max_tokens = build_benchmark_prompt(
             case,
             style=prompt_style,
@@ -206,6 +291,134 @@ TEXT:
             "prediction": content,
             "intermediate_predictions": {
                 "entities": first.content,
+                "relations": second.content,
+            },
+            "scores": scores,
+            "retrieval": {},
+            "retrieved_chunks": [],
+            "prompt_sha256": hashlib.sha256(f"{entity_user}\n{relation_user}".encode()).hexdigest(),
+            "latency_s": round(first.latency_s + second.latency_s, 4),
+            "usage": merge_usage(first.usage, second.usage),
+            "attempts": first.attempts + second.attempts,
+            "error": "",
+        }
+
+    async def _run_fire_workflow_v2(
+        self,
+        case: BenchmarkCase,
+        client: AsyncLLMClient,
+    ) -> dict[str, Any]:
+        tokens = [str(token) for token in case.metadata.get("tokens", case.text.split())]
+        entity_types = ", ".join(case.metadata["entity_types"])
+        few_shot_examples = case.metadata.get("few_shot_examples", [])
+        ner_examples = render_fire_ner_examples(few_shot_examples)
+        entity_user = f"""Extract every FIRE benchmark entity mention as an exact source span.
+
+Return JSON only:
+{{"entities":[{{"text":"exact source span","type":"Company"}}]}}
+Allowed entity types: {entity_types}
+
+Rules:
+- Copy each `text` exactly from the source. Use the complete noun phrase and do not paraphrase.
+- Action is the explicit transaction/event word, not every ordinary verb.
+- Product is a named or described good/service offered by a company; keep its full descriptive phrase.
+- FinancialEntity is a financial measure, account, security, asset, liability, revenue/cost item, or investment.
+- Designation is a person's job role or a company's contractual/competitive role.
+- Money is a currency amount; Quantity is a percentage, count, multiple, or non-currency measure.
+- Sector is an industry phrase; BusinessUnit is an organizational division.
+- Include repeated mentions separately. Do not invent implicit entities.
+
+TEXT:
+{case.text}
+
+TRAINING EXAMPLES:
+{ner_examples}"""
+        first = await client.complete(
+            "You are a strict financial NER engine. Return valid JSON only.",
+            entity_user,
+            max_tokens=1200,
+        )
+        try:
+            entity_payload = parse_json_payload(first.content)
+        except ValueError:
+            entity_payload = {}
+        raw_entities = entity_payload.get("entities", []) if isinstance(entity_payload, dict) else []
+        internal_entities = align_fire_text_entities(
+            raw_entities,
+            tokens,
+            set(case.metadata["entity_types"]),
+        )
+
+        relation_types = ", ".join(case.metadata["relation_types"])
+        relation_examples = render_fire_relation_examples(few_shot_examples)
+        relation_user = f"""Extract every explicitly supported directed FIRE relation from the text.
+Use only entity IDs from ENTITY CATALOG; never output text spans as endpoints.
+Return JSON only:
+{{"relations":[{{"head_id":"e0","type":"Employeeof","tail_id":"e1"}}]}}
+Allowed relation types: {relation_types}
+
+Direction and meaning:
+- Productof: Product -> Company that offers/makes it.
+- Employeeof: Person -> employing Company/BusinessUnit.
+- Subsidiaryof: subsidiary Company -> parent Company.
+- Sector: Company -> industry Sector. Designation: Person/Company -> role.
+- Propertyof: financial item/action/business unit -> its owner or subject.
+- Constituentof: component financial item/business unit -> larger aggregate/company.
+- Value or Quantity: measured item -> amount. Valuein: amount -> Date.
+- ValueChangeIncreaseby / ValueChangeDecreaseby: changing financial item -> delta amount.
+- Actionin: Action -> Date. Actionto: Action verb -> its target.
+- ActionBuy / ActionSell: buyer or seller -> acquired/sold target. ActionMerge joins two companies.
+- Locatedin: entity/location/amount -> stated geographic location.
+
+Precision rules:
+- A valid type signature is mandatory; do not reverse an edge.
+- Extract only relations directly stated by this sentence, not plausible business knowledge.
+- Do not turn ordinary descriptive verbs into Action unless the sentence presents a financial/corporate event.
+- It is valid to return an empty list.
+
+ENTITY CATALOG:
+{json.dumps(internal_entities, ensure_ascii=False)}
+
+TEXT:
+{case.text}
+
+TRAINING EXAMPLES:
+{relation_examples}"""
+        second = await client.complete(
+            "You are a strict financial relation extraction engine. Return valid JSON only.",
+            relation_user,
+            max_tokens=1200,
+        )
+        try:
+            relation_payload = parse_json_payload(second.content)
+        except ValueError:
+            relation_payload = {}
+        raw_relations = relation_payload.get("relations", []) if isinstance(relation_payload, dict) else []
+        relations = normalize_fire_id_relations(
+            raw_relations,
+            internal_entities,
+            set(case.metadata["relation_types"]),
+        )
+        entities = [
+            {"text": entity["text"], "type": entity["type"]}
+            for entity in internal_entities
+        ]
+        content = json.dumps({"entities": entities, "relations": relations}, ensure_ascii=False)
+        scores = score_prediction(case, content)
+        return {
+            "case_id": case.case_id,
+            "task": case.task,
+            "source": case.source,
+            "question": case.question,
+            "input_text": case.text,
+            "model": self.config.model,
+            "style": self.config.style,
+            "gold": case.gold,
+            "metadata": case.metadata,
+            "prediction": content,
+            "intermediate_predictions": {
+                "entities": first.content,
+                "normalized_entities": internal_entities,
                 "relations": second.content,
             },
             "scores": scores,
@@ -363,3 +576,136 @@ def rescore_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def merge_usage(*rows: dict[str, Any]) -> dict[str, int]:
     keys = {key for row in rows for key, value in row.items() if isinstance(value, (int, float))}
     return {key: int(sum(float(row.get(key) or 0) for row in rows)) for key in keys}
+
+
+def normalize_fire_id_relations(
+    rows: Any,
+    entities: list[dict[str, Any]],
+    allowed_types: set[str],
+) -> list[dict[str, str]]:
+    entity_by_id = {str(entity["id"]): entity for entity in entities}
+    normalized: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str]] = set()
+    if not isinstance(rows, list):
+        return normalized
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        head = entity_by_id.get(str(row.get("head_id") or ""))
+        tail = entity_by_id.get(str(row.get("tail_id") or ""))
+        relation_type = str(row.get("type") or "").strip()
+        if head is None or tail is None or relation_type not in allowed_types or head["id"] == tail["id"]:
+            continue
+        valid_signatures = FIRE_RELATION_SIGNATURES.get(relation_type, set())
+        if (str(head["type"]), str(tail["type"])) not in valid_signatures:
+            continue
+        key = (str(head["id"]), str(tail["id"]), relation_type)
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(
+            {
+                "head": str(head["text"]),
+                "tail": str(tail["text"]),
+                "type": relation_type,
+            }
+        )
+    return normalized
+
+
+def align_fire_text_entities(
+    rows: Any,
+    tokens: list[str],
+    allowed_types: set[str],
+) -> list[dict[str, Any]]:
+    """Align exact-text LLM mentions to FIRE tokens and assign stable IDs.
+
+    Repeated identical mentions are assigned to successive unused occurrences.
+    Unalignable or paraphrased mentions are rejected instead of contaminating
+    relation endpoints with model-generated strings.
+    """
+    normalized_tokens = [normalize_fire_token(token) for token in tokens]
+    candidates: list[dict[str, Any]] = []
+    occupied: set[tuple[int, int, str]] = set()
+    if not isinstance(rows, list):
+        return candidates
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        entity_type = str(row.get("type") or "").strip()
+        mention_tokens = [
+            normalize_fire_token(token)
+            for token in str(row.get("text") or "").strip().split()
+            if normalize_fire_token(token)
+        ]
+        if entity_type not in allowed_types or not mention_tokens:
+            continue
+        matches = [
+            (start, start + len(mention_tokens))
+            for start in range(len(tokens) - len(mention_tokens) + 1)
+            if normalized_tokens[start : start + len(mention_tokens)] == mention_tokens
+        ]
+        match = next(
+            (
+                (start, end)
+                for start, end in matches
+                if (start, end, entity_type) not in occupied
+            ),
+            None,
+        )
+        if match is None:
+            continue
+        start, end = match
+        occupied.add((start, end, entity_type))
+        candidates.append(
+            {
+                "id": "",
+                "start": start,
+                "end": end,
+                "text": " ".join(tokens[start:end]),
+                "type": entity_type,
+            }
+        )
+    candidates.sort(key=lambda item: (item["start"], item["end"], item["type"]))
+    for index, entity in enumerate(candidates):
+        entity["id"] = f"e{index}"
+    return candidates
+
+
+def normalize_fire_token(token: str) -> str:
+    return token.strip().casefold()
+
+
+def render_fire_ner_examples(examples: Any) -> str:
+    if not isinstance(examples, list) or not examples:
+        return "(none)"
+    blocks = []
+    for example in examples:
+        if not isinstance(example, dict):
+            continue
+        entities = [
+            {"text": entity.get("text"), "type": entity.get("type")}
+            for entity in example.get("entities", [])
+            if isinstance(entity, dict)
+        ]
+        blocks.append(
+            f"INPUT: {example.get('text', '')}\nOUTPUT: "
+            + json.dumps({"entities": entities}, ensure_ascii=False)
+        )
+    return "\n\n".join(blocks) or "(none)"
+
+
+def render_fire_relation_examples(examples: Any) -> str:
+    if not isinstance(examples, list) or not examples:
+        return "(none)"
+    blocks = []
+    for example in examples:
+        if not isinstance(example, dict):
+            continue
+        blocks.append(
+            f"TEXT: {example.get('text', '')}\nENTITY CATALOG: "
+            + json.dumps(example.get("entities", []), ensure_ascii=False)
+            + "\nOUTPUT: "
+            + json.dumps({"relations": example.get("relations", [])}, ensure_ascii=False)
+        )
+    return "\n\n".join(blocks) or "(none)"

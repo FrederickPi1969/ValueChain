@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", default="Qwen/Qwen3.6-35B-A3B")
     parser.add_argument(
         "--style",
-        choices=["direct", "structured", "retrieval", "workflow"],
+        choices=["direct", "structured", "retrieval", "workflow", "workflow_v2"],
         default="structured",
     )
     parser.add_argument("--base-url", default="http://100.114.26.88:31969/v1")
@@ -33,6 +33,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--finben-fnxl", type=Path)
     parser.add_argument("--fire-data", type=Path)
     parser.add_argument("--fire-types", type=Path)
+    parser.add_argument("--fire-train-examples", type=Path)
+    parser.add_argument("--fire-example-count", type=int, default=3)
     parser.add_argument("--finqa", type=Path)
     parser.add_argument("--financebench", type=Path)
     parser.add_argument("--financebench-pdfs", type=Path)
@@ -49,7 +51,15 @@ async def run(args: argparse.Namespace) -> dict:
     if args.fire_data:
         if not args.fire_types:
             raise ValueError("--fire-types is required with --fire-data")
-        cases.extend(load_fire(args.fire_data, args.fire_types, limit=args.limit_per_task))
+        cases.extend(
+            load_fire(
+                args.fire_data,
+                args.fire_types,
+                limit=args.limit_per_task,
+                examples_path=args.fire_train_examples,
+                example_count=args.fire_example_count,
+            )
+        )
     if args.finqa:
         cases.extend(load_finqa(args.finqa, limit=args.limit_per_task))
     if args.financebench:

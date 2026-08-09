@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import math
 import random
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -67,10 +68,13 @@ def load_fire(
     *,
     limit: int = 30,
     seed: int = 1969,
+    examples_path: Path | None = None,
+    example_count: int = 3,
 ) -> list[BenchmarkCase]:
     rows = json.loads(data_path.read_text(encoding="utf-8"))
     type_catalog = json.loads(types_path.read_text(encoding="utf-8"))
     selected = deterministic_sample(rows, limit, seed)
+    example_rows = json.loads(examples_path.read_text(encoding="utf-8")) if examples_path else []
     cases: list[BenchmarkCase] = []
     for row in selected:
         entities = [
@@ -95,10 +99,75 @@ def load_fire(
                 metadata={
                     "entity_types": sorted(type_catalog["entities"]),
                     "relation_types": sorted(type_catalog["relations"]),
+                    # Preserve FIRE's canonical tokenization so extraction can use
+                    # exact token boundaries instead of asking an LLM to rewrite
+                    # entity strings. The benchmark scorer is exact-span based.
+                    "tokens": list(row["tokens"]),
+                    "few_shot_examples": retrieve_fire_examples(
+                        row,
+                        example_rows,
+                        limit=example_count,
+                    ),
                 },
             )
         )
     return cases
+
+
+def retrieve_fire_examples(
+    query: dict[str, Any],
+    examples: list[dict[str, Any]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Retrieve lexical few-shot examples from FIRE's training split only."""
+    if not examples or limit <= 0:
+        return []
+    document_terms = [set(fire_search_terms(row.get("tokens", []))) for row in examples]
+    document_frequency = Counter(term for terms in document_terms for term in terms)
+    query_terms = set(fire_search_terms(query.get("tokens", [])))
+    total = len(examples)
+
+    def score(index: int) -> tuple[float, int]:
+        overlap = query_terms & document_terms[index]
+        weighted = sum(math.log((total + 1) / (document_frequency[term] + 1)) + 1 for term in overlap)
+        length_penalty = math.sqrt(max(1, len(document_terms[index])))
+        return weighted / length_penalty, -index
+
+    ranked = sorted(range(total), key=score, reverse=True)[:limit]
+    return [render_fire_example(examples[index]) for index in ranked if score(index)[0] > 0]
+
+
+def fire_search_terms(tokens: Iterable[Any]) -> list[str]:
+    return [
+        term
+        for token in tokens
+        for term in re.findall(r"[a-z0-9]+", str(token).casefold())
+        if len(term) > 1
+    ]
+
+
+def render_fire_example(row: dict[str, Any]) -> dict[str, Any]:
+    entities = [
+        {
+            "id": f"e{index}",
+            "text": str(entity["text"]),
+            "type": str(entity["type"]),
+        }
+        for index, entity in enumerate(row.get("entities", []))
+    ]
+    return {
+        "text": " ".join(str(token) for token in row.get("tokens", [])),
+        "entities": entities,
+        "relations": [
+            {
+                "head_id": f"e{int(relation['head'])}",
+                "type": str(relation["type"]),
+                "tail_id": f"e{int(relation['tail'])}",
+            }
+            for relation in row.get("relations", [])
+        ],
+    }
 
 
 def load_finqa(path: Path, *, limit: int = 30, seed: int = 1969) -> list[BenchmarkCase]:

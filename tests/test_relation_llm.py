@@ -1,5 +1,12 @@
-from valuechain.models import Passage
-from valuechain.relation_llm import LLMRelationExtractor, merge_relation_records, normalize_object_payload, records_from_payload, should_skip_llm
+from valuechain.models import EntityMention, Passage
+from valuechain.relation_llm import (
+    LLMRelationExtractor,
+    build_entity_catalog,
+    merge_relation_records,
+    normalize_object_payload,
+    records_from_payload,
+    should_skip_llm,
+)
 
 
 def test_normalize_object_payload_accepts_structured_llm_object() -> None:
@@ -69,6 +76,44 @@ def test_records_from_payload_retains_product_as_relationship_metadata() -> None
         }]
     )
     assert records[0].product_or_service == "memory"
+
+
+def test_records_from_payload_resolves_named_object_id_from_catalog() -> None:
+    records = records_from_payload(
+        sample_passage(),
+        "test-model",
+        [{
+            "object_id": "e0",
+            "object": "hallucinated rewrite",
+            "relation_type": "supplier_dependency",
+            "modality": "current_fact",
+        }],
+        entity_catalog=[{
+            "id": "e0",
+            "text": "Samsung",
+            "normalized_name": "Samsung Electronics Co., Ltd",
+        }],
+    )
+
+    assert records[0].object == "Samsung Electronics Co., Ltd"
+
+
+def test_build_entity_catalog_deduplicates_aliases_and_excludes_subject() -> None:
+    catalog = build_entity_catalog(
+        [
+            EntityMention("NVIDIA", "company", "NVIDIA Corporation", start_offset=0),
+            EntityMention("Samsung", "company", "Samsung Electronics Co., Ltd", start_offset=10),
+            EntityMention("Samsung Electronics", "company", "Samsung Electronics Co., Ltd", start_offset=20),
+        ],
+        "NVIDIA Corporation",
+    )
+
+    assert catalog == [{
+        "id": "e0",
+        "text": "Samsung",
+        "normalized_name": "Samsung Electronics Co., Ltd",
+        "entity_type": "company",
+    }]
 
 
 def test_hybrid_merge_uses_llm_to_enrich_rule_fact_fields() -> None:

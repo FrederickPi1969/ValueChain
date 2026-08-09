@@ -57,7 +57,7 @@ class Settings:
     # loopback addresses; use the OpenAI-compatible gateway for client calls.
     llm_base_url: str = os.getenv("VALUECHAIN_LLM_BASE_URL", "https://localllm.frederickpi.com/v1")
     llm_api_key: str = os.getenv("VALUECHAIN_LLM_API_KEY", "1969")
-    extraction_model: str = os.getenv("VALUECHAIN_EXTRACTION_MODEL", "Qwen/Qwen3.5-4B")
+    extraction_model: str = os.getenv("VALUECHAIN_EXTRACTION_MODEL", "Qwen/Qwen3.6-35B-A3B")
     complex_model: str = os.getenv("VALUECHAIN_COMPLEX_MODEL", "Qwen/Qwen3.6-35B-A3B")
     embedding_model: str = os.getenv("VALUECHAIN_EMBEDDING_MODEL", "qwen3-embed-0.6b")
     llm_report_url: str = os.getenv(

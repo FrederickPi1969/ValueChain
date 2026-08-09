@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, replace
 
 from valuechain.llm_client import OpenAICompatibleClient
-from valuechain.models import Passage, RelationEvidence
+from valuechain.entity_resolution import normalize_entity_key
+from valuechain.models import EntityMention, Passage, RelationEvidence
 from valuechain.ontology import raw_relation_types
 
 
@@ -33,6 +35,8 @@ Extract evidence-backed dependency relations where the subject company depends o
 controls, partners with, or has concentrated exposure to a specific object disclosed in the passage.
 
 Output schema for each JSON object:
+- object_id: string. For a named counterparty, this must be an ID from the supplied ENTITY CATALOG.
+  Use an empty string only for a genuinely anonymous dependency class or geography.
 - object: string. Prefer exact named counterparties when disclosed. If no name is disclosed, still output a
   useful class object such as "limited number of suppliers", "third-party data center providers",
   "channel partners", "natural gas transportation suppliers", "major customers", "fuel suppliers",
@@ -85,6 +89,8 @@ Recall-first rules:
    counterparty. Make the object descriptive, not a schema label: use "single-source suppliers", not
    "supplier_dependency"; use "third-party data center providers", not "data_center_dependency".
 9. Do not output the subject company, its own products, its business segments, or its internal brands as objects.
+   Every named-company or named-organization object must reference its ENTITY CATALOG object_id. Never create a
+   named object that is absent from that catalog.
 10. When in doubt between [] and a directly supported class-level exposure, output the exposure with
     lower confidence rather than returning [].
 11. When A, B, and C occur in a coordinated list that shares one directly stated action or role, emit a
@@ -142,30 +148,67 @@ class LLMRelationExtractor:
     model_version: str
 
     def extract(self, passage: Passage) -> list[RelationEvidence]:
+        return self.extract_with_mentions(passage, [])
+
+    def extract_with_mentions(
+        self,
+        passage: Passage,
+        mentions: list[EntityMention],
+    ) -> list[RelationEvidence]:
+        entity_catalog = build_entity_catalog(mentions, passage.company_name)
         try:
-            payload = self.client.chat_json(SYSTEM_PROMPT, build_prompt(passage), max_tokens=1800)
+            payload = self.client.chat_json(
+                SYSTEM_PROMPT,
+                build_prompt(passage, entity_catalog),
+                max_tokens=1800,
+            )
         except Exception:
             return []
-        return records_from_payload(passage, self.model_version, payload)
+        return records_from_payload(
+            passage,
+            self.model_version,
+            payload,
+            entity_catalog=entity_catalog,
+        )
 
     async def extract_async(self, passage: Passage) -> list[RelationEvidence]:
+        return await self.extract_async_with_mentions(passage, [])
+
+    async def extract_async_with_mentions(
+        self,
+        passage: Passage,
+        mentions: list[EntityMention],
+    ) -> list[RelationEvidence]:
+        entity_catalog = build_entity_catalog(mentions, passage.company_name)
         try:
-            payload = await self.client.chat_json_async(SYSTEM_PROMPT, build_prompt(passage), max_tokens=1800)
+            payload = await self.client.chat_json_async(
+                SYSTEM_PROMPT,
+                build_prompt(passage, entity_catalog),
+                max_tokens=1800,
+            )
         except Exception:
             return []
-        return records_from_payload(passage, self.model_version, payload)
+        return records_from_payload(
+            passage,
+            self.model_version,
+            payload,
+            entity_catalog=entity_catalog,
+        )
 
     async def aclose(self) -> None:
         await self.client.aclose()
 
 
-def build_prompt(passage: Passage) -> str:
+def build_prompt(passage: Passage, entity_catalog: list[dict[str, str]] | None = None) -> str:
+    catalog = entity_catalog or []
     return (
         f"Subject company: {passage.company_name}\n"
         f"Form: {passage.form}\n"
         f"Section: {passage.section}\n"
         f"Source document: {passage.source_document or 'primary document'}\n"
         f"Source document type: {passage.source_document_type or 'PRIMARY'}\n"
+        "ENTITY CATALOG (named objects must use one of these IDs):\n"
+        f"{json.dumps(catalog, ensure_ascii=False)}\n"
         f"Passage:\n{passage.text[:3500]}"
     )
 
@@ -174,17 +217,25 @@ def records_from_payload(
     passage: Passage,
     model_version: str,
     payload,
+    *,
+    entity_catalog: list[dict[str, str]] | None = None,
 ) -> list[RelationEvidence]:
     if not isinstance(payload, list):
         return []
     records: list[RelationEvidence] = []
+    object_by_id = {
+        str(entity.get("id")): str(entity.get("normalized_name") or entity.get("text") or "").strip()
+        for entity in entity_catalog or []
+        if isinstance(entity, dict) and entity.get("id")
+    }
     for item in payload:
         if not isinstance(item, dict):
             continue
         relation_type = str(item.get("relation_type", "")).strip()
         if relation_type not in ALLOWED_RELATION_TYPES:
             continue
-        obj = normalize_object_payload(item.get("object", ""))
+        object_id = str(item.get("object_id") or "").strip()
+        obj = object_by_id.get(object_id) or normalize_object_payload(item.get("object", ""))
         if not obj or is_low_information_llm_object(obj, relation_type):
             continue
         modality = str(item.get("modality", "current_fact")).strip()
@@ -228,6 +279,32 @@ def records_from_payload(
     return records
 
 
+def build_entity_catalog(
+    mentions: list[EntityMention],
+    subject_name: str,
+) -> list[dict[str, str]]:
+    subject_key = normalize_entity_key(subject_name)
+    catalog: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for mention in sorted(mentions, key=lambda row: (row.start_offset, row.end_offset, row.text)):
+        if mention.mention_kind != "named_entity":
+            continue
+        normalized_name = mention.normalized_name.strip() or mention.text.strip()
+        key = normalize_entity_key(normalized_name)
+        if not key or key == subject_key or key in seen:
+            continue
+        seen.add(key)
+        catalog.append(
+            {
+                "id": f"e{len(catalog)}",
+                "text": mention.text.strip(),
+                "normalized_name": normalized_name,
+                "entity_type": mention.entity_type,
+            }
+        )
+    return catalog
+
+
 def normalize_object_payload(value) -> str:
     if isinstance(value, dict):
         for key in ["name", "text", "normalized_name", "entity", "label"]:
@@ -266,11 +343,18 @@ class HybridRelationExtractor:
     llm_extractor: LLMRelationExtractor | None = None
 
     def extract(self, passage: Passage) -> list[RelationEvidence]:
+        return self.extract_with_mentions(passage, [])
+
+    def extract_with_mentions(
+        self,
+        passage: Passage,
+        mentions: list[EntityMention],
+    ) -> list[RelationEvidence]:
         rule_records = self.rules_extractor.extract(passage)
         if self.llm_extractor is None or should_skip_llm(passage):
             return rule_records
         try:
-            llm_records = self.llm_extractor.extract(passage)
+            llm_records = self.llm_extractor.extract_with_mentions(passage, mentions)
         except Exception:
             return rule_records
         if not llm_records:
@@ -278,11 +362,18 @@ class HybridRelationExtractor:
         return merge_relation_records(rule_records, llm_records)
 
     async def extract_async(self, passage: Passage) -> list[RelationEvidence]:
+        return await self.extract_async_with_mentions(passage, [])
+
+    async def extract_async_with_mentions(
+        self,
+        passage: Passage,
+        mentions: list[EntityMention],
+    ) -> list[RelationEvidence]:
         rule_records = self.rules_extractor.extract(passage)
         if self.llm_extractor is None or should_skip_llm(passage):
             return rule_records
         try:
-            llm_records = await self.llm_extractor.extract_async(passage)
+            llm_records = await self.llm_extractor.extract_async_with_mentions(passage, mentions)
         except Exception:
             return rule_records
         if not llm_records:

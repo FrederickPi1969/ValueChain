@@ -18,6 +18,16 @@ class StaticExtractor:
     def extract(self, _passage): return self.records
 
 
+class MentionAwareExtractor(StaticExtractor):
+    def __init__(self, records):
+        super().__init__(records)
+        self.received_mentions = []
+
+    def extract_with_mentions(self, _passage, mentions):
+        self.received_mentions = mentions
+        return self.records
+
+
 def test_named_object_must_be_mentioned_and_alias_is_normalized():
     samsung = EntityMention("Samsung", "company", "Samsung Electronics Co., Ltd", mention_kind="named_entity", passage_id="p")
     extractor = MentionConstrainedExtractor(StaticExtractor([record("Samsung"), record("Alphabet Inc.")]), {"p": [samsung]})
@@ -42,3 +52,13 @@ def test_exhibit_footnote_marker_matches_the_underlying_legal_name():
     entity = EntityMention("Xilinx Development Corporation", "organization", "Xilinx Development Corporation", mention_kind="named_entity", passage_id="p")
     extractor = MentionConstrainedExtractor(StaticExtractor([record("Xilinx Development Corporation (1")]), {"p": [entity]})
     assert extractor.extract(passage())[0].object == "Xilinx Development Corporation"
+
+
+def test_wrapper_passes_persisted_mentions_into_relation_extractor():
+    samsung = EntityMention("Samsung", "company", "Samsung Electronics Co., Ltd", mention_kind="named_entity", passage_id="p")
+    inner = MentionAwareExtractor([record("Samsung")])
+    extractor = MentionConstrainedExtractor(inner, {"p": [samsung]})
+
+    extractor.extract(passage())
+
+    assert inner.received_mentions == [samsung]

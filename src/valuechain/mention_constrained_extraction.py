@@ -27,12 +27,21 @@ class MentionConstrainedExtractor:
     diagnostics: list[dict[str, object]] = field(default_factory=list)
 
     def extract(self, passage: Passage) -> list[RelationEvidence]:
-        return self._constrain(passage, self.extractor.extract(passage))
+        mentions = self.mentions_by_passage.get(passage.passage_id, [])
+        if hasattr(self.extractor, "extract_with_mentions"):
+            records = self.extractor.extract_with_mentions(passage, mentions)
+        else:
+            records = self.extractor.extract(passage)
+        return self._constrain(passage, records)
 
     async def extract_async(self, passage: Passage) -> list[RelationEvidence]:
         # The wrapper presents one interface to the pipeline, but rules mode is
         # deliberately synchronous. Do not make a saved-passage re-extraction
         # fail merely because the wrapper itself has an async method.
+        mentions = self.mentions_by_passage.get(passage.passage_id, [])
+        if hasattr(self.extractor, "extract_async_with_mentions"):
+            records = await self.extractor.extract_async_with_mentions(passage, mentions)
+            return self._constrain(passage, records)
         if hasattr(self.extractor, "extract_async"):
             return self._constrain(passage, await self.extractor.extract_async(passage))
         return self.extract(passage)

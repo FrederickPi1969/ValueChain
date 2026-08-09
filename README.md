@@ -252,8 +252,8 @@ filtered evidence/edge set.
 Local LLM calls use the OpenAI-compatible gateway at
 `https://localllm.frederickpi.com/v1`; `/report` is model discovery only. Keep
 `VALUECHAIN_LLM_CONCURRENCY` at 16 or lower (the CLI enforces this). The
-configured defaults are `Qwen/Qwen3.5-4B` for extraction,
-`Qwen/Qwen3.6-35B-A3B` for complex reports, and `qwen3-embed-0.6b` for
+configured defaults are `Qwen/Qwen3.6-35B-A3B` for extraction and complex reports,
+and `qwen3-embed-0.6b` for
 embeddings.
 
 `config/earnings_calls.yaml` defines the first-party source order and the
@@ -376,8 +376,9 @@ industry chokepoints.
 LLM and hybrid extraction use an async OpenAI-compatible client with connection
 pooling and a semaphore-controlled request limit. The default extraction route
 uses Endeavor's Local LLM aggregate proxy directly,
-`http://100.114.26.88:31969/v1`, with `Qwen/Qwen3.5-4B`; the larger 35B model
-remains configured separately for later complex steps. The default concurrency is conservative:
+`http://100.114.26.88:31969/v1`, with `Qwen/Qwen3.6-35B-A3B`. Named relation
+objects are constrained to the persisted per-passage entity catalog before
+canonicalization. The default concurrency is conservative:
 
 ```bash
 VALUECHAIN_LLM_CONCURRENCY=4
