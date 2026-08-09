@@ -83,7 +83,9 @@ export async function fetchRunRegistry() {
     throw new Error(`Unable to load run registry: ${response.status}`);
   }
   const payload = await response.json();
-  return Array.isArray(payload.runs) ? payload.runs : [];
+  // Static previews intentionally use a plain JSON array so they can be
+  // served without the API process.  Accept both registry shapes.
+  return Array.isArray(payload) ? payload : Array.isArray(payload.runs) ? payload.runs : [];
 }
 
 export async function fetchDashboardData(run) {
