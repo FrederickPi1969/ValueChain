@@ -17,11 +17,13 @@ import { Filings } from './views/Filings.jsx';
 import { Overview } from './views/Overview.jsx';
 import { Network } from './views/Network.jsx';
 import { Resolution } from './views/Resolution.jsx';
+import { TopologyMap } from './views/TopologyMap.jsx';
 
 const EMPTY_FILTERS = { query: '', company: '', relation: '', modality: '', relationshipFamilies: ['supply_chain'], relationshipStatuses: ['confirmed', 'candidate'] };
 const TABS = [
   { id: 'filings', label: 'Filing Library' },
   { id: 'overview', label: 'Overview' },
+  { id: 'topology', label: 'Topology lab' },
   { id: 'network', label: 'Network map' },
   { id: 'resolution', label: 'Resolution review' },
   { id: 'companies', label: 'Companies' },
@@ -208,6 +210,13 @@ export function App() {
               <div className="tab-body">
                 {activeTab === 'filings' && <Filings />}
                 {activeTab === 'overview' && data && <Overview edges={filteredEdges} evidence={filteredEvidence} />}
+                {activeTab === 'topology' && data && (
+                  <TopologyMap
+                    edges={filteredEdges}
+                    networkEdges={filterEdges(data.network_edges || [], filters)}
+                    companies={data.companies || []}
+                  />
+                )}
                 {activeTab === 'network' && data && <Network edges={filterEdges(data.network_edges || [], filters)} allEdges={data.network_edges || []} lineageEvents={data.relationship_lineage_events || []} companies={data.companies || []} onFocus={focusNetworkNode} />}
                 {activeTab === 'resolution' && data && <Resolution data={data} runId={selectedRunId} relationshipStatuses={filters.relationshipStatuses} resolutionRecords={resolutionRecords} />}
                 {activeTab === 'companies' && (
