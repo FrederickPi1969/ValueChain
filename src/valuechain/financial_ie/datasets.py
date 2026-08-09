@@ -191,6 +191,8 @@ def render_fire_example(row: dict[str, Any]) -> dict[str, Any]:
             "id": f"e{index}",
             "text": str(entity["text"]),
             "type": str(entity["type"]),
+            "start": int(entity["start"]),
+            "end": int(entity["end"]),
         }
         for index, entity in enumerate(row.get("entities", []))
     ]

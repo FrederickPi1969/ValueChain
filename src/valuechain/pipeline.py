@@ -8,6 +8,7 @@ from valuechain.aggregation import aggregate_edges, bottleneck_candidates
 from valuechain.canonicalization import build_canonical_layer
 from valuechain.config import MAX_LLM_CONCURRENCY, Settings, ensure_dirs
 from valuechain.dashboard import render_dashboard
+from valuechain.document_consistency import reconcile_document_mentions, reconcile_document_relations
 from valuechain.edge_quality import denoise_relation_evidence
 from valuechain.embeddings import EmbeddingConfig, OpenAIEmbeddingClient, embedding_merge_relation_evidence
 from valuechain.entity_resolution import EntityResolver
@@ -15,7 +16,7 @@ from valuechain.filing_parser import parse_sections, segment_passages
 from valuechain.io_utils import read_jsonl, write_csv, write_jsonl, write_json
 from valuechain.llm_client import LLMConfig, OpenAICompatibleClient
 from valuechain.models import Company, FilingRecord, GraphEdge, MentionCluster, Passage, RelationEvidence, SourceDocument
-from valuechain.mention_layer import build_alias_review_queue, build_entity_triage, build_mention_clusters, extract_passage_mentions
+from valuechain.mention_layer import build_alias_review_queue, build_entity_triage, extract_passage_mentions
 from valuechain.mention_constrained_extraction import MentionConstrainedExtractor
 from valuechain.resolution_records import build_resolution_records
 from valuechain.planning import build_execution_plan
@@ -130,7 +131,10 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
     passages = parse_all_passages(source_documents)
     candidate_passages = filter_candidates(passages, min_score=options.min_relevance_score)
     entity_mentions = extract_passage_mentions(passages, resolved_companies)
-    mention_clusters = build_mention_clusters(entity_mentions)
+    entity_mentions, mention_clusters, document_entity_diagnostics = reconcile_document_mentions(
+        passages,
+        entity_mentions,
+    )
     passages_by_id = {row.passage_id: row for row in passages}
     entity_triage = build_entity_triage(entity_mentions, mention_clusters, passages_by_id)
     alias_review_queue = build_alias_review_queue(entity_mentions, mention_clusters, passages_by_id)
@@ -139,6 +143,10 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
     write_jsonl(run_processed_dir / "mention_clusters.jsonl", [cluster.to_dict() for cluster in mention_clusters])
     write_csv(run_processed_dir / "entity_triage.csv", entity_triage)
     write_csv(run_processed_dir / "alias_review_queue.csv", alias_review_queue)
+    write_csv(
+        run_processed_dir / "document_entity_consistency_diagnostics.csv",
+        document_entity_diagnostics,
+    )
     write_jsonl(
         run_processed_dir / "candidate_passages.jsonl",
         [passage.to_dict() for passage in candidate_passages],
@@ -167,6 +175,8 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
         if any(row.get("action") == "merge" for row in embedding_diagnostics):
             evidence, post_embedding_diagnostics = denoise_relation_evidence(evidence)
             merge_diagnostics.extend(post_embedding_diagnostics)
+    evidence, document_relation_diagnostics = reconcile_document_relations(evidence)
+    merge_diagnostics.extend(document_relation_diagnostics)
     write_csv(run_processed_dir / "embedding_merge_diagnostics.csv", embedding_diagnostics)
     write_csv(run_processed_dir / "merge_diagnostics.csv", merge_diagnostics)
     write_jsonl(run_processed_dir / "relation_evidence.jsonl", [record.to_dict() for record in evidence])

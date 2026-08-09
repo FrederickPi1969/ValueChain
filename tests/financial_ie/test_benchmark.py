@@ -2,10 +2,12 @@ from valuechain.financial_ie.benchmark import (
     align_fire_text_entities,
     build_fire_candidate_pairs,
     load_fire_entity_predictions,
+    load_fire_training_alias_lexicon,
     mark_fire_entities,
     merge_fire_entity_review,
     normalize_fire_id_relations,
     rescore_rows,
+    rescan_fire_aliases,
     summarize_results,
 )
 
@@ -160,4 +162,22 @@ def test_merge_fire_entity_review_replaces_only_selected_types() -> None:
     assert [(row["text"], row["type"]) for row in merged] == [
         ("Acme Corp", "Company"),
         ("sold", "Action"),
+    ]
+
+
+def test_training_alias_rescan_is_pure_longest_match_and_non_overwriting(tmp_path) -> None:
+    path = tmp_path / "fire_train.json"
+    path.write_text(
+        '[{"tokens":["net","income"],"entities":[{"start":0,"end":2,"type":"FinancialEntity"}]},'
+        '{"tokens":["net","income"],"entities":[{"start":0,"end":2,"type":"FinancialEntity"}]}]',
+        encoding="utf-8",
+    )
+    lexicon = load_fire_training_alias_lexicon(path)
+    existing = [{"id": "e0", "start": 3, "end": 4, "text": "$5", "type": "Money"}]
+
+    rescanned = rescan_fire_aliases(["net", "income", "was", "$5"], existing, lexicon)
+
+    assert [(row["text"], row["type"]) for row in rescanned] == [
+        ("net income", "FinancialEntity"),
+        ("$5", "Money"),
     ]

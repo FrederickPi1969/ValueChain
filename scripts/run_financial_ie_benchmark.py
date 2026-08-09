@@ -45,6 +45,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fire-candidate-pairs", action="store_true")
     parser.add_argument("--fire-entity-predictions", type=Path)
     parser.add_argument("--fire-ner-review", action="store_true")
+    parser.add_argument("--fire-ner-completion", action="store_true")
+    parser.add_argument("--fire-relation-entity-recovery", action="store_true")
+    parser.add_argument("--fire-alias-rescan", action="store_true")
+    parser.add_argument("--fire-relation-verifier", action="store_true")
+    parser.add_argument(
+        "--fire-ner-strategy",
+        choices=["single", "split", "ensemble", "consensus", "indexed"],
+        default="single",
+    )
     parser.add_argument("--finqa", type=Path)
     parser.add_argument("--financebench", type=Path)
     parser.add_argument("--financebench-pdfs", type=Path)
@@ -101,6 +110,13 @@ async def run(args: argparse.Namespace) -> dict:
             fire_candidate_pairs=args.fire_candidate_pairs,
             fire_entity_predictions_path=args.fire_entity_predictions,
             fire_ner_review=args.fire_ner_review,
+            fire_ner_strategy=args.fire_ner_strategy,
+            fire_ner_completion=args.fire_ner_completion,
+            fire_relation_entity_recovery=args.fire_relation_entity_recovery,
+            fire_alias_rescan_path=(
+                args.fire_train_examples if args.fire_alias_rescan else None
+            ),
+            fire_relation_verifier=args.fire_relation_verifier,
         )
     )
     return await runner.run(cases)

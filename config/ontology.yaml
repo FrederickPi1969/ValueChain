@@ -34,6 +34,7 @@ relationship_contract:
     cross_sentence_attachment_risk: {blocks_cross_filing_auto_accept: true, truth_decision: false}
     product_or_service_not_extracted: {blocks_cross_filing_auto_accept: false, truth_decision: false}
     llm_proposed_direction_correction: {blocks_cross_filing_auto_accept: true, truth_decision: false}
+    document_direction_conflict: {blocks_cross_filing_auto_accept: true, truth_decision: false}
 parser_contract:
   required_provenance:
     - accession_number

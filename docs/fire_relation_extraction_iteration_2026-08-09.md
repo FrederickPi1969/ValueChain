@@ -11,18 +11,21 @@ The scorer was corrected in this iteration to match FIRE's strict relation contr
 both endpoint entity types, direction, and relation type must match. Under this strict scorer, the previous full-test
 workflow is `0.498448` relation micro F1 rather than the earlier local text-key score of `0.522788`.
 
-The retained workflow was then evaluated on all 454 FIRE test cases:
+The retained workflow was then evaluated on all 454 FIRE test cases. A second retained iteration adds a
+train-only, type-pure alias rescan before relation extraction and a constrained accept/reject verifier only for
+the historically low-precision relation types. The verifier cannot add, rewrite, or reverse relations.
 
 | Metric | Full FIRE test result |
 |---|---:|
 | Cases / errors | 454 / 0 |
-| Entity micro precision | 0.688306 |
-| Entity micro recall | 0.734785 |
-| Entity micro F1 | 0.710786 |
-| Relation micro precision | 0.566434 |
-| Relation micro recall | 0.467436 |
-| Relation micro F1 | **0.512195** |
-| Case-average relation F1 | 0.449831 |
+| Entity micro precision | 0.660761 |
+| Entity micro recall | 0.778765 |
+| Entity micro F1 | 0.714927 |
+| Relation micro precision | 0.619934 |
+| Relation micro recall | 0.466612 |
+| Relation micro F1 | **0.532455** |
+| Previous full relation micro F1 | 0.512195 |
+| Absolute improvement | **+0.020260** |
 
 These are local workflow measurements, not an official FIRE leaderboard submission.
 
@@ -39,8 +42,8 @@ cases, and scorer v0.3 unless identified as a historical result.
 | Strict scorer, BM25 examples + entity markers | 0.661290 | 0.445652 | **0.532468** | Retained pilot |
 | BM25 + marker + selective NER audit | 0.655738 | 0.434783 | 0.522876 | Rejected: extra call, no gain |
 
-The retained BM25 + marker variant scored `0.514735` strict relation micro F1 on 100 test cases and `0.512195`
-on all 454 test cases.
+The BM25 + marker baseline scored `0.514735` strict relation micro F1 on 100 test cases and `0.512195` on all
+454 test cases. The retained alias-rescan + selective-verifier full run scored `0.532455` with zero errors.
 
 ### Oracle and ablation results
 
@@ -99,7 +102,9 @@ PYTHONPATH=src python scripts/run_financial_ie_benchmark.py \
   --fire-train-examples /path/to/FIRE/fire/data/fire_train.json \
   --fire-example-count 3 \
   --fire-example-strategy bm25 \
-  --fire-mark-entities
+  --fire-mark-entities \
+  --fire-alias-rescan \
+  --fire-relation-verifier
 ```
 
 Raw local experiment artifacts are under `/tmp/valuechain-fire-experiments/` and are intentionally not committed.
