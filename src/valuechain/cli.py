@@ -30,6 +30,7 @@ from valuechain.models import EntityMention, MentionCluster, Passage
 from valuechain.mention_layer import build_alias_review_queue, build_entity_triage, build_mention_clusters, extract_passage_mentions
 from valuechain.mention_constrained_extraction import constrain_relation_records
 from valuechain.resolution_records import attach_internal_resolution_candidates, build_resolution_records
+from valuechain.reextraction import create_reextraction_preview
 from valuechain.postgres import append_entity_resolution_decision_events_to_postgres, load_relationship_audits_from_postgres, sync_canonical_layer_to_postgres, sync_entity_resolution_records_to_postgres, sync_mention_layer_to_postgres, sync_relationship_audits_to_postgres, sync_relationship_lineage_to_postgres, sync_relationship_reviews_to_postgres
 from valuechain.pipeline import PipelineOptions, run_pipeline
 from valuechain.planning import build_execution_plan
@@ -120,6 +121,14 @@ def build_parser() -> argparse.ArgumentParser:
     refresh_mentions = sub.add_parser("refresh-mentions", help="Build the persisted Mention / Cluster layer from saved passages without downloading SEC filings.")
     refresh_mentions.add_argument("--run-id", required=True, help="Existing run id to refresh.")
     refresh_mentions.add_argument("--write-postgres", action="store_true", help="Also synchronize the mention layer to shared Postgres.")
+    reextract = sub.add_parser(
+        "reextract-relationships",
+        help="Create an isolated relationship re-extraction preview from saved SEC passages; it never overwrites audited artifacts.",
+    )
+    reextract.add_argument("--run-id", required=True, help="Existing run whose saved passages will be re-extracted.")
+    reextract.add_argument("--extractor", choices=["rules", "llm", "hybrid"], default="rules")
+    reextract.add_argument("--llm-concurrency", type=int, default=None, help="Concurrent LLM extraction requests (maximum 16).")
+    reextract.add_argument("--preview-id", default="", help="Optional stable preview folder name under the run's reextractions directory.")
     preview_constraints = sub.add_parser("preview-mention-constraints", help="Measure how persisted mentions would ground a saved run's relation evidence without modifying it.")
     preview_constraints.add_argument("--run-id", required=True, help="Existing run id to inspect.")
     resolve_records = sub.add_parser("resolve-entity-records", help="Generate GLEIF candidates, assess them with the local LLM, validate and decide relation-linked entity records.")
@@ -486,6 +495,23 @@ def main(argv: list[str] | None = None) -> None:
         # with the refreshed local/shared record without requiring a full rerun.
         sync_frontend_public_data(settings, read_run_registry(settings.reports_dir / "runs.json"))
         print(json.dumps({"mentions": len(mentions), "clusters": len(clusters), "alias_review_candidates": len(alias_queue), "resolution_records": len(resolution_records), "postgres_synced": args.write_postgres}, ensure_ascii=False))
+        return
+    if args.command == "reextract-relationships":
+        settings = Settings()
+        concurrency = args.llm_concurrency or (1 if args.extractor == "rules" else settings.llm_concurrency)
+        if not 1 <= concurrency <= MAX_LLM_CONCURRENCY:
+            parser.error(f"--llm-concurrency must be between 1 and {MAX_LLM_CONCURRENCY}")
+        try:
+            preview = create_reextraction_preview(
+                settings,
+                args.run_id,
+                extractor_name=args.extractor,
+                llm_concurrency=concurrency,
+                preview_id=args.preview_id,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+        print(json.dumps({"preview_id": preview.preview_id, "preview_dir": str(preview.preview_dir), **preview.summary}, ensure_ascii=False, indent=2))
         return
     if args.command == "preview-mention-constraints":
         settings = Settings()

@@ -3,6 +3,23 @@
 This contract prevents independently evolving stages from changing the same
 relationship fact or silently overwriting a prior conclusion.
 
+## Saved-corpus re-extraction workflow
+
+Extraction improvements must be tested against the immutable saved SEC corpus
+before they replace audited artifacts:
+
+```bash
+valuechain reextract-relationships --run-id <run-id> --extractor rules --preview-id <name>
+```
+
+The command writes a self-contained preview below
+`data/processed/runs/<run-id>/reextractions/<name>/`. It recomputes mentions,
+relation assertions, product/service attributes, canonical candidates, and a
+delta summary, but never overwrites the run's current evidence, canonical
+relationships, audits, or Postgres projection. Promotion must reconcile changed
+entity identities and preserve only decisions whose relationship identity stays
+the same.
+
 ## One-way data flow
 
 `Passage → RelationEvidence → normalized evidence → canonical candidate → audit / human decision → published graph`
