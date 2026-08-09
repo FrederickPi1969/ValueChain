@@ -7,6 +7,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from valuechain.aggregation import bottleneck_candidates
+from valuechain.edge_quality import normalize_dependency_object
 from valuechain.models import Company, FilingRecord, GraphEdge, Passage, RelationEvidence, SourceDocument
 
 
@@ -20,6 +21,9 @@ def render_dashboard(
     source_documents: list[SourceDocument] | None = None,
     passages: list[Passage] | None = None,
     candidate_passages: list[Passage] | None = None,
+    canonical_entities: list[dict[str, object]] | None = None,
+    canonical_relationships: list[dict[str, object]] | None = None,
+    canonicalization_diagnostics: list[dict[str, object]] | None = None,
 ) -> dict:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     template_dir = Path(__file__).resolve().parents[2] / "templates"
@@ -37,6 +41,9 @@ def render_dashboard(
         source_documents=source_documents,
         passages=passages,
         candidate_passages=candidate_passages,
+        canonical_entities=canonical_entities,
+        canonical_relationships=canonical_relationships,
+        canonicalization_diagnostics=canonicalization_diagnostics,
     )
     output_path.write_text(
         template.render(
@@ -66,6 +73,9 @@ def build_dashboard_data(
     passages: list[Passage] | None = None,
     candidate_passages: list[Passage] | None = None,
     company_activity: dict[str, dict[str, int]] | None = None,
+    canonical_entities: list[dict[str, object]] | None = None,
+    canonical_relationships: list[dict[str, object]] | None = None,
+    canonicalization_diagnostics: list[dict[str, object]] | None = None,
 ) -> dict:
     evidence_by_company = Counter(record.subject for record in evidence)
     relation_mix = Counter(record.relation_type for record in evidence)
@@ -92,6 +102,9 @@ def build_dashboard_data(
         ),
     )
     bottlenecks = bottleneck_candidates(edges)
+    network_edges = canonical_network_edges(canonical_relationships or []) or [
+        edge.to_dict() for edge in edges if is_network_ready_edge(edge)
+    ]
     active_companies = {edge.subject for edge in edges} | {record.subject for record in evidence}
     universe_companies = {company.company_name for company in companies or []}
     dashboard_data = {
@@ -102,6 +115,12 @@ def build_dashboard_data(
             "active_company_count": len(active_companies),
             "company_row_count": len(company_context),
             "bottleneck_count": len(bottlenecks),
+            "network_edge_count": len(network_edges),
+            "canonical_relationship_count": len(canonical_relationships or []),
+            "canonical_entity_count": len(canonical_entities or []),
+            "canonicalization_excluded_count": sum(
+                1 for row in canonicalization_diagnostics or [] if row.get("status") != "canonicalized"
+            ),
             "source_document_count": len(source_documents or []),
             "exhibit_document_count": sum(1 for document in source_documents or [] if not document.is_primary),
         },
@@ -110,9 +129,67 @@ def build_dashboard_data(
         "companies": company_context,
         "bottlenecks": bottlenecks,
         "edges": [edge.to_dict() for edge in sorted_edges],
+        # The network canvas is intentionally stricter than the evidence table:
+        # generic classes and unresolved acronyms remain useful evidence, but are
+        # not shown as if they were verified corporate counterparties.
+        "network_edges": sorted(
+            network_edges,
+            key=lambda edge: (-int(edge.get("evidence_count", 0)), str(edge.get("subject", ""))),
+        ),
+        "canonical_entities": canonical_entities or [],
+        "canonical_relationships": canonical_relationships or [],
+        "canonicalization_diagnostics": canonicalization_diagnostics or [],
         "evidence": [record.to_dict() for record in evidence_rows],
     }
     return dashboard_data
+
+
+def is_network_ready_edge(edge: GraphEdge) -> bool:
+    info = normalize_dependency_object(edge.object)
+    return not info.is_generic and info.object_kind in {"company", "organization"}
+
+
+def canonical_network_edges(relationships: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Adapt typed canonical endpoints to the map's object -> subject geometry."""
+
+    rows: list[dict[str, object]] = []
+    for relationship in relationships:
+        source = str(relationship.get("source_entity_name") or relationship.get("supplier_name") or "")
+        target = str(relationship.get("target_entity_name") or relationship.get("customer_name") or "")
+        if not source or not target:
+            continue
+        rows.append(
+            {
+                # Network.jsx renders object -> subject; retain the canonical
+                # typed source -> target direction for every relationship family.
+                "subject": target,
+                "object": source,
+                "relation_type": relationship.get("relationship_type", "supplies_to"),
+                "modality": relationship.get("modality", "current_fact"),
+                "evidence_count": relationship.get("evidence_count", 0),
+                "avg_confidence": relationship.get("confidence", 0),
+                "first_seen": relationship.get("first_observed_date", ""),
+                "last_seen": relationship.get("last_observed_date", ""),
+                "forms": ";".join(map(str, relationship.get("source_types", []))),
+                "accessions": "",
+                "source_urls": "",
+                "relationship_id": relationship.get("relationship_id", ""),
+                "review_status": relationship.get("review_status", "unreviewed"),
+                "confirmation_status": (
+                    "confirmed" if relationship.get("review_status") == "accepted"
+                    else "rejected" if relationship.get("review_status") == "rejected"
+                    else "candidate"
+                ),
+                "relationship_family": relationship.get("relationship_family", "supply_chain"),
+                "categories": relationship.get("categories", []),
+                "product_or_service": relationship.get("product_or_service", ""),
+                "verification_status": relationship.get("verification_status", "single_filing_candidate"),
+                "risk_flags": relationship.get("risk_flags", []),
+                "source_role": relationship.get("source_role", "supplier"),
+                "target_role": relationship.get("target_role", "customer"),
+            }
+        )
+    return rows
 
 
 def build_company_context(

@@ -116,6 +116,9 @@ def sync_frontend_public_data(settings: Settings, runs: list[dict[str, Any]]) ->
         target_dir = public_data_dir / "runs" / run_id
         target_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target_dir / "dashboard-data.json")
+        resolution_source = settings.processed_dir / "runs" / run_id / "entity_resolution_records.jsonl"
+        if resolution_source.exists():
+            shutil.copy2(resolution_source, target_dir / "entity_resolution_records.jsonl")
         sync_frontend_public_briefs(settings, run_id)
 
 

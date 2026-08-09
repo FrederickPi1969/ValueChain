@@ -1,5 +1,5 @@
 from valuechain.models import Passage
-from valuechain.relation_llm import LLMRelationExtractor, normalize_object_payload, records_from_payload, should_skip_llm
+from valuechain.relation_llm import LLMRelationExtractor, merge_relation_records, normalize_object_payload, records_from_payload, should_skip_llm
 
 
 def test_normalize_object_payload_accepts_structured_llm_object() -> None:
@@ -59,6 +59,24 @@ def test_records_from_payload_accepts_specific_named_relation_and_clamps_confide
     assert len(records) == 1
     assert records[0].object == "Taiwan Semiconductor Manufacturing Company Limited"
     assert records[0].confidence_score == 1.0
+
+
+def test_records_from_payload_retains_product_as_relationship_metadata() -> None:
+    records = records_from_payload(
+        sample_passage(), "test-model", [{
+            "object": "SK Hynix Inc.", "relation_type": "supplier_dependency", "modality": "current_fact",
+            "confidence_score": 0.9, "product_or_service": "memory",
+        }]
+    )
+    assert records[0].product_or_service == "memory"
+
+
+def test_hybrid_merge_uses_llm_to_enrich_rule_fact_fields() -> None:
+    rule = records_from_payload(sample_passage(), "rules", [{"object": "SK Hynix Inc.", "relation_type": "supplier_dependency", "modality": "current_fact", "confidence_score": .7}])[0]
+    llm = records_from_payload(sample_passage(), "llm", [{"object": "SK Hynix Inc.", "relation_type": "supplier_dependency", "modality": "current_fact", "confidence_score": .9, "product_or_service": "memory", "evidence_quote": "purchase memory from SK Hynix", "direction_candidate": "object_to_subject"}])[0]
+    merged = merge_relation_records([rule], [llm])[0]
+    assert merged.product_or_service == "memory"
+    assert merged.direction_candidate == "object_to_subject"
 
 
 def test_records_from_payload_rejects_invalid_schema_values() -> None:

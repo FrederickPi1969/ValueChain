@@ -79,6 +79,54 @@ def test_dashboard_includes_universe_companies_without_edges() -> None:
     assert rows["B Corp"]["ticker"] == "B"
 
 
+def test_dashboard_separates_network_ready_edges_from_generic_evidence() -> None:
+    named = GraphEdge(
+        subject="A Corp", object="TSMC", relation_type="foundry_dependency", modality="current_fact",
+        first_seen="2025-01-01", last_seen="2025-01-01", evidence_count=1, avg_confidence=0.8,
+        forms="10-K", accessions="a1", source_urls="https://example.com",
+    )
+    generic = GraphEdge(
+        subject="A Corp", object="supplier(s)", relation_type="supplier_dependency", modality="current_fact",
+        first_seen="2025-01-01", last_seen="2025-01-01", evidence_count=1, avg_confidence=0.8,
+        forms="10-K", accessions="a1", source_urls="https://example.com",
+    )
+    data = build_dashboard_data([named, generic], [])
+    assert data["summary"]["edge_count"] == 2
+    assert data["summary"]["network_edge_count"] == 1
+    assert data["network_edges"][0]["object"] == "TSMC"
+
+
+def test_dashboard_prefers_canonical_supply_direction_for_network() -> None:
+    edge = GraphEdge(
+        subject="A Corp", object="TSMC", relation_type="foundry_dependency", modality="current_fact",
+        first_seen="2025-01-01", last_seen="2025-01-01", evidence_count=1, avg_confidence=0.8,
+        forms="10-K", accessions="a1", source_urls="https://example.com",
+    )
+    data = build_dashboard_data(
+        [edge], [], canonical_relationships=[{
+            "relationship_id": "rel-1", "supplier_name": "TSMC", "customer_name": "A Corp",
+            "relationship_type": "supplies_to", "modality": "current_fact", "evidence_count": 2,
+            "confidence": 0.9, "source_types": ["10-K"],
+        }],
+    )
+    assert data["network_edges"] == [{
+        "subject": "A Corp", "object": "TSMC", "relation_type": "supplies_to",
+        "modality": "current_fact", "evidence_count": 2, "avg_confidence": 0.9,
+        "first_seen": "", "last_seen": "", "forms": "10-K", "accessions": "", "source_urls": "", "relationship_id": "rel-1", "review_status": "unreviewed", "confirmation_status": "candidate", "relationship_family": "supply_chain", "categories": [], "product_or_service": "", "verification_status": "single_filing_candidate", "risk_flags": [], "source_role": "supplier", "target_role": "customer",
+    }]
+
+
+def test_dashboard_includes_canonical_audit_payload() -> None:
+    entities = [{"entity_id": "entity:a", "canonical_name": "A Corp"}]
+    relationships = [{"relationship_id": "rel-1", "supplier_name": "A Corp", "customer_name": "B Corp"}]
+    diagnostics = [{"status": "unresolved_or_generic_counterparty", "raw_object": "supplier(s)"}]
+    data = build_dashboard_data([], [], canonical_entities=entities, canonical_relationships=relationships, canonicalization_diagnostics=diagnostics)
+    assert data["canonical_entities"] == entities
+    assert data["canonical_relationships"] == relationships
+    assert data["canonicalization_diagnostics"] == diagnostics
+    assert data["summary"]["canonicalization_excluded_count"] == 1
+
+
 def test_dashboard_company_context_includes_pipeline_coverage_counts() -> None:
     companies = [Company(ticker="NET", company_name="Cloudflare Inc.", role="edge_cloud_network", priority=2)]
     filings = [

@@ -106,6 +106,14 @@ export async function fetchDashboardData(run) {
   return response.json();
 }
 
+export async function fetchResolutionRecords(run) {
+  if (!run?.run_id) return [];
+  const response = await fetch(`/data/runs/${run.run_id}/entity_resolution_records.jsonl`, { cache: 'no-store' });
+  if (response.status === 404) return [];
+  if (!response.ok) throw new Error(`Unable to load entity resolution records: ${response.status}`);
+  return (await response.text()).split('\n').filter(Boolean).map((line) => JSON.parse(line));
+}
+
 export async function fetchCompanyBriefIndex(run) {
   if (!run?.run_id) return [];
   try {

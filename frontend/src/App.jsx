@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { fetchCompanyBrief, fetchCompanyBriefIndex, fetchDashboardData, fetchRunRegistry } from './api/data.js';
+import { fetchCompanyBrief, fetchCompanyBriefIndex, fetchDashboardData, fetchResolutionRecords, fetchRunRegistry } from './api/data.js';
 import { EvidenceDrawer } from './components/EvidenceDrawer.jsx';
 import { FilterBar } from './components/FilterBar.jsx';
 import { MetricStrip } from './components/MetricStrip.jsx';
@@ -15,11 +15,15 @@ import { Edges } from './views/Edges.jsx';
 import { Evidence } from './views/Evidence.jsx';
 import { Filings } from './views/Filings.jsx';
 import { Overview } from './views/Overview.jsx';
+import { Network } from './views/Network.jsx';
+import { Resolution } from './views/Resolution.jsx';
 
-const EMPTY_FILTERS = { query: '', company: '', relation: '', modality: '' };
+const EMPTY_FILTERS = { query: '', company: '', relation: '', modality: '', relationshipFamilies: ['supply_chain'], relationshipStatuses: ['confirmed', 'candidate'] };
 const TABS = [
   { id: 'filings', label: 'Filing Library' },
   { id: 'overview', label: 'Overview' },
+  { id: 'network', label: 'Network map' },
+  { id: 'resolution', label: 'Resolution review' },
   { id: 'companies', label: 'Companies' },
   { id: 'briefs', label: 'Briefs' },
   { id: 'bottlenecks', label: 'Bottlenecks' },
@@ -31,6 +35,7 @@ export function App() {
   const [runs, setRuns] = useState([]);
   const [selectedRunId, setSelectedRunId] = useState('');
   const [data, setData] = useState(null);
+  const [resolutionRecords, setResolutionRecords] = useState([]);
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [activeTab, setActiveTab] = useState('filings');
   const [selectedEvidence, setSelectedEvidence] = useState(null);
@@ -85,6 +90,11 @@ export function App() {
     return () => {
       cancelled = true;
     };
+  }, [runs, selectedRunId]);
+  useEffect(() => {
+    const run = runs.find((item) => item.run_id === selectedRunId);
+    if (!run) return;
+    fetchResolutionRecords(run).then(setResolutionRecords).catch(() => setResolutionRecords([]));
   }, [runs, selectedRunId]);
 
   useEffect(() => {
@@ -151,6 +161,10 @@ export function App() {
     if (entry) setSelectedBriefTicker(entry.ticker);
     setActiveTab('briefs');
   };
+  const focusNetworkNode = (company) => {
+    updateFilters({ query: company, company: '' });
+    setActiveTab('edges');
+  };
 
   if (error && activeTab !== 'filings') {
     return (
@@ -194,6 +208,8 @@ export function App() {
               <div className="tab-body">
                 {activeTab === 'filings' && <Filings />}
                 {activeTab === 'overview' && data && <Overview edges={filteredEdges} evidence={filteredEvidence} />}
+                {activeTab === 'network' && data && <Network edges={filterEdges(data.network_edges || [], filters)} allEdges={data.network_edges || []} lineageEvents={data.relationship_lineage_events || []} companies={data.companies || []} onFocus={focusNetworkNode} />}
+                {activeTab === 'resolution' && data && <Resolution data={data} runId={selectedRunId} relationshipStatuses={filters.relationshipStatuses} resolutionRecords={resolutionRecords} />}
                 {activeTab === 'companies' && (
                   <Companies
                     companies={filteredCompanies}

@@ -115,10 +115,18 @@ DEPENDENCY_MARKERS = (
     "sourced from",
     "purchase from",
     "purchases from",
+    "purchase",
+    "purchases",
+    "purchased",
+    "purchasing",
     "obtain from",
     "obtains from",
     "procure from",
     "procures from",
+    "procure",
+    "procures",
+    "procured",
+    "sourcing",
     "we use",
     "we utilize",
     "utilize third-party",
@@ -180,10 +188,18 @@ STRONG_DEPENDENCY_MARKERS = (
     "sourced from",
     "purchase from",
     "purchases from",
+    "purchase",
+    "purchases",
+    "purchased",
+    "purchasing",
     "obtain from",
     "obtains from",
     "procure from",
     "procures from",
+    "procure",
+    "procures",
+    "procured",
+    "sourcing",
     "we use",
     "we utilize",
     "hosted on",
@@ -415,7 +431,16 @@ def evaluate_relation_evidence(record: RelationEvidence) -> EvidenceDecision:
     text = record.evidence_text.lower()
     score = evidence_quality_score(record, info)
     reason = keep_or_drop_reason(record, info, score, text)
-    action = "keep" if reason == "kept" else "drop"
+    # Competition context is an ambiguity signal, not proof that a relation is
+    # false. Retain the named candidate for evidence-grounded adjudication.
+    flagged = (
+        reason == "competition_context_without_dependency"
+        or (record.relation_type in COUNTERPARTY_RELATIONS and info.object_kind in {"company", "organization"} and is_competition_context(text))
+    )
+    if flagged:
+        normalized_record = replace(normalized_record, risk_flags=sorted(set(normalized_record.risk_flags) | {"competitor_or_market_context"}))
+        reason = "flagged_competitor_or_market_context"
+    action = "keep" if reason == "kept" or flagged else "drop"
     return EvidenceDecision(
         original=record,
         record=normalized_record,
@@ -864,7 +889,9 @@ def object_supported_for_facility_or_geography(info: ObjectNormalization, text: 
 
 
 def looks_like_legal_entity(name: str) -> bool:
-    return ORG_SUFFIX_RE.search(object_key(name)) is not None
+    # object_key deliberately removes legal suffixes for entity matching, so it
+    # cannot be used to decide whether the original mention is a legal entity.
+    return ORG_SUFFIX_RE.search(name.lower()) is not None
 
 
 def appears_in_counterparty_list(text: str, name: str) -> bool:
@@ -900,6 +927,8 @@ def is_regulatory_or_fragment_object(name: str) -> bool:
         return True
     key = object_key(name)
     if key in PRONOUN_OR_PLACEHOLDER_OBJECT_KEYS:
+        return True
+    if key.startswith("contents ") or key.startswith("table of contents"):
         return True
     key_words = set(key.split())
     if any((term in key_words if len(term.split()) == 1 else term in key) for term in REGULATORY_OBJECT_TERMS):
@@ -941,7 +970,7 @@ def matching_geography(key: str) -> str:
 
 
 def is_competition_context(text: str) -> bool:
-    return any(marker in text[:700] for marker in ["competition", "competitors", "compete with", "competitive"])
+    return any(marker in text[:700] for marker in ["competition", "competitor", "competitors", "compete with", "competitive"])
 
 
 def has_subsidiary_or_control_signal(record: RelationEvidence, text: str) -> bool:

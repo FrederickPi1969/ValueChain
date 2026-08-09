@@ -121,6 +121,36 @@ class EntityMention:
     ticker: str = ""
     cik: str = ""
     confidence: float = 0.5
+    # Mention-layer provenance.  These fields are optional so the existing
+    # relation extractor can still use EntityMention as its small in-memory
+    # resolution object, while persisted mentions carry exact text provenance.
+    mention_id: str = ""
+    passage_id: str = ""
+    start_offset: int = -1
+    end_offset: int = -1
+    mention_kind: str = "named_entity"
+    resolution_status: str = "unresolved"
+    resolver_method: str = ""
+    cluster_id: str = ""
+    canonical_entity_id: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass(slots=True)
+class MentionCluster:
+    """A deterministic, reviewable grouping of aliases before canonicalization."""
+
+    cluster_id: str
+    normalized_key: str
+    representative_name: str
+    proposed_canonical_name: str = ""
+    canonical_entity_id: str = ""
+    entity_type: str = "organization"
+    resolution_status: str = "unresolved"
+    resolver_method: str = ""
+    mention_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -152,6 +182,13 @@ class RelationEvidence:
     parser_version: str
     source_document: str = ""
     source_document_type: str = ""
+    product_or_service: str = ""
+    evidence_quote: str = ""
+    direction_candidate: str = "unclear"
+    trigger_text: str = ""
+    extractor_provenance: list[str] = field(default_factory=list)
+    # Warnings are evidence-quality metadata, never a truth verdict.
+    risk_flags: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

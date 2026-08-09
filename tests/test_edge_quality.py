@@ -123,7 +123,7 @@ def test_quality_penalizes_self_product_without_dependency_signal() -> None:
     assert decision.quality_score < 0.4
 
 
-def test_strategic_partner_requires_strategic_language() -> None:
+def test_competition_context_is_retained_as_a_flagged_candidate() -> None:
     decision = evaluate_relation_evidence(
         evidence(
             "Microsoft Corporation",
@@ -131,5 +131,26 @@ def test_strategic_partner_requires_strategic_language() -> None:
             "If we lose Microsoft support for our products, our sales could be affected.",
         )
     )
+    # This one remains a direct type mismatch and is still dropped.
     assert decision.action == "drop"
     assert decision.reason == "strategic_language_required"
+
+
+def test_competitor_counterparty_is_not_silently_discarded() -> None:
+    decision = evaluate_relation_evidence(
+        evidence("Microsoft Corporation", "supplier_dependency", "Microsoft Corporation is a competitor in our market.")
+    )
+    assert decision.action == "keep"
+    assert "competitor_or_market_context" in decision.record.risk_flags
+
+
+def test_quality_drops_repeated_table_of_contents_header_as_counterparty() -> None:
+    decision = evaluate_relation_evidence(
+        evidence(
+            "Contents NVIDIA Corporation",
+            "concentration_risk",
+            "Table of Contents NVIDIA Corporation and Subsidiaries. Revenue concentration is discussed below.",
+        )
+    )
+    assert decision.action == "drop"
+    assert decision.reason == "regulatory_or_fragment_object"

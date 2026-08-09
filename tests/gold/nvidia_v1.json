@@ -1,0 +1,26 @@
+{
+  "version": "nvidia-gold-v1",
+  "description": "Seven NVIDIA supplier relationships manually validated during the NVIDIA-only review. This evaluates canonical extraction, not completeness of NVIDIA's real-world supply chain.",
+  "scope": {
+    "company": "NVIDIA Corporation",
+    "relationship_family": "supply_chain"
+  },
+  "expected_relationships": [
+    {"supplier": "Groq, Inc", "customer": "NVIDIA Corporation", "relationship_type": "supplies_to"},
+    {"supplier": "Hon Hai Precision Industry Co., Ltd", "customer": "NVIDIA Corporation", "relationship_type": "supplies_to"},
+    {"supplier": "Micron Technology Inc", "customer": "NVIDIA Corporation", "relationship_type": "supplies_to"},
+    {"supplier": "SK Hynix Inc", "customer": "NVIDIA Corporation", "relationship_type": "supplies_to"},
+    {"supplier": "Samsung Electronics Co., Ltd", "customer": "NVIDIA Corporation", "relationship_type": "supplies_to"},
+    {"supplier": "Taiwan Semiconductor Manufacturing Company Limited", "customer": "NVIDIA Corporation", "relationship_type": "supplies_to"},
+    {"supplier": "Wistron Corporation", "customer": "NVIDIA Corporation", "relationship_type": "supplies_to"}
+  ],
+  "forbidden_relationships": [
+    {"supplier": "Alphabet Inc.", "customer": "NVIDIA Corporation", "relationship_type": "supplies_to", "reason": "Competition / cloud-market mention is not supplier evidence."},
+    {"supplier": "Microsoft Corporation", "customer": "NVIDIA Corporation", "relationship_type": "supplies_to", "reason": "Competition / cloud-market mention is not supplier evidence."},
+    {"supplier": "Amazon.com Inc.", "customer": "NVIDIA Corporation", "relationship_type": "supplies_to", "reason": "Competition / cloud-market mention is not supplier evidence."}
+  ],
+  "known_limitations": [
+    "This small gold set validates only the manually reviewed NVIDIA relationships.",
+    "It must not be interpreted as an exhaustive map of NVIDIA's suppliers or customers."
+  ]
+}

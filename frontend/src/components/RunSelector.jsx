@@ -32,6 +32,7 @@ export function RunSelector({ runs, selectedRunId, onSelect, onRefresh }) {
           <span>{selected.counts?.companies || 0} companies</span>
           <span>{selected.counts?.filings || 0} filings</span>
           <span>{selected.counts?.graph_edges || 0} edges</span>
+          <span>{selected.counts?.canonical_relationships || 0} canonical links</span>
         </div>
       )}
     </div>

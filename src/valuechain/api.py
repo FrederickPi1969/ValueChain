@@ -337,6 +337,36 @@ async def dashboard_data(run_id: str, request: Request) -> dict[str, Any]:
         """,
         (run_id,),
     )
+    canonical_entity_rows = await fetch_all(
+        request,
+        """
+        SELECT entity_id, canonical_name, ticker, cik, role, entity_kind,
+               resolution_status, parent_entity_id, parent_name
+        FROM canonical_entities WHERE run_id = %s ORDER BY canonical_name
+        """,
+        (run_id,),
+    )
+    canonical_relationship_rows = await fetch_all(
+        request,
+        """
+        SELECT relationship_id, supplier_entity_id, supplier_name, customer_entity_id, customer_name,
+               source_entity_id, source_entity_name, source_role, target_entity_id, target_entity_name, target_role,
+               relationship_type, relationship_family, product_or_service, categories, source_relation_types,
+               modality, confidence, evidence_count, evidence_ids, issuer_names, source_accession_numbers,
+               source_types, first_observed_date::text AS first_observed_date,
+               last_observed_date::text AS last_observed_date, verification_status, review_status,
+               decision, decision_source, decision_reason, human_review
+               , risk_flags
+        FROM canonical_relationships WHERE run_id = %s AND is_active = true
+        ORDER BY evidence_count DESC NULLS LAST, supplier_name, customer_name
+        """,
+        (run_id,),
+    )
+    audit_rows = await fetch_all(
+        request,
+        "SELECT relationship_id, audit FROM relationship_audits WHERE run_id = %s",
+        (run_id,),
+    )
     activity_rows = await fetch_all(
         request,
         """
@@ -387,12 +417,18 @@ async def dashboard_data(run_id: str, request: Request) -> dict[str, Any]:
         }
         for row in activity_rows
     }
+    audit_by_relationship = {str(row["relationship_id"]): row["audit"] for row in audit_rows}
+    for row in canonical_relationship_rows:
+        if audit := audit_by_relationship.get(str(row["relationship_id"])):
+            row["llm_audit"] = audit
     return build_dashboard_data(
         edges,
         records,
         companies=companies,
         source_documents=source_documents,
         company_activity=company_activity,
+        canonical_entities=canonical_entity_rows,
+        canonical_relationships=canonical_relationship_rows,
     )
 
 

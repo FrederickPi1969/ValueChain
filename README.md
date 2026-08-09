@@ -204,6 +204,10 @@ cd frontend
 npm run dev
 ```
 
+The frontend requires Node 20.19 or later. With nvm, run `nvm use` from the
+repository root before starting Vite; `.nvmrc` pins the currently verified
+version.
+
 Open:
 
 ```text
@@ -230,6 +234,33 @@ the primary interface. It includes:
 - portfolio exposure, bottleneck, edge, and evidence tabs;
 - evidence drawer with SEC provenance and source filing link;
 - CSV export for the filtered edge table.
+
+## Visual-first MVP additions
+
+The **Network map** tab turns the filtered evidence graph into a direct visual
+audit surface. It shows a disclosed counterparty flowing to the reporting
+issuer for dependency relations, weights links by supporting evidence, and
+preserves modality styling (risk/forward-looking/strategic). It deliberately
+does not claim an unverified supplier-to-customer fact: the direction label
+describes the disclosure-derived dependency orientation.
+
+The side panel exposes each company where the pipeline stopped: no filings,
+filings without candidates, candidates without evidence, or evidence that did
+not aggregate into an edge. Clicking any node or gap opens the relevant
+filtered evidence/edge set.
+
+Local LLM calls use the OpenAI-compatible gateway at
+`https://localllm.frederickpi.com/v1`; `/report` is model discovery only. Keep
+`VALUECHAIN_LLM_CONCURRENCY` at 16 or lower (the CLI enforces this). The
+configured defaults are `Qwen/Qwen3.5-4B` for extraction,
+`Qwen/Qwen3.6-35B-A3B` for complex reports, and `qwen3-embed-0.6b` for
+embeddings.
+
+`config/earnings_calls.yaml` defines the first-party source order and the
+non-redistribution policy for Earnings Call material. The small policy module
+in `src/valuechain/earnings_calls.py` provides the approval gate used by a
+future retrieval adapter: SEC exhibits first, then issuer IR materials, then a
+configured provider that explicitly permits local processing.
 
 ## Postgres
 

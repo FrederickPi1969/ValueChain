@@ -7,6 +7,9 @@ from typing import Any
 import httpx
 
 
+MAX_LLM_CONCURRENCY = 16
+
+
 @dataclass(frozen=True)
 class LLMConfig:
     base_url: str
@@ -17,6 +20,15 @@ class LLMConfig:
     timeout_s: int = 120
     max_connections: int = 16
     max_keepalive_connections: int = 8
+
+    def __post_init__(self) -> None:
+        if not 1 <= self.max_connections <= MAX_LLM_CONCURRENCY:
+            raise ValueError(f"max_connections must be between 1 and {MAX_LLM_CONCURRENCY}")
+        object.__setattr__(
+            self,
+            "max_keepalive_connections",
+            min(self.max_connections, max(0, self.max_keepalive_connections)),
+        )
 
 
 class OpenAICompatibleClient:
@@ -129,7 +141,14 @@ def resolve_from_report(config: LLMConfig) -> LLMConfig:
     hosts = report.get(config.model)
     if not isinstance(hosts, list) or not hosts:
         return config
-    host = next((str(item) for item in hosts if isinstance(item, str) and ":virtual" not in item), "")
+    host = next(
+        (
+            str(item)
+            for item in hosts
+            if isinstance(item, str) and ":virtual" not in item and not str(item).startswith(("127.", "localhost:"))
+        ),
+        "",
+    )
     if not host:
         return config
     return replace(config, base_url=f"http://{host}/v1")
@@ -145,7 +164,14 @@ async def resolve_from_report_async(config: LLMConfig) -> LLMConfig:
     hosts = report.get(config.model)
     if not isinstance(hosts, list) or not hosts:
         return config
-    host = next((str(item) for item in hosts if isinstance(item, str) and ":virtual" not in item), "")
+    host = next(
+        (
+            str(item)
+            for item in hosts
+            if isinstance(item, str) and ":virtual" not in item and not str(item).startswith(("127.", "localhost:"))
+        ),
+        "",
+    )
     if not host:
         return config
     return replace(config, base_url=f"http://{host}/v1")
