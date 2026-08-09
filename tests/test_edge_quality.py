@@ -159,6 +159,31 @@ def test_named_counterparty_requires_local_direct_cue() -> None:
     assert decision.action == "keep"
 
 
+def test_strategic_deployment_list_does_not_become_cloud_dependency() -> None:
+    decision = evaluate_relation_evidence(
+        evidence(
+            "Microsoft Corporation",
+            "cloud_or_hosting_dependency",
+            "AMD expanded collaboration with Microsoft to deploy AMD racks at scale on Azure.",
+            modality="strategic",
+        )
+    )
+    assert decision.action == "drop"
+    assert decision.reason == "strategic_modality_requires_strategic_relation"
+
+
+def test_trademark_reference_is_not_a_subsidiary_edge() -> None:
+    decision = evaluate_relation_evidence(
+        evidence(
+            "Microsoft Corporation",
+            "subsidiary_or_control",
+            "Microsoft Windows is a registered trademark of Microsoft Corporation. Arm is a registered trademark of Arm Limited or its subsidiaries.",
+        )
+    )
+    assert decision.action == "drop"
+    assert decision.reason == "object_not_supported_for_relation"
+
+
 def test_quality_drops_repeated_table_of_contents_header_as_counterparty() -> None:
     decision = evaluate_relation_evidence(
         evidence(

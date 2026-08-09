@@ -270,19 +270,18 @@ DIRECT_COUNTERPARTY_CUES: dict[str, tuple[str, ...]] = {
         "obtain from", "procure from", "procures from", "supplied by", "supply agreement",
     ),
     "manufacturing_dependency": (
-        "manufactured by", "manufacture for us", "contract manufacturer", "foundry", "fabrication",
+        "rely on", "manufactured by", "manufacture for us", "outsourced to",
         "supply agreement", "produced by",
     ),
     "foundry_dependency": (
-        "foundry", "wafer fabrication", "fabricated by", "manufactured by", "manufacture for us",
+        "rely on", "fabricated by", "manufactured by", "manufacture for us", "outsourced to",
         "supply agreement",
     ),
     "packaging_or_assembly_dependency": (
         "packaging", "assembly", "test provider", "assembled by", "supply agreement",
     ),
     "cloud_or_hosting_dependency": (
-        "hosted by", "hosted on", "cloud services agreement", "cloud provider", "cloud computing platform",
-        "infrastructure provided by",
+        "rely on", "hosted by", "hosted on", "cloud services agreement", "infrastructure provided by",
     ),
     "data_center_dependency": (
         "leased data center", "data center provider", "colocation", "co-location", "hosted by",
@@ -578,8 +577,10 @@ def keep_or_drop_reason(
         return "strategic_modality_required"
     if record.relation_type == "strategic_partner" and is_competition_context(text):
         return "competition_context_without_dependency"
+    if record.modality == "strategic" and record.relation_type not in {"strategic_partner", "co_investment"}:
+        return "strategic_modality_requires_strategic_relation"
     if record.relation_type == "subsidiary_or_control" and (
-        not object_supported_for_subsidiary_or_control(info) or not has_subsidiary_or_control_signal(record, text)
+        not object_supported_for_subsidiary_or_control(info) or not has_subsidiary_or_control_signal(record, text, info.display_name)
     ):
         return "object_not_supported_for_relation"
     if record.relation_type in NAMED_ONLY_RELATIONS and info.is_generic:
@@ -1020,20 +1021,16 @@ def is_competition_context(text: str) -> bool:
     return any(marker in text[:700] for marker in ["competition", "competitor", "competitors", "compete with", "competitive"])
 
 
-def has_subsidiary_or_control_signal(record: RelationEvidence, text: str) -> bool:
+def has_subsidiary_or_control_signal(record: RelationEvidence, text: str, display_name: str) -> bool:
     if record.source_section.startswith("exhibit_21"):
         return True
+    control_markers = ("subsidiary", "subsidiaries", "wholly owned", "majority owned", "controlled by", "parent company", "ownership interest")
+    lowered = text.lower()
+    aliases = object_aliases(display_name)
     return any(
-        marker in text
-        for marker in [
-            "subsidiary",
-            "subsidiaries",
-            "wholly owned",
-            "majority owned",
-            "controlled by",
-            "parent company",
-            "ownership interest",
-        ]
+        (any(alias in sentence or object_key(alias) in object_key(sentence) for alias in aliases)
+         and any(marker in sentence for marker in control_markers))
+        for sentence in re.split(r"(?<=[.!?])\s+", lowered)
     )
 
 
