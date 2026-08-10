@@ -151,6 +151,12 @@ if (FRONTEND_DIST / "assets").is_dir():
         StaticFiles(directory=str(FRONTEND_DIST / "assets")),
         name="frontend-assets",
     )
+if (FRONTEND_DIST / "data").is_dir():
+    app.mount(
+        "/data",
+        StaticFiles(directory=str(FRONTEND_DIST / "data")),
+        name="frontend-data",
+    )
 
 
 @app.get("/api/health")
