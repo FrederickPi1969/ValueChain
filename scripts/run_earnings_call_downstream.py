@@ -15,6 +15,7 @@ import httpx
 import requests
 
 from valuechain.earnings_calls import USER_AGENT, _rotating_proxy
+from valuechain.earnings_call_content import parse_opencli_extract_chunk
 
 VIDEO_URL = "http://100.114.26.88:13131/transcript"
 ULSCR_URL = "http://100.114.26.88:23355"
@@ -77,7 +78,14 @@ def download_pdf(url: str, directory: Path) -> tuple[str, str]:
     return text.read_text(encoding="utf-8", errors="ignore"), "pdf.pdftotext"
 
 
-def opencli_extract(url: str, profile: str, session: str) -> tuple[str, str]:
+def opencli_extract(
+    url: str,
+    profile: str,
+    session: str,
+    *,
+    chunk_size: int = 20_000,
+    max_chars: int = 1_000_000,
+) -> tuple[str, str]:
     """Last-resort browser extraction; profile/session must always be explicit."""
     if not profile:
         raise RuntimeError("OpenCLI fallback requires --opencli-profile")
@@ -97,17 +105,36 @@ def opencli_extract(url: str, profile: str, session: str) -> tuple[str, str]:
         # extracting immediately was producing empty shells on Yahoo and IR
         # sites even when the same page became readable moments later.
         subprocess.run(base + ["wait", "time", "3"], capture_output=True, text=True, timeout=15)
-        extracted = subprocess.run(base + ["extract"], capture_output=True, text=True, timeout=90)
-        if extracted.returncode or len(extracted.stdout.strip()) < 500:
-            raise RuntimeError(extracted.stderr[-500:] or "OpenCLI extraction was empty")
-        try:
-            parsed = json.loads(extracted.stdout)
-            text = str(parsed.get("content", "")) if isinstance(parsed, dict) else extracted.stdout.strip()
-        except json.JSONDecodeError:
-            text = extracted.stdout.strip()
+        chunks: list[str] = []
+        start = 0
+        while True:
+            extracted = subprocess.run(
+                base + ["extract", "--chunk-size", str(chunk_size), "--start", str(start)],
+                capture_output=True,
+                text=True,
+                timeout=90,
+            )
+            if extracted.returncode or not extracted.stdout.strip():
+                raise RuntimeError(extracted.stderr[-500:] or "OpenCLI extraction was empty")
+            try:
+                chunk = parse_opencli_extract_chunk(extracted.stdout)
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                raise RuntimeError(f"OpenCLI extraction metadata was invalid: {exc}") from exc
+            if chunk.start != start:
+                raise RuntimeError(
+                    f"OpenCLI extraction cursor mismatch: requested {start}, got {chunk.start}"
+                )
+            chunks.append(chunk.content)
+            assembled_chars = sum(len(part) for part in chunks)
+            if assembled_chars > max_chars:
+                raise RuntimeError(f"OpenCLI extraction exceeded {max_chars} characters")
+            if chunk.next_start_char is None:
+                break
+            start = chunk.next_start_char
+        text = "\n".join(chunks)
         if len(text) < 500:
             raise RuntimeError("OpenCLI extraction did not contain readable content")
-        return text, "opencli.browser_extract"
+        return text, "opencli.browser_extract.paginated"
     finally:
         subprocess.run(base + ["close"], capture_output=True, text=True, timeout=30)
 
