@@ -11,7 +11,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
 from fastapi.responses import FileResponse
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
-from valuechain.disclosure_schema import canonicalize_document_type
+from valuechain.disclosure_schema import (
+    CanonicalDocumentType,
+    SOURCE_SCHEMAS,
+    canonicalize_document_type,
+    normalize_source_document_type,
+)
 
 
 router = APIRouter(prefix="/api/acquisition", tags=["acquisition-files"])
@@ -64,6 +69,38 @@ def add_canonical_document_type(row: dict[str, Any]) -> dict[str, Any]:
     except ValueError:
         row["canonical_document_type"] = "other_regulatory_filing"
     return row
+
+
+def canonical_type_sql(document_type: str) -> tuple[str, list[Any]]:
+    """Translate a canonical report type into source-native SQL predicates."""
+    try:
+        target = CanonicalDocumentType(document_type)
+    except ValueError as error:
+        supported = ', '.join(item.value for item in CanonicalDocumentType)
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported document_type {document_type!r}; use one of: {supported}",
+        ) from error
+
+    source_predicates: list[str] = []
+    params: list[Any] = []
+    for source_id, schema in SOURCE_SCHEMAS.items():
+        mapping = schema.mapping_for_canonical(target)
+        if not mapping:
+            continue
+        names = [normalize_source_document_type(name) for name in mapping.source_names]
+        if mapping.match == "exact":
+            source_predicates.append("(f.source_id = %s AND lower(f.form_raw) = ANY(%s))")
+            params.extend([source_id, names])
+        elif mapping.match in {"contains", "prefix"}:
+            operator = "%{}%" if mapping.match == "contains" else "{}%"
+            comparisons = " OR ".join("lower(f.form_raw) LIKE %s" for _ in names)
+            source_predicates.append(f"(f.source_id = %s AND ({comparisons}))")
+            params.append(source_id)
+            params.extend([operator.format(name) for name in names])
+    if not source_predicates:
+        return "false", []
+    return "(" + " OR ".join(source_predicates) + ")", params
 
 
 async def require_file_api_access(
@@ -242,6 +279,7 @@ async def acquisition_filings(
     source_id: str = "",
     issuer_id: str = "",
     form: str = "",
+    document_type: str = "",
     status: str = "",
     year: int | None = Query(default=None, ge=1990, le=2100),
     q: str = "",
@@ -261,6 +299,10 @@ async def acquisition_filings(
         if value:
             clauses.append(clause)
             params.append(value)
+    if document_type:
+        type_clause, type_params = canonical_type_sql(document_type)
+        clauses.append(type_clause)
+        params.extend(type_params)
     if year is not None:
         clauses.append("extract(year FROM f.filing_date) = %s")
         params.append(year)

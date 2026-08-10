@@ -15,10 +15,10 @@ function issuerSubline(issuer) {
     .join(' / ');
 }
 
-export function IssuerSearch({ token, sourceId, selectedIssuer, onSelect }) {
+export function IssuerSearch({ token, sourceId, selectedIssuer, onSelect, autoOpen = false }) {
   const [term, setTerm] = useState('');
   const [options, setOptions] = useState([]);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(autoOpen);
   const [loading, setLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [error, setError] = useState('');
@@ -40,7 +40,7 @@ export function IssuerSearch({ token, sourceId, selectedIssuer, onSelect }) {
   }, []);
 
   useEffect(() => {
-    if (!open || !hasToken || normalizedTerm.length < 1) {
+    if (!open || !hasToken) {
       setOptions([]);
       setLoading(false);
       return;
@@ -121,7 +121,7 @@ export function IssuerSearch({ token, sourceId, selectedIssuer, onSelect }) {
           <Search size={16} />
           <input
             value={term}
-            placeholder="Type 1+ char: NVIDIA, ASML, 603162..."
+            placeholder="Search NVIDIA, ASML, 603162, Samsung..."
             onChange={(event) => {
               setTerm(event.target.value);
               if (selectedIssuer) onSelect(null);
@@ -138,7 +138,7 @@ export function IssuerSearch({ token, sourceId, selectedIssuer, onSelect }) {
           )}
         </div>
       </label>
-      {open && normalizedTerm.length >= 1 && (
+      {open && (
         <div className="issuer-menu">
           {!hasToken && <div className="issuer-menu-state">Enter file API token first</div>}
           {hasToken && loading && <div className="issuer-menu-state">Searching issuers...</div>}

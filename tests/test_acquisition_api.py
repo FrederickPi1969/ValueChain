@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 import valuechain.acquisition_api as acquisition_api
 from valuechain.acquisition_api import (
     add_canonical_document_type,
+    canonical_type_sql,
     download_response,
     public_row,
     resolve_download_path,
@@ -21,6 +22,20 @@ def test_legacy_file_api_rows_include_canonical_document_type() -> None:
     assert add_canonical_document_type(
         {"source_id": "unknown", "form_raw": "x"}
     )["canonical_document_type"] == "other_regulatory_filing"
+
+
+def test_canonical_type_sql_maps_sec_annual_reports_to_native_forms() -> None:
+    clause, params = canonical_type_sql("annual_report")
+
+    assert "f.source_id" in clause
+    assert "sec_edgar" in params
+    assert ["10-k", "10-k/a", "20-f", "20-f/a", "40-f", "40-f/a"] in params
+
+
+def test_canonical_type_sql_rejects_unknown_type() -> None:
+    with pytest.raises(HTTPException) as error:
+        canonical_type_sql("not_a_form")
+    assert error.value.status_code == 422
 
 
 def build_test_app(root: Path, *, token: str = "") -> FastAPI:

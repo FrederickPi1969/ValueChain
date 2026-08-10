@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Database, Download, ExternalLink, FileText, RefreshCcw, Search, ShieldCheck } from 'lucide-react';
+import { Database, Download, ExternalLink, FileText, Search, SlidersHorizontal } from 'lucide-react';
 import {
   fetchAcquisitionDocumentBlob,
   fetchAcquisitionFilingDetail,
@@ -8,16 +8,13 @@ import {
 } from '../api/data.js';
 import { truncate } from '../components/format.js';
 import { IssuerSearch } from '../components/IssuerSearch.jsx';
-
-const TOKEN_STORAGE_KEY = 'valuechain.fileApiToken';
-const DEFAULT_FILTERS = {
-  source_id: '',
-  issuer_id: '',
-  year: new Date().getFullYear(),
-  q: '',
-  form: '',
-  status: '',
-};
+import {
+  DEFAULT_FILING_FILTERS,
+  FORM_PRESETS,
+  filingQueryForIssuer,
+  formatFilingType,
+  sourceDisplayName,
+} from '../lib/filingSearch.js';
 
 function formatInteger(value) {
   return Number(value || 0).toLocaleString();
@@ -35,15 +32,9 @@ function normalizeDate(value) {
   return value ? String(value).slice(0, 10) : '';
 }
 
-function sourceLabel(source) {
-  if (!source) return 'All sources';
-  return String(source.authority || source.source_id || '').replaceAll('_', ' ');
-}
-
-export function Filings() {
-  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_STORAGE_KEY) || '');
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
-  const [sources, setSources] = useState([]);
+export function Filings({ token, initialSources = [], requestedIssuer }) {
+  const [filters, setFilters] = useState(DEFAULT_FILING_FILTERS);
+  const [sources, setSources] = useState(initialSources);
   const [selectedIssuer, setSelectedIssuer] = useState(null);
   const [filings, setFilings] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -51,6 +42,7 @@ export function Filings() {
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const completeSources = useMemo(
     () => sources.filter((item) => Number(item.complete_filings || 0) > 0 || Number(item.documents || 0) > 0),
@@ -67,16 +59,11 @@ export function Filings() {
     }
   }, [token]);
 
-  const loadFilings = useCallback(async () => {
-    if (!token.trim()) {
-      setError('Enter the file API token before querying the acquisition library.');
-      return;
-    }
+  const loadFilings = useCallback(async (queryFilters = filters) => {
     setLoading(true);
     setError('');
     try {
-      localStorage.setItem(TOKEN_STORAGE_KEY, token.trim());
-      const payload = await fetchAcquisitionFilings(filters, token);
+      const payload = await fetchAcquisitionFilings(queryFilters, token);
       const rows = Array.isArray(payload.items) ? payload.items : [];
       setFilings(rows);
       setSelected(rows[0] || null);
@@ -93,6 +80,22 @@ export function Filings() {
   useEffect(() => {
     loadSources();
   }, [loadSources]);
+
+  useEffect(() => {
+    loadFilings();
+  // Load a useful, recent inventory as soon as an existing saved connection is available.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (!requestedIssuer) return;
+    const nextFilters = filingQueryForIssuer(requestedIssuer, filters);
+    setSelectedIssuer(requestedIssuer);
+    setFilters(nextFilters);
+    loadFilings(nextFilters);
+  // A directory selection is an explicit query intent; use its one-time request id as the trigger.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedIssuer?.requestId]);
 
   useEffect(() => {
     if (!selected) {
@@ -127,11 +130,23 @@ export function Filings() {
   };
   const updateIssuer = (issuer) => {
     setSelectedIssuer(issuer);
-    setFilters((current) => ({
-      ...current,
-      source_id: issuer?.source_id || current.source_id,
-      issuer_id: issuer?.source_issuer_id || '',
-    }));
+    const nextFilters = filingQueryForIssuer(issuer, filters);
+    setFilters(nextFilters);
+    loadFilings(nextFilters);
+  };
+
+  const clearIssuer = () => {
+    setSelectedIssuer(null);
+    setFilters((current) => ({ ...current, issuer_id: '' }));
+  };
+
+  const useFormPreset = (document_type) => setFilters((current) => ({ ...current, document_type }));
+
+  const resetSearch = () => {
+    setSelectedIssuer(null);
+    setFilters(DEFAULT_FILING_FILTERS);
+    setSelected(null);
+    setDetail(null);
   };
 
   const openDocument = async (fileRecord) => {
@@ -152,66 +167,89 @@ export function Filings() {
 
   return (
     <div className="filing-browser">
-      <section className="filing-toolbar">
-        <div className="filing-token">
-          <ShieldCheck size={18} />
-          <label>
-            <span>File API token</span>
-            <input
-              type="password"
-              value={token}
-              placeholder="Required on Cosmos deployment"
-              onChange={(event) => setToken(event.target.value)}
-            />
-          </label>
+      <section className="library-hero">
+        <div>
+          <span className="eyebrow">Global disclosure archive</span>
+          <h2>Find a company, then read the original filing.</h2>
+          <p>Search by company name, ticker, or local issuer code. The archive keeps each regulator's native report alongside a comparable report type.</p>
         </div>
+        <div className="library-hero-actions">
+          <button className="quiet-button" onClick={() => setShowAdvanced((current) => !current)}>
+            <SlidersHorizontal size={16} />
+            More filters
+          </button>
+        </div>
+      </section>
+
+      <section className="company-search-panel">
+        <div className="search-heading">
+          <span className="eyebrow">Start here</span>
+          <h3>Which company are you researching?</h3>
+        </div>
+        <IssuerSearch token={token} sourceId={filters.source_id} selectedIssuer={selectedIssuer} onSelect={updateIssuer} />
+        <button className="primary-button" onClick={() => loadFilings()} disabled={loading}>
+          <Search size={16} />
+          {selectedIssuer ? `Open ${selectedIssuer.company_name || selectedIssuer.ticker}` : 'Browse latest filings'}
+        </button>
+        {selectedIssuer && (
+          <button className="text-button" onClick={clearIssuer}>Clear company</button>
+        )}
+      </section>
+
+      <section className="filter-row" aria-label="Filing filters">
         <label>
-          <span>Source</span>
+          <span>Market</span>
           <select value={filters.source_id} onChange={(event) => updateSource(event.target.value)}>
-            <option value="">All sources</option>
+            <option value="">All markets</option>
             {sources.map((source) => (
               <option key={source.source_id} value={source.source_id}>
-                {source.source_id}
+                {sourceDisplayName(source.source_id)}
               </option>
             ))}
           </select>
         </label>
         <label>
-          <span>Year</span>
-          <input
-            type="number"
-            min="1990"
-            max="2100"
-            value={filters.year}
-            onChange={(event) => updateFilter('year', event.target.value)}
-          />
-        </label>
-        <label>
-          <span>Native form</span>
-          <input value={filters.form} placeholder="10-K, annual_report..." onChange={(event) => updateFilter('form', event.target.value)} />
-        </label>
-        <label>
-          <span>Status</span>
-          <select value={filters.status} onChange={(event) => updateFilter('status', event.target.value)}>
-            <option value="">Any</option>
-            <option value="complete">Complete</option>
-            <option value="pending">Pending</option>
-            <option value="failed">Failed</option>
+          <span>Filing year</span>
+          <select value={filters.year} onChange={(event) => updateFilter('year', event.target.value)}>
+            <option value="">Any year</option>
+            {[2026, 2025, 2024, 2023, 2022, 2021, 2020].map((year) => <option key={year} value={year}>{year}</option>)}
           </select>
         </label>
-        <IssuerSearch token={token} sourceId={filters.source_id} selectedIssuer={selectedIssuer} onSelect={updateIssuer} />
-        <label className="filing-query">
-          <span>Filing id / free text</span>
-          <div className="input-with-icon">
-            <Search size={16} />
-            <input value={filters.q} placeholder="Accession, source filing id, form..." onChange={(event) => updateFilter('q', event.target.value)} />
+        <div className="form-presets">
+          <span>Report category</span>
+          <div>
+            {FORM_PRESETS.map((preset) => (
+              <button key={preset.label} className={filters.document_type === preset.value ? 'selected' : ''} onClick={() => useFormPreset(preset.value)}>{preset.label}</button>
+            ))}
           </div>
-        </label>
-        <button onClick={loadFilings} disabled={loading}>
-          <RefreshCcw size={16} />
-          Query
-        </button>
+        </div>
+        <button className="text-button reset-search" onClick={resetSearch}>Reset</button>
       </section>
+
+      {showAdvanced && (
+        <section className="advanced-filters">
+          <label className="filing-query">
+            <span>Filing ID or free text</span>
+            <div className="input-with-icon">
+              <Search size={16} />
+              <input value={filters.q} placeholder="Accession number, form name..." onChange={(event) => updateFilter('q', event.target.value)} />
+            </div>
+          </label>
+          <label>
+            <span>Exact native form</span>
+            <input value={filters.form} placeholder="10-K, 20-F, annual_report..." onChange={(event) => updateFilter('form', event.target.value)} />
+          </label>
+          <label>
+            <span>Archive state</span>
+            <select value={filters.status} onChange={(event) => updateFilter('status', event.target.value)}>
+              <option value="complete">Available locally</option>
+              <option value="">Any state</option>
+              <option value="pending">Scheduled</option>
+              <option value="failed">Needs retry</option>
+            </select>
+          </label>
+        </section>
+      )}
 
       {error && <div className="inline-alert">{error}</div>}
 
@@ -228,7 +266,7 @@ export function Filings() {
         {!completeSources.length && (
           <div className="source-tile empty">
             <Database size={18} />
-            <span>Enter token to load source coverage</span>
+            <span>Loading source coverage...</span>
           </div>
         )}
       </section>
@@ -237,8 +275,8 @@ export function Filings() {
         <div className="filing-results panel">
           <div className="panel-head">
             <div>
-              <h2>Filing inventory</h2>
-              <span>{loading ? 'Loading...' : `${formatInteger(filings.length)} rows shown`}</span>
+              <h2>{selectedIssuer ? `${selectedIssuer.company_name || selectedIssuer.ticker} filings` : 'Recent filing inventory'}</h2>
+              <span>{loading ? 'Loading...' : `${formatInteger(filings.length)} filings shown`}</span>
             </div>
           </div>
           <div className="table-frame filing-table">
@@ -267,7 +305,7 @@ export function Filings() {
                     </td>
                     <td>{row.source_id}</td>
                     <td>
-                      <span className="pill">{row.canonical_document_type || row.form_raw}</span>
+                      <span className="pill">{formatFilingType(row)}</span>
                       <small>{row.form_raw}</small>
                     </td>
                     <td>
@@ -293,7 +331,7 @@ export function Filings() {
           <div className="panel-head">
             <div>
               <h2>Filing detail</h2>
-              <span>{selected ? `${sourceLabel(selected)} / ${selected.source_filing_id}` : 'No filing selected'}</span>
+              <span>{selected ? `${sourceDisplayName(selected.source_id)} / ${selected.source_filing_id}` : 'Choose a filing to inspect its files'}</span>
             </div>
           </div>
           {selected && (

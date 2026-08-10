@@ -1,0 +1,38 @@
+{
+  "runs": [
+    {
+      "run_id": "semiconductor-expansion-v1",
+      "run_label": "Semiconductor 10-K / 10-Q expansion · NVDA AMD TSM ASML",
+      "created_at": "2026-08-09T19:50:00",
+      "dashboard": "",
+      "data_path": "/data/runs/semiconductor-expansion-v1/dashboard-data.json",
+      "processed_dir": "",
+      "counts": {
+        "companies": 115,
+        "canonical_relationships": 231,
+        "filings": 801
+      },
+      "options": {
+        "industry": "semiconductor",
+        "seeds": [
+          "NVDA",
+          "AMD",
+          "TSM",
+          "ASML"
+        ],
+        "max_hops": 3,
+        "max_nodes": 1500,
+        "max_edges": 5000,
+        "max_seeds": 50,
+        "forms": [
+          "10-K",
+          "10-Q"
+        ],
+        "relationship_families": [
+          "supply_chain"
+        ],
+        "include_candidates": true
+      }
+    }
+  ]
+}

@@ -4,8 +4,9 @@
 node_modules/
 frontend/node_modules/
 frontend/dist/
-frontend/public/data/runs.json
-frontend/public/data/runs
+frontend/public/data/runs/*
+!frontend/public/data/runs/semiconductor-expansion-v1/
+!frontend/public/data/runs/semiconductor-expansion-v1/dashboard-data.json
 __pycache__/
 *.py[cod]
 *.egg-info/

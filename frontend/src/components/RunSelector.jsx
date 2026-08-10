@@ -7,8 +7,8 @@ export function RunSelector({ runs, selectedRunId, onSelect, onRefresh }) {
       <div className="brand">
         <Database size={22} />
         <div>
-          <h1>AI Value Chain Console</h1>
-          <p>Disclosure-derived dependency evidence for industry value-chain review.</p>
+          <h1>Fin Intelligence</h1>
+          <p>Global filings, dependency evidence, and company research.</p>
         </div>
       </div>
       <div className="run-controls">
