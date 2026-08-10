@@ -94,7 +94,6 @@
 .relationship-detail dd { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
 .network-empty { padding: 42px; }
 
-.topology-toolbar-large { grid-template-columns: minmax(330px, 1.4fr) repeat(3, minmax(135px, .45fr)) repeat(3, auto); }
 .topology-scope-note { align-self: end; min-height: 36px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); background: var(--surface-2); font-size: 12px; white-space: nowrap; }
 .topology-node { width: 182px; padding: 9px 11px; border: 1.5px solid #6b8396; border-radius: 8px; background: #fff; box-shadow: 0 3px 8px rgba(32, 55, 78, .12); }
 .topology-node strong, .topology-node small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

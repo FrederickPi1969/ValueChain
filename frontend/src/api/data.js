@@ -66,27 +66,35 @@ export async function fetchAcquisitionDocumentBlob(documentId, token) {
 }
 
 export async function fetchRunRegistry() {
+  let apiRuns = [];
   try {
     const response = await fetch(`${API_BASE}/api/runs`, { cache: 'no-store' });
     if (response.ok) {
       const payload = await response.json();
-      const runs = Array.isArray(payload.runs) ? payload.runs : [];
-      if (runs.length) return runs;
+      apiRuns = Array.isArray(payload.runs) ? payload.runs : [];
     }
   } catch {
-    // Fall back to generated static artifacts when the API is not running.
+    // Static artifacts below keep the UI usable when the API is not running.
   }
-  const response = await fetch('/data/runs.json', { cache: 'no-store' });
-  if (response.status === 404) {
-    return [];
+
+  let staticRuns = [];
+  try {
+    const response = await fetch('/data/runs.json', { cache: 'no-store' });
+    if (response.ok) {
+      const payload = await response.json();
+      staticRuns = Array.isArray(payload) ? payload : Array.isArray(payload.runs) ? payload.runs : [];
+    } else if (response.status !== 404) {
+      throw new Error(`Unable to load run registry: ${response.status}`);
+    }
+  } catch (error) {
+    if (!apiRuns.length) throw error;
   }
-  if (!response.ok) {
-    throw new Error(`Unable to load run registry: ${response.status}`);
-  }
-  const payload = await response.json();
-  // Static previews intentionally use a plain JSON array so they can be
-  // served without the API process.  Accept both registry shapes.
-  return Array.isArray(payload) ? payload : Array.isArray(payload.runs) ? payload.runs : [];
+
+  // Keep database and generated runs visible together. Static entries win on
+  // duplicate IDs because their data_path points at a complete immutable artifact.
+  const merged = new Map(apiRuns.map((run) => [run.run_id, run]));
+  staticRuns.forEach((run) => merged.set(run.run_id, run));
+  return [...merged.values()].sort((left, right) => String(right.created_at || '').localeCompare(String(left.created_at || '')));
 }
 
 export async function fetchDashboardData(run) {
@@ -119,16 +127,6 @@ export async function fetchResolutionRecords(run) {
 
 export async function fetchCompanyBriefIndex(run) {
   if (!run?.run_id) return [];
-  try {
-    const response = await fetch(`${API_BASE}/api/runs/${run.run_id}/briefs`, { cache: 'no-store' });
-    if (response.ok) {
-      const payload = await response.json();
-      return Array.isArray(payload.briefs) ? payload.briefs : [];
-    }
-  } catch {
-    // Fall back to generated static artifacts when the API is not running.
-  }
-
   const response = await fetch(`/data/runs/${run.run_id}/briefs/index.json`, { cache: 'no-store' });
   if (response.status === 404) return [];
   if (!response.ok) {

@@ -119,6 +119,8 @@ def sync_frontend_public_data(settings: Settings, runs: list[dict[str, Any]]) ->
         resolution_source = settings.processed_dir / "runs" / run_id / "entity_resolution_records.jsonl"
         if resolution_source.exists():
             shutil.copy2(resolution_source, target_dir / "entity_resolution_records.jsonl")
+        else:
+            (target_dir / "entity_resolution_records.jsonl").write_text("", encoding="utf-8")
         sync_frontend_public_briefs(settings, run_id)
 
 
@@ -128,17 +130,15 @@ def sync_frontend_public_briefs(settings: Settings, run_id: str) -> list[dict[st
     frontend_dir = settings.root_dir / "frontend"
     if not frontend_dir.exists():
         return []
-    source_dir = settings.reports_dir / "runs" / run_id / "briefs"
-    if not source_dir.exists():
-        return []
-
     target_dir = frontend_dir / "public" / "data" / "runs" / run_id / "briefs"
     target_dir.mkdir(parents=True, exist_ok=True)
     for stale in target_dir.glob("*_dependency_brief.json"):
         stale.unlink()
 
+    source_dir = settings.reports_dir / "runs" / run_id / "briefs"
     rows: list[dict[str, Any]] = []
-    for source in sorted(source_dir.rglob("*_dependency_brief.json")):
+    sources = sorted(source_dir.rglob("*_dependency_brief.json")) if source_dir.exists() else []
+    for source in sources:
         try:
             payload = json.loads(source.read_text(encoding="utf-8"))
         except json.JSONDecodeError:

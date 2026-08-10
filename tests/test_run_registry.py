@@ -43,6 +43,11 @@ def test_update_run_registry_writes_index_and_frontend_data(tmp_path) -> None:
     assert (settings.reports_dir / "index.html").exists()
     assert (tmp_path / "frontend" / "public" / "data" / "runs.json").exists()
     assert (tmp_path / "frontend" / "public" / "data" / "runs" / "r1" / "dashboard-data.json").exists()
+    assert (tmp_path / "frontend" / "public" / "data" / "runs" / "r1" / "entity_resolution_records.jsonl").read_text() == ""
+    empty_briefs = json.loads(
+        (tmp_path / "frontend" / "public" / "data" / "runs" / "r1" / "briefs" / "index.json").read_text()
+    )
+    assert empty_briefs == {"run_id": "r1", "briefs": []}
 
 
 def test_sync_frontend_public_briefs_writes_index(tmp_path) -> None:

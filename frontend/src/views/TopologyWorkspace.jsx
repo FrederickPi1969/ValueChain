@@ -31,6 +31,8 @@ export function TopologyWorkspace() {
     if (!run) return;
     let cancelled = false;
     setLoading(true);
+    setData(null);
+    setError('');
     fetchDashboardData(run)
       .then((payload) => { if (!cancelled) { setData(payload); setError(''); } })
       .catch((err) => { if (!cancelled) setError(err.message); })

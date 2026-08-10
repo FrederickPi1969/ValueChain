@@ -1361,9 +1361,9 @@ tbody tr:hover {
   to { opacity: 1; }
 }
 
-.topology-workspace, .topology-lab { display: grid; gap: 14px; }
+.topology-workspace, .topology-lab { display: grid; gap: 14px; min-width: 0; width: 100%; }
 .topology-runbar { display: flex; align-items: end; gap: 16px; }
-.topology-runbar > div:first-child { flex: 1; }
+.topology-runbar > div:first-child { flex: 1; min-width: 0; }
 .topology-runbar h1 { margin: 0; font-size: 22px; }
 .topology-runbar p { margin: 4px 0 0; color: var(--muted); }
 .topology-runbar label { display: grid; gap: 4px; min-width: 240px; }
@@ -1371,7 +1371,7 @@ tbody tr:hover {
 .topology-runbar button { display: inline-flex; align-items: center; gap: 6px; }
 .topology-state { display: flex; align-items: center; gap: 8px; min-height: 100px; color: var(--muted); }
 .topology-error { color: var(--red); }
-.topology-toolbar { display: grid; grid-template-columns: minmax(330px, 1.4fr) repeat(3, minmax(135px, .45fr)) repeat(3, auto); gap: 12px; align-items: end; padding: 2px 2px 0; }
+.topology-toolbar { display: grid; grid-template-columns: minmax(330px, 1.4fr) repeat(3, minmax(135px, .45fr)) repeat(3, auto); gap: 12px; align-items: end; min-width: 0; padding: 2px 2px 0; }
 .topology-intro { min-width: 0; }
 .topology-toolbar h2 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 18px; }
 .topology-toolbar p { margin: 5px 0 0; max-width: 690px; color: var(--muted); font-size: 13px; }
@@ -1388,8 +1388,8 @@ tbody tr:hover {
 .seed-picker button { min-height: 27px; padding: 4px 8px; border: 1px solid #9aaabc; border-radius: 999px; color: var(--muted); background: #fff; font-size: 11px; }
 .seed-picker button.active { border-color: #db2777; color: #9d174d; background: #fdf2f8; }
 .seed-picker small { color: var(--muted); }
-.topology-layout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 14px; align-items: stretch; }
-.topology-canvas { height: 720px; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: #f8fafc; }
+.topology-layout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 14px; align-items: stretch; min-width: 0; }
+.topology-canvas { height: 720px; min-width: 0; max-width: 100%; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: #f8fafc; }
 .force-topology .topology-canvas { position: relative; border-color: #1e3a5f; background: radial-gradient(circle at 50% 38%, #15243c 0%, #09111f 58%, #060b15 100%); }
 .force-topology .sigma-canvas canvas { border-radius: 8px; }
 .relation-legend { display: flex; flex-wrap: wrap; gap: 7px; padding: 2px 0; }
