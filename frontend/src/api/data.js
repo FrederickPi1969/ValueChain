@@ -70,7 +70,8 @@ export async function fetchRunRegistry() {
     const response = await fetch(`${API_BASE}/api/runs`, { cache: 'no-store' });
     if (response.ok) {
       const payload = await response.json();
-      return Array.isArray(payload.runs) ? payload.runs : [];
+      const runs = Array.isArray(payload.runs) ? payload.runs : [];
+      if (runs.length) return runs;
     }
   } catch {
     // Fall back to generated static artifacts when the API is not running.
