@@ -21,6 +21,13 @@ export function filterEdges(edges, filters) {
   });
 }
 
+export function confirmationStatus(row) {
+  if (row.confirmation_status) return row.confirmation_status;
+  if (row.review_status === 'accepted') return 'confirmed';
+  if (row.review_status === 'rejected') return 'rejected';
+  return 'candidate';
+}
+
 export function filterEvidence(evidence, filters) {
   const query = normalizeSearch(filters.query);
   return evidence.filter((row) => {

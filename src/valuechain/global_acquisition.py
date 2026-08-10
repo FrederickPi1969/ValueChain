@@ -26,6 +26,7 @@ from valuechain.global_acquisition_state import (
     filing_local_dir,
 )
 from valuechain.postgres_acquisition_state import PostgresAcquisitionState
+from valuechain.proxy_pool import acquisition_uses_proxy
 from valuechain.sec_acquisition import hash_file, parse_target_years
 
 
@@ -60,7 +61,10 @@ SUPPORTED_SOURCES = (
 
 
 def require_proxy(settings: Settings) -> Settings:
-    """Fail closed so scheduled acquisition never silently uses a direct connection."""
+    """Apply the acquisition proxy policy to generic GCU clients."""
+    if not acquisition_uses_proxy():
+        settings.proxy_pool_url = None
+        return settings
     if not settings.proxy_pool_url:
         raise RuntimeError(
             "VALUECHAIN_PROXY_POOL_URL is required for global acquisition"
@@ -474,10 +478,15 @@ class EsefAcquisitionRunner:
                 counts["discovered"] += self._discover_year(adapter, state, year)
             claimed: list[dict[str, Any]] = []
             target_year = self.config.target_years[0]
-            for year in self.config.target_years:
-                claimed = state.claim_filings(year, self.config.esef_filing_limit)
+            for statuses in (("discovered",), ("retry",)):
+                for year in self.config.target_years:
+                    claimed = state.claim_filings(
+                        year, self.config.esef_filing_limit, statuses=statuses
+                    )
+                    if claimed:
+                        target_year = year
+                        break
                 if claimed:
-                    target_year = year
                     break
             for filing in claimed:
                 counts["filings"] += 1

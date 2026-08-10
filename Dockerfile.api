@@ -5,6 +5,7 @@ WORKDIR /app
 COPY pyproject.toml README.md /app/
 COPY src /app/src
 COPY db /app/db
+COPY frontend/dist /app/frontend/dist
 
 RUN pip install --no-cache-dir -e .
 

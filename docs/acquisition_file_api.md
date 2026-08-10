@@ -5,6 +5,29 @@ files without accepting filesystem paths from clients. Production is bound to
 the Cosmos Tailscale address and protects every `/api/acquisition/*` route with
 `VALUECHAIN_FILE_API_TOKEN`.
 
+## Filing Library Frontend
+
+The production service serves a Vite frontend from the API root:
+
+```text
+https://fintelligence.frederickpi.com/
+```
+
+Use the **Filing Library** tab to search the local disclosure inventory by
+source, year, company/issuer, filing id, native form, and status. Company lookup
+uses server-side typeahead against `/api/acquisition/issuers` with a small
+result limit, so the browser never renders the full 8,000+ issuer registry.
+Selecting a filing opens its document list and authenticated original-file
+downloads. The frontend stores the file API token in browser local storage and
+sends it as a Bearer token to the same `/api/acquisition/*` endpoints documented
+below.
+
+API documentation remains available at:
+
+```text
+https://fintelligence.frederickpi.com/docs
+```
+
 ## Endpoints
 
 ```text

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import re
 from dataclasses import dataclass
 from datetime import date
@@ -20,7 +19,7 @@ from valuechain.global_acquisition import (
     write_manifest,
 )
 from valuechain.global_acquisition_state import GlobalSourceAcquisitionState
-from valuechain.proxy_pool import ProxyPoolClient
+from valuechain.proxy_pool import ProxyPoolClient, acquisition_uses_proxy
 
 
 INDEX_URL = "https://download.companieshouse.gov.uk/en_accountsdata.html"
@@ -62,10 +61,14 @@ class CompaniesHouseBulkAcquisitionRunner:
     def __init__(self, config: GlobalAcquisitionConfig) -> None:
         self.config = config
         self.settings = Settings()
-        if not self.settings.proxy_pool_url:
+        if acquisition_uses_proxy() and not self.settings.proxy_pool_url:
             raise RuntimeError("VALUECHAIN_PROXY_POOL_URL is required")
         self.definition = SourceRegistry.load().get(COMPANIES_HOUSE_BULK_SOURCE)
-        self.proxy_pool = ProxyPoolClient(self.settings.proxy_pool_url)
+        self.proxy_pool = (
+            ProxyPoolClient(self.settings.proxy_pool_url)
+            if acquisition_uses_proxy()
+            else None
+        )
         self.limiter = AdaptiveRateLimiter(
             config.companies_house_bulk_requests_per_second,
             minimum_requests_per_second=0.1,
@@ -73,12 +76,22 @@ class CompaniesHouseBulkAcquisitionRunner:
         self.schema_guard = AcquisitionSchemaGuard(config.database_url)
 
     async def _new_client(self) -> AsyncHttpClient:
-        return await AsyncHttpClient.create(
-            proxy_pool=self.proxy_pool,
+        timeout = max(120.0, self.settings.http_timeout_seconds)
+        if self.proxy_pool is not None:
+            return await AsyncHttpClient.create(
+                proxy_pool=self.proxy_pool,
+                limiter=self.limiter,
+                user_agent=self.settings.user_agent,
+                contact_email=self.settings.contact_email,
+                timeout_seconds=timeout,
+                max_retries=self.settings.http_max_retries,
+                verify_tls=self.settings.verify_tls,
+            )
+        return AsyncHttpClient(
             limiter=self.limiter,
             user_agent=self.settings.user_agent,
             contact_email=self.settings.contact_email,
-            timeout_seconds=max(120.0, self.settings.http_timeout_seconds),
+            timeout_seconds=timeout,
             max_retries=self.settings.http_max_retries,
             verify_tls=self.settings.verify_tls,
         )

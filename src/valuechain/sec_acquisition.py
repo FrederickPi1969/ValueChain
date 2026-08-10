@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import requests
 
@@ -20,7 +20,11 @@ from valuechain.acquisition_schedule import (
 )
 from valuechain.acquisition_state import AcquisitionIssuer, iso_now
 from valuechain.postgres_acquisition_state import PostgresAcquisitionState
-from valuechain.proxy_pool import ProxyEndpoint, ProxyPoolClient
+from valuechain.proxy_pool import (
+    ProxyEndpoint,
+    ProxyPoolClient,
+    acquisition_uses_proxy,
+)
 from valuechain.rate_limit import RateLimiter
 
 
@@ -126,7 +130,7 @@ class SecProxySession:
     def __init__(
         self,
         config: AcquisitionConfig,
-        proxy_pool: ProxyPoolClient,
+        proxy_pool: ProxyPoolClient | None,
         request_semaphore: threading.BoundedSemaphore | None = None,
         rate_limiter: RateLimiter | None = None,
     ) -> None:
@@ -139,16 +143,22 @@ class SecProxySession:
         self.session = requests.Session()
         self.proxy: ProxyEndpoint | None = None
 
-    def rotate_proxy(self) -> ProxyEndpoint:
+    def rotate_proxy(self) -> ProxyEndpoint | None:
+        if self.proxy_pool is None:
+            self.proxy = None
+            return None
         self.proxy = self.proxy_pool.random_normal()
         return self.proxy
 
     def get(self, url: str, accept: str, stream: bool = False) -> requests.Response:
         last_error: Exception | None = None
         for attempt in range(self.config.request_retries + 1):
-            if self.proxy is None:
+            if self.proxy_pool is not None and self.proxy is None:
                 self.rotate_proxy()
-            proxy_url = self.proxy.url
+            proxies = None
+            if self.proxy is not None:
+                proxy_url = self.proxy.url
+                proxies = {"http": proxy_url, "https": proxy_url}
             self.rate_limiter.wait()
             delay = self.config.request_sleep_seconds
             if self.config.request_jitter_seconds:
@@ -164,7 +174,7 @@ class SecProxySession:
                             "Accept": accept,
                             "Accept-Encoding": "gzip, deflate",
                         },
-                        proxies={"http": proxy_url, "https": proxy_url},
+                        proxies=proxies,
                         timeout=self.config.request_timeout_seconds,
                         stream=stream,
                     )
@@ -179,7 +189,10 @@ class SecProxySession:
                     break
                 self.rotate_proxy()
                 time.sleep(min(2 ** (attempt + 1), 8))
-        raise RuntimeError(f"SEC request failed after proxy retries: {type(last_error).__name__}")
+        mode = "proxy" if self.proxy_pool is not None else "direct"
+        raise RuntimeError(
+            f"SEC request failed after {mode} retries: {type(last_error).__name__}"
+        )
 
     def get_json(self, url: str) -> dict[str, Any]:
         response = self.get(url, accept="application/json")
@@ -373,7 +386,9 @@ class SecAcquisitionRunner:
     def __init__(self, config: AcquisitionConfig, repository_root: Path) -> None:
         self.config = config
         self.repository_root = repository_root
-        self.proxy_pool = ProxyPoolClient(config.proxy_pool_url)
+        self.proxy_pool = (
+            ProxyPoolClient(config.proxy_pool_url) if acquisition_uses_proxy() else None
+        )
         self.request_semaphore = threading.BoundedSemaphore(config.request_concurrency)
         self.rate_limiter = RateLimiter(config.requests_per_second)
         self.config.raw_root.mkdir(parents=True, exist_ok=True)
@@ -412,7 +427,8 @@ class SecAcquisitionRunner:
         with PostgresAcquisitionState(self.config.database_url) as state:
             stats = state.stats()
             if not stats["issuers"] or self.universe_refresh_due():
-                self.proxy_pool.health()
+                if self.proxy_pool is not None:
+                    self.proxy_pool.health()
                 self.refresh_universe(state)
             current_year = datetime.now(UTC).year
             years = years_with_current(self.config.target_years, current_year)

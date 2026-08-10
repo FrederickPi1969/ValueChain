@@ -13,7 +13,7 @@ from valuechain.acquisition_schedule import (
 from valuechain.acquisition_state import AcquisitionIssuer
 from valuechain.async_http import AdaptiveRateLimiter, AsyncHttpClient
 from valuechain.postgres_acquisition_state import PostgresAcquisitionState
-from valuechain.proxy_pool import ProxyPoolClient
+from valuechain.proxy_pool import ProxyPoolClient, acquisition_uses_proxy
 from valuechain.sec_acquisition import (
     SEC_DATA_BASE,
     AcquisitionConfig,
@@ -32,14 +32,23 @@ class AsyncSecAcquisitionRunner:
     def __init__(self, config: AcquisitionConfig, repository_root: Path) -> None:
         self.config = config
         self.repository_root = repository_root
-        self.proxy_pool = ProxyPoolClient(config.proxy_pool_url)
+        self.proxy_pool = (
+            ProxyPoolClient(config.proxy_pool_url) if acquisition_uses_proxy() else None
+        )
         self.limiter = AdaptiveRateLimiter(config.requests_per_second)
         self.schema_guard = AcquisitionSchemaGuard(config.database_url)
         self.config.raw_root.mkdir(parents=True, exist_ok=True)
 
     async def _new_client(self) -> AsyncHttpClient:
-        return await AsyncHttpClient.create(
-            proxy_pool=self.proxy_pool,
+        if self.proxy_pool is not None:
+            return await AsyncHttpClient.create(
+                proxy_pool=self.proxy_pool,
+                limiter=self.limiter,
+                user_agent=self.config.sec_user_agent,
+                timeout_seconds=self.config.request_timeout_seconds,
+                max_retries=self.config.request_retries,
+            )
+        return AsyncHttpClient(
             limiter=self.limiter,
             user_agent=self.config.sec_user_agent,
             timeout_seconds=self.config.request_timeout_seconds,
@@ -48,7 +57,8 @@ class AsyncSecAcquisitionRunner:
 
     async def refresh_universe(self) -> int:
         await self.schema_guard.prepare()
-        await asyncio.to_thread(self.proxy_pool.health)
+        if self.proxy_pool is not None:
+            await asyncio.to_thread(self.proxy_pool.health)
         async with await self._new_client() as client:
             payload = await client.get_json(
                 "https://www.sec.gov/files/company_tickers_exchange.json"

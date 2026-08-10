@@ -1,11 +1,77 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+
+function acquisitionHeaders(token) {
+  const value = String(token || '').trim();
+  return value ? { Authorization: `Bearer ${value}` } : {};
+}
+
+export function buildAcquisitionFilingQuery(filters = {}) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      params.set(key, String(value).trim());
+    }
+  }
+  return params.toString();
+}
+
+async function fetchAcquisitionJson(path, token, options = {}) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    cache: 'no-store',
+    headers: acquisitionHeaders(token),
+    signal: options.signal,
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw new Error(`Acquisition API ${response.status}: ${detail || response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function fetchAcquisitionSources(token) {
+  return fetchAcquisitionJson('/api/acquisition/sources', token);
+}
+
+export async function fetchAcquisitionIssuers(filters, token, options = {}) {
+  const query = buildAcquisitionFilingQuery({ limit: 50, ...filters });
+  return fetchAcquisitionJson(`/api/acquisition/issuers?${query}`, token, options);
+}
+
+export async function fetchAcquisitionFilings(filters, token) {
+  const query = buildAcquisitionFilingQuery({ limit: 100, ...filters });
+  return fetchAcquisitionJson(`/api/acquisition/filings?${query}`, token);
+}
+
+export async function fetchAcquisitionFilingDetail(sourceId, filingId, token) {
+  const source = encodeURIComponent(sourceId);
+  const filing = encodeURIComponent(filingId);
+  return fetchAcquisitionJson(`/api/acquisition/filings/${source}/${filing}`, token);
+}
+
+export async function fetchAcquisitionDocumentBlob(documentId, token) {
+  const response = await fetch(`${API_BASE}/api/acquisition/documents/${documentId}/download`, {
+    headers: acquisitionHeaders(token),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw new Error(`Download failed ${response.status}: ${detail || response.statusText}`);
+  }
+  const blob = await response.blob();
+  const disposition = response.headers.get('content-disposition') || '';
+  const match = disposition.match(/filename="?([^";]+)"?/i);
+  return {
+    blob,
+    filename: match?.[1] || `document-${documentId}`,
+  };
+}
 
 export async function fetchRunRegistry() {
   try {
     const response = await fetch(`${API_BASE}/api/runs`, { cache: 'no-store' });
     if (response.ok) {
       const payload = await response.json();
-      return Array.isArray(payload.runs) ? payload.runs : [];
+      const runs = Array.isArray(payload.runs) ? payload.runs : [];
+      if (runs.length) return runs;
     }
   } catch {
     // Fall back to generated static artifacts when the API is not running.
@@ -18,7 +84,7 @@ export async function fetchRunRegistry() {
     throw new Error(`Unable to load run registry: ${response.status}`);
   }
   const payload = await response.json();
-  return Array.isArray(payload.runs) ? payload.runs : [];
+  return Array.isArray(payload) ? payload : Array.isArray(payload.runs) ? payload.runs : [];
 }
 
 export async function fetchDashboardData(run) {
