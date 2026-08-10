@@ -1,0 +1,6 @@
+ticker,company_name,role,priority,notes
+NVDA,NVIDIA Corporation,accelerator_compute,1,SEC-covered pilot issuer
+AMD,Advanced Micro Devices Inc.,accelerator_compute,1,SEC-covered pilot issuer
+TSM,Taiwan Semiconductor Manufacturing Company Limited,foundry,1,SEC-covered ADR and 20-F issuer
+MU,Micron Technology Inc.,memory,1,SEC-covered pilot issuer
+005930,"Samsung Electronics Co., Ltd",memory_foundry,1,No current SEC filing coverage; official IR source provider required

@@ -21,20 +21,21 @@ COMMON_ALIASES: dict[str, str] = {
     "asml": "ASML Holding N.V.",
     "arm": "Arm Holdings plc",
     "broadcom": "Broadcom Inc.",
+    "samsung": "Samsung Electronics Co., Ltd",
 }
 
 ORG_SUFFIX_RE = re.compile(
-    r"\b([A-Z][A-Za-z0-9&.\-]*(?:\s+[A-Z][A-Za-z0-9&.\-]*){0,8}\s+"
+    r"\b([A-Z][A-Za-z0-9&.\-]*(?:\s+[A-Z][A-Za-z0-9&.\-]*){0,8}\s*,?\s+"
     r"(?:Inc\.?|Incorporated|Corporation|Corp\.?|Company|Co\.?|Ltd\.?|Limited|plc|PLC|"
     r"N\.V\.|S\.A\.|LLC|Holdings)(?:,\s*Ltd\.?)?)\b"
 )
 
 LIST_INTRO_RE = re.compile(
-    r"\b(?:such as|including|include|includes|including but not limited to)\s+([^;\n]{1,260})",
+    r"\b(?:such as|including|include|includes|including but not limited to|from)\s+([^;\n]{1,260})",
     flags=re.IGNORECASE,
 )
 
-COUNTERPARTY_LIST_MARKERS = ("such as", "including", "include", "includes")
+COUNTERPARTY_LIST_MARKERS = ("such as", "including", "include", "includes", "from")
 
 LIST_ITEM_STOPWORDS = {
     "competition",
@@ -134,7 +135,7 @@ class EntityResolver:
                 continue
             resolved.append(mention)
         if resolved:
-            if has_counterparty_list_marker(text) or should_keep_multiple_objects(object_hint, text):
+            if has_counterparty_list_marker(text) or has_parallel_entity_list(text) or should_keep_multiple_objects(object_hint, text):
                 return resolved[:max_objects]
             return resolved[:1]
         normalized = object_hint.strip() or "unnamed counterparty"
@@ -246,6 +247,11 @@ def looks_like_organization_name(name: str) -> bool:
 def has_counterparty_list_marker(text: str) -> bool:
     lowered = text.lower()
     return any(marker in lowered for marker in COUNTERPARTY_LIST_MARKERS)
+
+
+def has_parallel_entity_list(text: str) -> bool:
+    """Detect a coordinated name list without tying the logic to a relation verb."""
+    return bool(re.search(r"\b[A-Z][A-Za-z0-9.&\- ]{1,80},\s+(?:and\s+)?[A-Z]", text))
 
 
 def should_keep_multiple_objects(object_hint: str, text: str) -> bool:

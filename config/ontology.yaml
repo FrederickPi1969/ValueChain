@@ -1,4 +1,40 @@
-version: "0.2"
+version: "0.3"
+relationship_contract:
+  raw_relation_mappings:
+    supplier_dependency: {canonical_type: supplies_to, family: supply_chain, orientation: object_to_subject, category: general supply}
+    customer_dependency: {canonical_type: supplies_to, family: supply_chain, orientation: subject_to_object, category: customer supply}
+    manufacturing_dependency: {canonical_type: supplies_to, family: supply_chain, orientation: object_to_subject, category: contract manufacturing}
+    foundry_dependency: {canonical_type: supplies_to, family: supply_chain, orientation: object_to_subject, category: semiconductor foundry}
+    packaging_or_assembly_dependency: {canonical_type: supplies_to, family: supply_chain, orientation: object_to_subject, category: assembly, test and packaging}
+    cloud_or_hosting_dependency: {canonical_type: supplies_to, family: supply_chain, orientation: object_to_subject, category: cloud or hosting}
+    data_center_dependency: {canonical_type: supplies_to, family: supply_chain, orientation: object_to_subject, category: data center capacity}
+    power_or_utility_dependency: {canonical_type: supplies_to, family: supply_chain, orientation: object_to_subject, category: power, utility or cooling}
+    network_or_interconnection_dependency: {canonical_type: supplies_to, family: supply_chain, orientation: object_to_subject, category: network or interconnection}
+    distribution_or_channel_dependency: {canonical_type: supplies_to, family: supply_chain, orientation: object_to_subject, category: distribution channel}
+    licensing_dependency: {canonical_type: licenses_to, family: commercial_relationship, orientation: object_to_subject, category: technology license}
+    asset_acquisition: {canonical_type: acquires_asset_from, family: corporate_transaction, orientation: object_to_subject}
+    asset_divestiture: {canonical_type: acquires_asset_from, family: corporate_transaction, orientation: object_to_subject}
+    business_combination: {canonical_type: acquires_company, family: corporate_transaction, orientation: subject_to_object}
+    strategic_investment: {canonical_type: invests_in, family: corporate_transaction, orientation: subject_to_object}
+    subsidiary_or_control: {canonical_type: controls, family: ownership_control, orientation: subject_to_object}
+    strategic_partner: {canonical_type: partners_with, family: commercial_relationship, orientation: object_to_subject}
+    co_investment: {canonical_type: co_invests_with, family: commercial_relationship, orientation: object_to_subject}
+  canonical_types:
+    supplies_to: {family: supply_chain, source_role: supplier, target_role: customer, default_map_layer: supply_chain, cross_filing_auto_accept: true}
+    controls: {family: ownership_control, source_role: controller, target_role: controlled_entity, default_map_layer: ownership_control, cross_filing_auto_accept: true}
+    acquires_asset_from: {family: corporate_transaction, source_role: acquirer, target_role: seller, default_map_layer: corporate_transaction, cross_filing_auto_accept: false}
+    acquires_company: {family: corporate_transaction, source_role: acquirer, target_role: acquired_company, default_map_layer: corporate_transaction, cross_filing_auto_accept: false}
+    invests_in: {family: corporate_transaction, source_role: investor, target_role: investee, default_map_layer: corporate_transaction, cross_filing_auto_accept: false}
+    licenses_to: {family: commercial_relationship, source_role: licensor, target_role: licensee, default_map_layer: commercial_relationship, cross_filing_auto_accept: false}
+    partners_with: {family: commercial_relationship, source_role: partner, target_role: partner, default_map_layer: commercial_relationship, cross_filing_auto_accept: false}
+    co_invests_with: {family: commercial_relationship, source_role: co_investor, target_role: co_investor, default_map_layer: commercial_relationship, cross_filing_auto_accept: false}
+  risk_flags:
+    competitor_or_market_context: {blocks_cross_filing_auto_accept: true, truth_decision: false}
+    direction_anomaly: {blocks_cross_filing_auto_accept: true, truth_decision: false}
+    cross_sentence_attachment_risk: {blocks_cross_filing_auto_accept: true, truth_decision: false}
+    product_or_service_not_extracted: {blocks_cross_filing_auto_accept: false, truth_decision: false}
+    llm_proposed_direction_correction: {blocks_cross_filing_auto_accept: true, truth_decision: false}
+    document_direction_conflict: {blocks_cross_filing_auto_accept: true, truth_decision: false}
 parser_contract:
   required_provenance:
     - accession_number
@@ -25,6 +61,14 @@ modalities:
   forward_looking: "Plan, expectation, target, or intended future dependency."
   strategic: "Strategic partnership, investment, or formal collaboration."
 relation_types:
+  asset_acquisition:
+    definition: "Subject acquires named assets or an operating business from a counterparty."
+  asset_divestiture:
+    definition: "Subject divests named assets or an operating business to a counterparty."
+  business_combination:
+    definition: "Subject acquires or merges with a named company."
+  strategic_investment:
+    definition: "Subject makes a named equity or strategic investment."
   supplier_dependency:
     definition: "Subject relies on a supplier or third-party provider for inputs, services, or components."
     include: ["supplier", "vendor", "third-party", "sole source", "limited number"]

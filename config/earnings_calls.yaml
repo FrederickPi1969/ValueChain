@@ -1,0 +1,40 @@
+# First-party, replacement-friendly Earnings Call source policy.  This file is
+# intentionally policy/configuration only: retrieval providers must never make
+# unavailable transcript text public through the ValueChain UI or API.
+version: 1
+storage:
+  retain:
+    - source_url
+    - issuer
+    - event_date
+    - fiscal_quarter
+    - speakers
+    - retrieved_at
+    - content_hash
+    - permitted_local_processing_copy
+  ui_policy: "Show short, necessary evidence excerpts and always link to the original source. Do not redistribute full third-party transcripts."
+priority:
+  - sec_exhibits
+  - issuer_ir_release
+  - issuer_prepared_remarks
+  - issuer_webcast
+  - configured_provider
+providers:
+  sec_exhibits:
+    enabled: true
+    allowed_forms: [8-K, 6-K]
+    exhibit_prefixes: [EX-99, EX-99.1, EX-99.2]
+  issuer_ir_release:
+    enabled: true
+    allowed_domain_kind: issuer_ir
+  issuer_prepared_remarks:
+    enabled: true
+    allowed_domain_kind: issuer_ir
+  issuer_webcast:
+    enabled: true
+    allowed_domain_kind: issuer_or_designated_webcast
+  configured_provider:
+    enabled: false
+    # A provider must be configured explicitly with its terms and a retrieval
+    # adapter before it can run.  It is never assumed to have redistribution rights.
+    allowed_domain_kind: configured

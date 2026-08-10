@@ -11,7 +11,9 @@ def evidence(subject: str, obj: str, relation_type: str, accession: str) -> Rela
         modality="current_fact",
         certainty="high",
         temporal_scope="as_disclosed",
-        evidence_text="We rely on this provider.",
+        # The quality gate intentionally rejects an object that is not present
+        # in its evidence span; keep this aggregation fixture grounded.
+        evidence_text=f"We rely on {obj}.",
         confidence_score=0.8,
         extractor_model_version="rules",
         ticker="T",

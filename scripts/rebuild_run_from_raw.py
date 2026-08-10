@@ -28,6 +28,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Rebuild downstream run artifacts from cached raw evidence.")
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--no-postgres", action="store_true")
+    parser.add_argument(
+        "--skip-embedding-merge",
+        action="store_true",
+        help="Reuse raw assertion boundaries without calling the embedding service (useful for deterministic quality-gate changes).",
+    )
     args = parser.parse_args()
 
     settings = Settings()
@@ -53,7 +58,9 @@ def main() -> None:
     ]
 
     evidence, merge_diagnostics = denoise_relation_evidence(raw_evidence)
-    evidence, embedding_diagnostics = rebuild_embedding_merge(settings, options, evidence)
+    evidence, embedding_diagnostics = (
+        (evidence, []) if args.skip_embedding_merge else rebuild_embedding_merge(settings, options, evidence)
+    )
     if any(row.get("action") == "merge" for row in embedding_diagnostics):
         evidence, post_embedding_diagnostics = denoise_relation_evidence(evidence)
         merge_diagnostics.extend(post_embedding_diagnostics)

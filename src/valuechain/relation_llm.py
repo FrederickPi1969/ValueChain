@@ -1,29 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, replace
 
 from valuechain.llm_client import OpenAICompatibleClient
-from valuechain.models import Passage, RelationEvidence
+from valuechain.entity_resolution import normalize_entity_key
+from valuechain.models import EntityMention, Passage, RelationEvidence
+from valuechain.ontology import raw_relation_types
 
 
-ALLOWED_RELATION_TYPES = {
-    "supplier_dependency",
-    "customer_dependency",
-    "manufacturing_dependency",
-    "foundry_dependency",
-    "packaging_or_assembly_dependency",
-    "cloud_or_hosting_dependency",
-    "data_center_dependency",
-    "power_or_utility_dependency",
-    "network_or_interconnection_dependency",
-    "distribution_or_channel_dependency",
-    "strategic_partner",
-    "co_investment",
-    "licensing_dependency",
-    "facility_or_geographic_exposure",
-    "subsidiary_or_control",
-    "concentration_risk",
-}
+ALLOWED_RELATION_TYPES = raw_relation_types()
 
 ALLOWED_MODALITIES = {
     "current_fact",
@@ -49,6 +35,8 @@ Extract evidence-backed dependency relations where the subject company depends o
 controls, partners with, or has concentrated exposure to a specific object disclosed in the passage.
 
 Output schema for each JSON object:
+- object_id: string. For a named counterparty, this must be an ID from the supplied ENTITY CATALOG.
+  Use an empty string only for a genuinely anonymous dependency class or geography.
 - object: string. Prefer exact named counterparties when disclosed. If no name is disclosed, still output a
   useful class object such as "limited number of suppliers", "third-party data center providers",
   "channel partners", "natural gas transportation suppliers", "major customers", "fuel suppliers",
@@ -59,11 +47,14 @@ Output schema for each JSON object:
   foundry_dependency, packaging_or_assembly_dependency, cloud_or_hosting_dependency,
   data_center_dependency, power_or_utility_dependency, network_or_interconnection_dependency,
   distribution_or_channel_dependency, strategic_partner, co_investment, licensing_dependency,
-  facility_or_geographic_exposure, subsidiary_or_control, concentration_risk.
+  facility_or_geographic_exposure, subsidiary_or_control, concentration_risk, asset_acquisition,
+  asset_divestiture, business_combination, strategic_investment.
 - modality: one of current_fact, historical_fact, risk_hypothetical, forward_looking, strategic.
 - certainty: high, medium, or low.
 - temporal_scope: short string such as as_disclosed, FY2025, Q1 2026, multi-year, historical.
 - evidence_quote: a short quote from the passage that directly supports the relation.
+- direction_candidate: one of subject_to_object, object_to_subject, unclear. State the disclosure's proposed direction; use unclear rather than guessing.
+- product_or_service: short product, component, capacity, or service being supplied; empty string if not stated.
 - confidence_score: number from 0 to 1.
 
 Return at most 8 relation objects for one passage. Prefer named-counterparty evidence, but do not return []
@@ -98,8 +89,18 @@ Recall-first rules:
    counterparty. Make the object descriptive, not a schema label: use "single-source suppliers", not
    "supplier_dependency"; use "third-party data center providers", not "data_center_dependency".
 9. Do not output the subject company, its own products, its business segments, or its internal brands as objects.
+   Every named-company or named-organization object must reference its ENTITY CATALOG object_id. Never create a
+   named object that is absent from that catalog.
+   Treat we, our, us, and an unambiguous "the company" as the disclosed subject company. Resolve it, its, they,
+   or their to a catalog entity only when the marked passage has one grammatically unambiguous antecedent; use
+   that antecedent's object_id. Otherwise omit the relation instead of guessing. Never emit a pronoun as object.
 10. When in doubt between [] and a directly supported class-level exposure, output the exposure with
     lower confidence rather than returning [].
+11. When A, B, and C occur in a coordinated list that shares one directly stated action or role, emit a
+    separate relation object for every named entity. Do not merge the names into one object. Put the shared
+    product/service in product_or_service metadata; do not invent a new relation type for it.
+12. Preserve directly disclosed corporate transactions: asset acquisitions/divestitures, mergers, and equity
+    investments are valid relations, but do not misclassify them as supplier relationships.
 
 SEC source-document rules:
 11. In 8-K Item 1.01 and Exhibit 10 material contracts, extract counterparties and dependency/partnership
@@ -150,31 +151,70 @@ class LLMRelationExtractor:
     model_version: str
 
     def extract(self, passage: Passage) -> list[RelationEvidence]:
+        return self.extract_with_mentions(passage, [])
+
+    def extract_with_mentions(
+        self,
+        passage: Passage,
+        mentions: list[EntityMention],
+    ) -> list[RelationEvidence]:
+        entity_catalog = build_entity_catalog(mentions, passage.company_name)
         try:
-            payload = self.client.chat_json(SYSTEM_PROMPT, build_prompt(passage), max_tokens=1800)
+            payload = self.client.chat_json(
+                SYSTEM_PROMPT,
+                build_prompt(passage, entity_catalog),
+                max_tokens=1800,
+            )
         except Exception:
             return []
-        return records_from_payload(passage, self.model_version, payload)
+        return records_from_payload(
+            passage,
+            self.model_version,
+            payload,
+            entity_catalog=entity_catalog,
+        )
 
     async def extract_async(self, passage: Passage) -> list[RelationEvidence]:
+        return await self.extract_async_with_mentions(passage, [])
+
+    async def extract_async_with_mentions(
+        self,
+        passage: Passage,
+        mentions: list[EntityMention],
+    ) -> list[RelationEvidence]:
+        entity_catalog = build_entity_catalog(mentions, passage.company_name)
         try:
-            payload = await self.client.chat_json_async(SYSTEM_PROMPT, build_prompt(passage), max_tokens=1800)
+            payload = await self.client.chat_json_async(
+                SYSTEM_PROMPT,
+                build_prompt(passage, entity_catalog),
+                max_tokens=1800,
+            )
         except Exception:
             return []
-        return records_from_payload(passage, self.model_version, payload)
+        return records_from_payload(
+            passage,
+            self.model_version,
+            payload,
+            entity_catalog=entity_catalog,
+        )
 
     async def aclose(self) -> None:
         await self.client.aclose()
 
 
-def build_prompt(passage: Passage) -> str:
+def build_prompt(passage: Passage, entity_catalog: list[dict[str, str]] | None = None) -> str:
+    catalog = entity_catalog or []
+    marked_passage = mark_entity_catalog_text(passage.text[:3500], catalog)
     return (
         f"Subject company: {passage.company_name}\n"
         f"Form: {passage.form}\n"
         f"Section: {passage.section}\n"
         f"Source document: {passage.source_document or 'primary document'}\n"
         f"Source document type: {passage.source_document_type or 'PRIMARY'}\n"
-        f"Passage:\n{passage.text[:3500]}"
+        "ENTITY CATALOG (named objects must use one of these IDs):\n"
+        f"{json.dumps(catalog, ensure_ascii=False)}\n"
+        "MARKED PASSAGE (entity tags are annotations, not source text):\n"
+        f"{marked_passage}"
     )
 
 
@@ -182,17 +222,25 @@ def records_from_payload(
     passage: Passage,
     model_version: str,
     payload,
+    *,
+    entity_catalog: list[dict[str, str]] | None = None,
 ) -> list[RelationEvidence]:
     if not isinstance(payload, list):
         return []
     records: list[RelationEvidence] = []
+    object_by_id = {
+        str(entity.get("id")): str(entity.get("normalized_name") or entity.get("text") or "").strip()
+        for entity in entity_catalog or []
+        if isinstance(entity, dict) and entity.get("id")
+    }
     for item in payload:
         if not isinstance(item, dict):
             continue
         relation_type = str(item.get("relation_type", "")).strip()
         if relation_type not in ALLOWED_RELATION_TYPES:
             continue
-        obj = normalize_object_payload(item.get("object", ""))
+        object_id = str(item.get("object_id") or "").strip()
+        obj = object_by_id.get(object_id) or normalize_object_payload(item.get("object", ""))
         if not obj or is_low_information_llm_object(obj, relation_type):
             continue
         modality = str(item.get("modality", "current_fact")).strip()
@@ -227,9 +275,70 @@ def records_from_payload(
                 parser_version=passage.parser_version,
                 source_document=passage.source_document,
                 source_document_type=passage.source_document_type,
+                product_or_service=str(item.get("product_or_service", "")).strip()[:160],
+                evidence_quote=str(item.get("evidence_quote", "")).strip()[:700],
+                direction_candidate=str(item.get("direction_candidate", "unclear")).strip() if str(item.get("direction_candidate", "")).strip() in {"subject_to_object", "object_to_subject", "unclear"} else "unclear",
+                extractor_provenance=[model_version],
             )
         )
     return records
+
+
+def build_entity_catalog(
+    mentions: list[EntityMention],
+    subject_name: str,
+) -> list[dict[str, str]]:
+    subject_key = normalize_entity_key(subject_name)
+    catalog: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for mention in sorted(mentions, key=lambda row: (row.start_offset, row.end_offset, row.text)):
+        if mention.mention_kind != "named_entity":
+            continue
+        normalized_name = mention.normalized_name.strip() or mention.text.strip()
+        key = normalize_entity_key(normalized_name)
+        if not key or key == subject_key or key in seen:
+            continue
+        seen.add(key)
+        catalog.append(
+            {
+                "id": f"e{len(catalog)}",
+                "text": mention.text.strip(),
+                "normalized_name": normalized_name,
+                "entity_type": mention.entity_type,
+                "start_offset": str(mention.start_offset),
+                "end_offset": str(mention.end_offset),
+            }
+        )
+    return catalog
+
+
+def mark_entity_catalog_text(text: str, catalog: list[dict[str, str]]) -> str:
+    spans: list[tuple[int, int, str, str]] = []
+    occupied: list[tuple[int, int]] = []
+    for entity in catalog:
+        mention = str(entity.get("text") or "").strip()
+        try:
+            start = int(entity.get("start_offset", "-1"))
+            end = int(entity.get("end_offset", "-1"))
+        except (TypeError, ValueError):
+            start = end = -1
+        if not (0 <= start < end <= len(text)) or text[start:end].casefold() != mention.casefold():
+            start = text.casefold().find(mention.casefold()) if mention else -1
+            end = start + len(mention) if start >= 0 else -1
+        if start < 0 or end <= start or any(start < prior_end and end > prior_start for prior_start, prior_end in occupied):
+            continue
+        occupied.append((start, end))
+        spans.append((start, end, str(entity.get("id") or ""), str(entity.get("entity_type") or "entity")))
+    marked = text
+    for start, end, entity_id, entity_type in sorted(spans, reverse=True):
+        marked = (
+            marked[:start]
+            + f'<entity id="{entity_id}" type="{entity_type}">'
+            + marked[start:end]
+            + "</entity>"
+            + marked[end:]
+        )
+    return marked
 
 
 def normalize_object_payload(value) -> str:
@@ -270,11 +379,18 @@ class HybridRelationExtractor:
     llm_extractor: LLMRelationExtractor | None = None
 
     def extract(self, passage: Passage) -> list[RelationEvidence]:
+        return self.extract_with_mentions(passage, [])
+
+    def extract_with_mentions(
+        self,
+        passage: Passage,
+        mentions: list[EntityMention],
+    ) -> list[RelationEvidence]:
         rule_records = self.rules_extractor.extract(passage)
         if self.llm_extractor is None or should_skip_llm(passage):
             return rule_records
         try:
-            llm_records = self.llm_extractor.extract(passage)
+            llm_records = self.llm_extractor.extract_with_mentions(passage, mentions)
         except Exception:
             return rule_records
         if not llm_records:
@@ -282,11 +398,18 @@ class HybridRelationExtractor:
         return merge_relation_records(rule_records, llm_records)
 
     async def extract_async(self, passage: Passage) -> list[RelationEvidence]:
+        return await self.extract_async_with_mentions(passage, [])
+
+    async def extract_async_with_mentions(
+        self,
+        passage: Passage,
+        mentions: list[EntityMention],
+    ) -> list[RelationEvidence]:
         rule_records = self.rules_extractor.extract(passage)
         if self.llm_extractor is None or should_skip_llm(passage):
             return rule_records
         try:
-            llm_records = await self.llm_extractor.extract_async(passage)
+            llm_records = await self.llm_extractor.extract_async_with_mentions(passage, mentions)
         except Exception:
             return rule_records
         if not llm_records:
@@ -303,14 +426,21 @@ def merge_relation_records(
     llm_records: list[RelationEvidence],
 ) -> list[RelationEvidence]:
     merged = list(rule_records)
-    existing = {
-        (record.object.lower(), record.relation_type, record.modality)
-        for record in rule_records
-    }
+    existing = {(record.object.lower(), record.relation_type, record.modality): index for index, record in enumerate(merged)}
     for record in llm_records:
         key = (record.object.lower(), record.relation_type, record.modality)
         if key not in existing:
             merged.append(record)
+            existing[key] = len(merged) - 1
+        else:
+            prior = merged[existing[key]]
+            merged[existing[key]] = replace(
+                prior,
+                product_or_service=record.product_or_service or prior.product_or_service,
+                evidence_quote=record.evidence_quote or prior.evidence_quote,
+                direction_candidate=record.direction_candidate if record.direction_candidate != "unclear" else prior.direction_candidate,
+                extractor_provenance=sorted(set(prior.extractor_provenance or [prior.extractor_model_version]) | set(record.extractor_provenance or [record.extractor_model_version])),
+            )
     return merged
 
 

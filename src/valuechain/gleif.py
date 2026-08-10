@@ -4,7 +4,7 @@ import asyncio
 import json
 import re
 from collections import Counter, defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
@@ -209,6 +209,7 @@ class LLMEntitySelection:
     model_version: str = ""
     candidate_count: int = 0
     sample_evidence: str = ""
+    candidate_assessments: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -680,7 +681,9 @@ Rules:
 - If multiple plausible entities remain, use ambiguous.
 - If candidates are only weak lexical coincidences, use no_match.
 Return one compact JSON object only:
-{"decision":"select|no_match|ambiguous","selected_candidate_rank":1,"confidence":0.0-1.0,"reason":"short reason"}
+{"decision":"select|no_match|ambiguous","selected_candidate_rank":1,"confidence":0.0-1.0,"reason":"short reason",
+ "candidate_assessments":[{"candidate_rank":1,"assessment":"MATCH|NO_MATCH|UNCERTAIN","confidence":"HIGH|MEDIUM|LOW","reason":"short reason","used_evidence":["exact legal name"]}]}
+For every supplied candidate, include one candidate_assessment. `used_evidence` must name only supplied fields, such as exact legal name, known alias, GLEIF legal name, jurisdiction, parent record, or SEC passage text. Do not use unstated world knowledge.
 Use selected_candidate_rank 0 for no_match or ambiguous."""
 
 
@@ -790,6 +793,7 @@ def normalize_llm_selection(
         reason=reason,
         model_version=model_version,
         candidate_count=len(candidates),
+        candidate_assessments=normalize_candidate_assessments(raw, candidates),
     )
 
 
@@ -845,6 +849,7 @@ def llm_selection_from_decision(
     reason: str,
     model_version: str,
     candidate_count: int,
+    candidate_assessments: list[dict[str, Any]] | None = None,
 ) -> LLMEntitySelection:
     return LLMEntitySelection(
         query_object=base.query_object,
@@ -868,7 +873,27 @@ def llm_selection_from_decision(
         model_version=model_version,
         candidate_count=candidate_count,
         sample_evidence=base.sample_evidence,
+        candidate_assessments=candidate_assessments or [],
     )
+
+
+def normalize_candidate_assessments(raw: Any, candidates: list[GLEIFCandidate]) -> list[dict[str, Any]]:
+    values = raw.get("candidate_assessments", []) if isinstance(raw, dict) else []
+    by_rank = {safe_int(row.get("candidate_rank")): row for row in values if isinstance(row, dict)}
+    rows: list[dict[str, Any]] = []
+    for candidate in candidates:
+        item = by_rank.get(candidate.candidate_rank, {})
+        assessment = str(item.get("assessment", "UNCERTAIN")).upper()
+        if assessment not in {"MATCH", "NO_MATCH", "UNCERTAIN"}:
+            assessment = "UNCERTAIN"
+        confidence = str(item.get("confidence", "LOW")).upper()
+        if confidence not in {"HIGH", "MEDIUM", "LOW"}:
+            confidence = "LOW"
+        used = item.get("used_evidence", [])
+        rows.append({"candidate_rank": candidate.candidate_rank, "assessment": assessment, "confidence": confidence,
+                     "reason": str(item.get("reason") or "")[:500],
+                     "used_evidence": [str(value)[:100] for value in used if str(value).strip()][:8] if isinstance(used, list) else []})
+    return rows
 
 
 def group_candidates(candidates: list[GLEIFCandidate]) -> list[list[GLEIFCandidate]]:

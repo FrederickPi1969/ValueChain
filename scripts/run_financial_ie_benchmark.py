@@ -22,7 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", default="Qwen/Qwen3.6-35B-A3B")
     parser.add_argument(
         "--style",
-        choices=["direct", "structured", "retrieval", "workflow"],
+        choices=["direct", "structured", "retrieval", "workflow", "workflow_v2"],
         default="structured",
     )
     parser.add_argument("--base-url", default="http://100.114.26.88:31969/v1")
@@ -33,6 +33,27 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--finben-fnxl", type=Path)
     parser.add_argument("--fire-data", type=Path)
     parser.add_argument("--fire-types", type=Path)
+    parser.add_argument("--fire-train-examples", type=Path)
+    parser.add_argument("--fire-example-count", type=int, default=3)
+    parser.add_argument("--fire-example-strategy", choices=["idf", "bm25"], default="bm25")
+    parser.add_argument("--fire-gold-entities", action="store_true")
+    parser.add_argument(
+        "--fire-mark-entities",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument("--fire-candidate-pairs", action="store_true")
+    parser.add_argument("--fire-entity-predictions", type=Path)
+    parser.add_argument("--fire-ner-review", action="store_true")
+    parser.add_argument("--fire-ner-completion", action="store_true")
+    parser.add_argument("--fire-relation-entity-recovery", action="store_true")
+    parser.add_argument("--fire-alias-rescan", action="store_true")
+    parser.add_argument("--fire-relation-verifier", action="store_true")
+    parser.add_argument(
+        "--fire-ner-strategy",
+        choices=["single", "split", "ensemble", "consensus", "indexed"],
+        default="single",
+    )
     parser.add_argument("--finqa", type=Path)
     parser.add_argument("--financebench", type=Path)
     parser.add_argument("--financebench-pdfs", type=Path)
@@ -49,7 +70,16 @@ async def run(args: argparse.Namespace) -> dict:
     if args.fire_data:
         if not args.fire_types:
             raise ValueError("--fire-types is required with --fire-data")
-        cases.extend(load_fire(args.fire_data, args.fire_types, limit=args.limit_per_task))
+        cases.extend(
+            load_fire(
+                args.fire_data,
+                args.fire_types,
+                limit=args.limit_per_task,
+                examples_path=args.fire_train_examples,
+                example_count=args.fire_example_count,
+                example_strategy=args.fire_example_strategy,
+            )
+        )
     if args.finqa:
         cases.extend(load_finqa(args.finqa, limit=args.limit_per_task))
     if args.financebench:
@@ -75,6 +105,18 @@ async def run(args: argparse.Namespace) -> dict:
             api_key=args.api_key,
             concurrency=args.concurrency,
             use_embeddings=not args.no_embeddings,
+            fire_use_gold_entities=args.fire_gold_entities,
+            fire_mark_entities=args.fire_mark_entities,
+            fire_candidate_pairs=args.fire_candidate_pairs,
+            fire_entity_predictions_path=args.fire_entity_predictions,
+            fire_ner_review=args.fire_ner_review,
+            fire_ner_strategy=args.fire_ner_strategy,
+            fire_ner_completion=args.fire_ner_completion,
+            fire_relation_entity_recovery=args.fire_relation_entity_recovery,
+            fire_alias_rescan_path=(
+                args.fire_train_examples if args.fire_alias_rescan else None
+            ),
+            fire_relation_verifier=args.fire_relation_verifier,
         )
     )
     return await runner.run(cases)

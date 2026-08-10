@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import math
 import random
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -67,14 +68,23 @@ def load_fire(
     *,
     limit: int = 30,
     seed: int = 1969,
+    examples_path: Path | None = None,
+    example_count: int = 3,
+    example_strategy: str = "bm25",
 ) -> list[BenchmarkCase]:
     rows = json.loads(data_path.read_text(encoding="utf-8"))
     type_catalog = json.loads(types_path.read_text(encoding="utf-8"))
     selected = deterministic_sample(rows, limit, seed)
+    example_rows = json.loads(examples_path.read_text(encoding="utf-8")) if examples_path else []
     cases: list[BenchmarkCase] = []
     for row in selected:
         entities = [
-            {"text": entity["text"], "type": entity["type"]}
+            {
+                "text": entity["text"],
+                "type": entity["type"],
+                "start": int(entity["start"]),
+                "end": int(entity["end"]),
+            }
             for entity in row["entities"]
         ]
         relations = [
@@ -82,6 +92,12 @@ def load_fire(
                 "head": row["entities"][relation["head"]]["text"],
                 "tail": row["entities"][relation["tail"]]["text"],
                 "type": relation["type"],
+                "head_start": int(row["entities"][relation["head"]]["start"]),
+                "head_end": int(row["entities"][relation["head"]]["end"]),
+                "head_type": row["entities"][relation["head"]]["type"],
+                "tail_start": int(row["entities"][relation["tail"]]["start"]),
+                "tail_end": int(row["entities"][relation["tail"]]["end"]),
+                "tail_type": row["entities"][relation["tail"]]["type"],
             }
             for relation in row["relations"]
         ]
@@ -95,10 +111,103 @@ def load_fire(
                 metadata={
                     "entity_types": sorted(type_catalog["entities"]),
                     "relation_types": sorted(type_catalog["relations"]),
+                    # Preserve FIRE's canonical tokenization so extraction can use
+                    # exact token boundaries instead of asking an LLM to rewrite
+                    # entity strings. The benchmark scorer is exact-span based.
+                    "tokens": list(row["tokens"]),
+                    "gold_entity_spans": entities,
+                    "few_shot_examples": retrieve_fire_examples(
+                        row,
+                        example_rows,
+                        limit=example_count,
+                        strategy=example_strategy,
+                    ),
                 },
             )
         )
     return cases
+
+
+def retrieve_fire_examples(
+    query: dict[str, Any],
+    examples: list[dict[str, Any]],
+    *,
+    limit: int,
+    strategy: str = "idf",
+) -> list[dict[str, Any]]:
+    """Retrieve lexical few-shot examples from FIRE's training split only."""
+    if not examples or limit <= 0:
+        return []
+    tokenized_documents = [fire_search_terms(row.get("tokens", [])) for row in examples]
+    document_terms = [set(terms) for terms in tokenized_documents]
+    document_frequency = Counter(term for terms in document_terms for term in terms)
+    query_terms = set(fire_search_terms(query.get("tokens", [])))
+    total = len(examples)
+    average_length = sum(map(len, tokenized_documents)) / max(1, total)
+
+    def score(index: int) -> tuple[float, int]:
+        if strategy == "bm25":
+            frequencies = Counter(tokenized_documents[index])
+            document_length = len(tokenized_documents[index])
+            k1 = 1.2
+            b = 0.75
+            weighted = 0.0
+            for term in query_terms & document_terms[index]:
+                inverse_frequency = math.log(
+                    1 + (total - document_frequency[term] + 0.5) / (document_frequency[term] + 0.5)
+                )
+                frequency = frequencies[term]
+                weighted += inverse_frequency * (
+                    frequency * (k1 + 1)
+                    / (frequency + k1 * (1 - b + b * document_length / max(1, average_length)))
+                )
+            return weighted, -index
+        if strategy != "idf":
+            raise ValueError(f"Unknown FIRE example retrieval strategy: {strategy}")
+        overlap = query_terms & document_terms[index]
+        weighted = sum(
+            math.log((total + 1) / (document_frequency[term] + 1)) + 1
+            for term in overlap
+        )
+        length_penalty = math.sqrt(max(1, len(document_terms[index])))
+        return weighted / length_penalty, -index
+
+    ranked = sorted(range(total), key=score, reverse=True)[:limit]
+    return [render_fire_example(examples[index]) for index in ranked if score(index)[0] > 0]
+
+
+def fire_search_terms(tokens: Iterable[Any]) -> list[str]:
+    return [
+        term
+        for token in tokens
+        for term in re.findall(r"[a-z0-9]+", str(token).casefold())
+        if len(term) > 1
+    ]
+
+
+def render_fire_example(row: dict[str, Any]) -> dict[str, Any]:
+    entities = [
+        {
+            "id": f"e{index}",
+            "text": str(entity["text"]),
+            "type": str(entity["type"]),
+            "start": int(entity["start"]),
+            "end": int(entity["end"]),
+        }
+        for index, entity in enumerate(row.get("entities", []))
+    ]
+    return {
+        "text": " ".join(str(token) for token in row.get("tokens", [])),
+        "entities": entities,
+        "relations": [
+            {
+                "head_id": f"e{int(relation['head'])}",
+                "type": str(relation["type"]),
+                "tail_id": f"e{int(relation['tail'])}",
+            }
+            for relation in row.get("relations", [])
+        ],
+    }
 
 
 def load_finqa(path: Path, *, limit: int = 30, seed: int = 1969) -> list[BenchmarkCase]:

@@ -204,6 +204,31 @@ cd frontend
 npm run dev
 ```
 
+The frontend requires Node 20.19 or later. With nvm, run `nvm use` from the
+repository root before starting Vite; `.nvmrc` pins the currently verified
+version.
+
+An existing extraction run can be projected into a bounded industry graph
+without re-downloading filings:
+
+```bash
+valuechain expand-industry \
+  --run-id <run_id> \
+  --industry semiconductor \
+  --seeds NVDA,AMD,TSM,ASML \
+  --max-hops 3 \
+  --max-nodes 1500 \
+  --max-edges 5000
+```
+
+The command reads canonical company-to-company facts from 10-K/10-Q evidence,
+writes `industry_expansion.json`, and updates the run's dashboard data. Each
+node records its shortest expansion depth, discovery relationship/accessions,
+and filing-coverage state. Rejected facts and non-company fragments never
+enter the expansion. The Topology lab uses ForceAtlas2 for detail graphs and a
+deterministic industry-partitioned layout for larger batches, with an explicit
+edge display budget and accepted/candidate layers.
+
 Open:
 
 ```text
@@ -230,6 +255,33 @@ the primary interface. It includes:
 - portfolio exposure, bottleneck, edge, and evidence tabs;
 - evidence drawer with SEC provenance and source filing link;
 - CSV export for the filtered edge table.
+
+## Visual-first MVP additions
+
+The **Network map** tab turns the filtered evidence graph into a direct visual
+audit surface. It shows a disclosed counterparty flowing to the reporting
+issuer for dependency relations, weights links by supporting evidence, and
+preserves modality styling (risk/forward-looking/strategic). It deliberately
+does not claim an unverified supplier-to-customer fact: the direction label
+describes the disclosure-derived dependency orientation.
+
+The side panel exposes each company where the pipeline stopped: no filings,
+filings without candidates, candidates without evidence, or evidence that did
+not aggregate into an edge. Clicking any node or gap opens the relevant
+filtered evidence/edge set.
+
+Local LLM calls use the OpenAI-compatible gateway at
+`https://localllm.frederickpi.com/v1`; `/report` is model discovery only. Keep
+`VALUECHAIN_LLM_CONCURRENCY` at 16 or lower (the CLI enforces this). The
+configured defaults are `Qwen/Qwen3.6-35B-A3B` for extraction and complex reports,
+and `qwen3-embed-0.6b` for
+embeddings.
+
+`config/earnings_calls.yaml` defines the first-party source order and the
+non-redistribution policy for Earnings Call material. The small policy module
+in `src/valuechain/earnings_calls.py` provides the approval gate used by a
+future retrieval adapter: SEC exhibits first, then issuer IR materials, then a
+configured provider that explicitly permits local processing.
 
 ## Postgres
 
@@ -345,8 +397,9 @@ industry chokepoints.
 LLM and hybrid extraction use an async OpenAI-compatible client with connection
 pooling and a semaphore-controlled request limit. The default extraction route
 uses Endeavor's Local LLM aggregate proxy directly,
-`http://100.114.26.88:31969/v1`, with `Qwen/Qwen3.5-4B`; the larger 35B model
-remains configured separately for later complex steps. The default concurrency is conservative:
+`http://100.114.26.88:31969/v1`, with `Qwen/Qwen3.6-35B-A3B`. Named relation
+objects are constrained to the persisted per-passage entity catalog before
+canonicalization. The default concurrency is conservative:
 
 ```bash
 VALUECHAIN_LLM_CONCURRENCY=4

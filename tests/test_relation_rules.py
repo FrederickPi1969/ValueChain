@@ -77,6 +77,22 @@ def test_rules_extract_multiple_named_subcontractors_from_list() -> None:
     assert "Fabrinet" in packaging_objects
 
 
+def test_rules_capture_product_and_direction_proposal_from_purchase_clause() -> None:
+    extractor = RuleBasedRelationExtractor(EntityResolver([]))
+    records = extractor.extract(make_passage("We purchase memory from SK Hynix Inc., Micron Technology, Inc., and Samsung."))
+    supplier = next(record for record in records if record.relation_type == "supplier_dependency")
+    assert supplier.product_or_service == "memory"
+    assert supplier.direction_candidate == "object_to_subject"
+    assert supplier.evidence_quote
+
+
+def test_product_extraction_rejects_generic_or_transactional_purchase_spans() -> None:
+    extractor = RuleBasedRelationExtractor(EntityResolver([]))
+    generic = extractor.extract(make_passage("Our customers may purchase products from other suppliers."))
+    transactional = extractor.extract(make_passage("We purchased property and equipment, partially offset by proceeds from a sale."))
+    assert all(not record.product_or_service for record in generic + transactional)
+
+
 def test_rules_extract_power_fuel_transportation_dependency_class() -> None:
     extractor = RuleBasedRelationExtractor(EntityResolver([]))
     records = extractor.extract(
@@ -98,3 +114,11 @@ def test_resolver_does_not_match_common_word_ticker_in_lowercase_text() -> None:
         )
     )
     assert all(record.object != "Cloudflare Inc." for record in records)
+
+
+def test_rules_only_extract_control_relationships_from_exhibit_21() -> None:
+    extractor = RuleBasedRelationExtractor(EntityResolver([]))
+    records = extractor.extract(
+        make_passage("NVIDIA Corporation and Subsidiaries", section="item_7_mdna")
+    )
+    assert all(record.relation_type != "subsidiary_or_control" for record in records)

@@ -1,5 +1,13 @@
-from valuechain.models import Passage
-from valuechain.relation_llm import LLMRelationExtractor, normalize_object_payload, records_from_payload, should_skip_llm
+from valuechain.models import EntityMention, Passage
+from valuechain.relation_llm import (
+    LLMRelationExtractor,
+    build_entity_catalog,
+    mark_entity_catalog_text,
+    merge_relation_records,
+    normalize_object_payload,
+    records_from_payload,
+    should_skip_llm,
+)
 
 
 def test_normalize_object_payload_accepts_structured_llm_object() -> None:
@@ -59,6 +67,79 @@ def test_records_from_payload_accepts_specific_named_relation_and_clamps_confide
     assert len(records) == 1
     assert records[0].object == "Taiwan Semiconductor Manufacturing Company Limited"
     assert records[0].confidence_score == 1.0
+
+
+def test_records_from_payload_retains_product_as_relationship_metadata() -> None:
+    records = records_from_payload(
+        sample_passage(), "test-model", [{
+            "object": "SK Hynix Inc.", "relation_type": "supplier_dependency", "modality": "current_fact",
+            "confidence_score": 0.9, "product_or_service": "memory",
+        }]
+    )
+    assert records[0].product_or_service == "memory"
+
+
+def test_records_from_payload_resolves_named_object_id_from_catalog() -> None:
+    records = records_from_payload(
+        sample_passage(),
+        "test-model",
+        [{
+            "object_id": "e0",
+            "object": "hallucinated rewrite",
+            "relation_type": "supplier_dependency",
+            "modality": "current_fact",
+        }],
+        entity_catalog=[{
+            "id": "e0",
+            "text": "Samsung",
+            "normalized_name": "Samsung Electronics Co., Ltd",
+        }],
+    )
+
+    assert records[0].object == "Samsung Electronics Co., Ltd"
+
+
+def test_build_entity_catalog_deduplicates_aliases_and_excludes_subject() -> None:
+    catalog = build_entity_catalog(
+        [
+            EntityMention("NVIDIA", "company", "NVIDIA Corporation", start_offset=0),
+            EntityMention("Samsung", "company", "Samsung Electronics Co., Ltd", start_offset=10),
+            EntityMention("Samsung Electronics", "company", "Samsung Electronics Co., Ltd", start_offset=20),
+        ],
+        "NVIDIA Corporation",
+    )
+
+    assert catalog == [{
+        "id": "e0",
+        "text": "Samsung",
+        "normalized_name": "Samsung Electronics Co., Ltd",
+        "entity_type": "company",
+        "start_offset": "10",
+        "end_offset": "-1",
+    }]
+
+
+def test_mark_entity_catalog_text_inserts_stable_id_around_exact_mention() -> None:
+    marked = mark_entity_catalog_text(
+        "We buy chips from Samsung.",
+        [{
+            "id": "e0",
+            "text": "Samsung",
+            "entity_type": "company",
+            "start_offset": "18",
+            "end_offset": "25",
+        }],
+    )
+
+    assert marked == 'We buy chips from <entity id="e0" type="company">Samsung</entity>.'
+
+
+def test_hybrid_merge_uses_llm_to_enrich_rule_fact_fields() -> None:
+    rule = records_from_payload(sample_passage(), "rules", [{"object": "SK Hynix Inc.", "relation_type": "supplier_dependency", "modality": "current_fact", "confidence_score": .7}])[0]
+    llm = records_from_payload(sample_passage(), "llm", [{"object": "SK Hynix Inc.", "relation_type": "supplier_dependency", "modality": "current_fact", "confidence_score": .9, "product_or_service": "memory", "evidence_quote": "purchase memory from SK Hynix", "direction_candidate": "object_to_subject"}])[0]
+    merged = merge_relation_records([rule], [llm])[0]
+    assert merged.product_or_service == "memory"
+    assert merged.direction_candidate == "object_to_subject"
 
 
 def test_records_from_payload_rejects_invalid_schema_values() -> None:

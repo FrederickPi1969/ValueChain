@@ -123,7 +123,7 @@ def test_quality_penalizes_self_product_without_dependency_signal() -> None:
     assert decision.quality_score < 0.4
 
 
-def test_strategic_partner_requires_strategic_language() -> None:
+def test_competition_context_is_retained_as_a_flagged_candidate() -> None:
     decision = evaluate_relation_evidence(
         evidence(
             "Microsoft Corporation",
@@ -131,5 +131,66 @@ def test_strategic_partner_requires_strategic_language() -> None:
             "If we lose Microsoft support for our products, our sales could be affected.",
         )
     )
+    # This one remains a direct type mismatch and is still dropped.
     assert decision.action == "drop"
     assert decision.reason == "strategic_language_required"
+
+
+def test_competitor_list_is_dropped_without_local_relationship_cue() -> None:
+    decision = evaluate_relation_evidence(
+        evidence(
+            "Microsoft Corporation",
+            "supplier_dependency",
+            "We rely on a limited number of suppliers. Competition includes Microsoft Corporation and other cloud companies.",
+        )
+    )
+    assert decision.action == "drop"
+    assert decision.reason == "object_not_supported_for_relation"
+
+
+def test_named_counterparty_requires_local_direct_cue() -> None:
+    decision = evaluate_relation_evidence(
+        evidence(
+            "TSMC",
+            "foundry_dependency",
+            "We rely on Taiwan Semiconductor Manufacturing Company Limited for wafer fabrication capacity.",
+        )
+    )
+    assert decision.action == "keep"
+
+
+def test_strategic_deployment_list_does_not_become_cloud_dependency() -> None:
+    decision = evaluate_relation_evidence(
+        evidence(
+            "Microsoft Corporation",
+            "cloud_or_hosting_dependency",
+            "AMD expanded collaboration with Microsoft to deploy AMD racks at scale on Azure.",
+            modality="strategic",
+        )
+    )
+    assert decision.action == "drop"
+    assert decision.reason == "strategic_modality_requires_strategic_relation"
+
+
+def test_trademark_reference_is_not_a_subsidiary_edge() -> None:
+    decision = evaluate_relation_evidence(
+        evidence(
+            "Microsoft Corporation",
+            "subsidiary_or_control",
+            "Microsoft Windows is a registered trademark of Microsoft Corporation. Arm is a registered trademark of Arm Limited or its subsidiaries.",
+        )
+    )
+    assert decision.action == "drop"
+    assert decision.reason == "object_not_supported_for_relation"
+
+
+def test_quality_drops_repeated_table_of_contents_header_as_counterparty() -> None:
+    decision = evaluate_relation_evidence(
+        evidence(
+            "Contents NVIDIA Corporation",
+            "concentration_risk",
+            "Table of Contents NVIDIA Corporation and Subsidiaries. Revenue concentration is discussed below.",
+        )
+    )
+    assert decision.action == "drop"
+    assert decision.reason == "regulatory_or_fragment_object"

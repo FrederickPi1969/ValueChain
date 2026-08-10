@@ -14,11 +14,22 @@ export function rowContains(row, query) {
 export function filterEdges(edges, filters) {
   const query = normalizeSearch(filters.query);
   return edges.filter((edge) => {
+    // Family is a graph-layer filter. Raw extraction rows without a family remain
+    // available in Evidence/Edges so coverage and risk signals are not hidden.
+    if (edge.relationship_family && !filters.relationshipFamilies?.includes(edge.relationship_family)) return false;
+    if (edge.relationship_family && !filters.relationshipStatuses?.includes(confirmationStatus(edge))) return false;
     if (filters.company && edge.subject !== filters.company) return false;
     if (filters.relation && edge.relation_type !== filters.relation) return false;
     if (filters.modality && edge.modality !== filters.modality) return false;
     return rowContains(edge, query);
   });
+}
+
+export function confirmationStatus(row) {
+  if (row.confirmation_status) return row.confirmation_status;
+  if (row.review_status === 'accepted') return 'confirmed';
+  if (row.review_status === 'rejected') return 'rejected';
+  return 'candidate';
 }
 
 export function filterEvidence(evidence, filters) {

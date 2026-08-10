@@ -83,7 +83,9 @@ export async function fetchRunRegistry() {
     throw new Error(`Unable to load run registry: ${response.status}`);
   }
   const payload = await response.json();
-  return Array.isArray(payload.runs) ? payload.runs : [];
+  // Static previews intentionally use a plain JSON array so they can be
+  // served without the API process.  Accept both registry shapes.
+  return Array.isArray(payload) ? payload : Array.isArray(payload.runs) ? payload.runs : [];
 }
 
 export async function fetchDashboardData(run) {
@@ -104,6 +106,14 @@ export async function fetchDashboardData(run) {
     throw new Error(`Unable to load dashboard data for ${run.run_id}: ${response.status}`);
   }
   return response.json();
+}
+
+export async function fetchResolutionRecords(run) {
+  if (!run?.run_id) return [];
+  const response = await fetch(`/data/runs/${run.run_id}/entity_resolution_records.jsonl`, { cache: 'no-store' });
+  if (response.status === 404) return [];
+  if (!response.ok) throw new Error(`Unable to load entity resolution records: ${response.status}`);
+  return (await response.text()).split('\n').filter(Boolean).map((line) => JSON.parse(line));
 }
 
 export async function fetchCompanyBriefIndex(run) {
