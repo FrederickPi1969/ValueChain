@@ -20,7 +20,8 @@ import { Resolution } from './views/Resolution.jsx';
 import { TopologyMap } from './views/TopologyMap.jsx';
 
 const EMPTY_FILTERS = { query: '', company: '', relation: '', modality: '', relationshipFamilies: ['supply_chain'], relationshipStatuses: ['confirmed', 'candidate'] };
-const INITIAL_TAB = new URLSearchParams(window.location.search).get('view') === 'topology' ? 'topology' : 'filings';
+const REQUESTED_TAB = new URLSearchParams(window.location.search).get('view');
+const INITIAL_TAB = REQUESTED_TAB === 'topology' || import.meta.env.VITE_DEFAULT_VIEW === 'topology' ? 'topology' : 'filings';
 const TABS = [
   { id: 'filings', label: 'Filing Library' },
   { id: 'overview', label: 'Overview' },
