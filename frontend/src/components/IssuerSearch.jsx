@@ -21,6 +21,8 @@ export function IssuerSearch({ token, sourceId, selectedIssuer, onSelect, autoOp
   const [open, setOpen] = useState(autoOpen);
   const [loading, setLoading] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [total, setTotal] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState('');
   const boxRef = useRef(null);
 
@@ -42,6 +44,8 @@ export function IssuerSearch({ token, sourceId, selectedIssuer, onSelect, autoOp
   useEffect(() => {
     if (!open || !hasToken) {
       setOptions([]);
+      setTotal(null);
+      setHasMore(false);
       setLoading(false);
       return;
     }
@@ -61,12 +65,16 @@ export function IssuerSearch({ token, sourceId, selectedIssuer, onSelect, autoOp
       )
         .then((payload) => {
           setOptions(Array.isArray(payload.items) ? payload.items : []);
+          setTotal(Number.isFinite(Number(payload.total)) ? Number(payload.total) : null);
+          setHasMore(Boolean(payload.has_more));
           setActiveIndex(0);
         })
         .catch((err) => {
           if (err.name !== 'AbortError') {
             setError(err.message);
             setOptions([]);
+            setTotal(null);
+            setHasMore(false);
           }
         })
         .finally(() => {
@@ -142,6 +150,14 @@ export function IssuerSearch({ token, sourceId, selectedIssuer, onSelect, autoOp
         <div className="issuer-menu">
           {!hasToken && <div className="issuer-menu-state">Enter file API token first</div>}
           {hasToken && loading && <div className="issuer-menu-state">Searching issuers...</div>}
+          {hasToken && !loading && !error && total !== null && (
+            <div className="issuer-menu-summary" role="status">
+              <strong>
+                {total.toLocaleString()} {normalizedTerm ? 'matching' : 'total'} issuer {total === 1 ? 'record' : 'records'}
+              </strong>
+              <span>Showing {options.length.toLocaleString()}{hasMore ? ' most recently filed' : ''}</span>
+            </div>
+          )}
           {!loading &&
             hasToken &&
             options.map((issuer, index) => (

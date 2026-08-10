@@ -50,13 +50,24 @@ def public_row(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def page(items: list[dict[str, Any]], limit: int, offset: int) -> dict[str, Any]:
-    return {
+def page(
+    items: list[dict[str, Any]],
+    limit: int,
+    offset: int,
+    *,
+    total: int | None = None,
+) -> dict[str, Any]:
+    payload = {
         "items": [public_row(item) for item in items],
         "limit": limit,
         "offset": offset,
-        "has_more": len(items) == limit,
+        "has_more": (
+            offset + len(items) < total if total is not None else len(items) == limit
+        ),
     }
+    if total is not None:
+        payload["total"] = total
+    return payload
 
 
 def add_canonical_document_type(row: dict[str, Any]) -> dict[str, Any]:
@@ -249,6 +260,12 @@ async def acquisition_issuers(
             "(i.company_name ILIKE %s OR i.ticker ILIKE %s OR i.source_issuer_id ILIKE %s)"
         )
         params.extend([f"%{q}%"] * 3)
+    total_row = await _fetch_one(
+        request,
+        "SELECT count(*)::bigint AS total FROM acquisition_issuers i "
+        f"WHERE {' AND '.join(clauses)}",
+        tuple(params),
+    )
     rows = await _fetch_all(
         request,
         f"""
@@ -266,7 +283,7 @@ async def acquisition_issuers(
         """,
         (*params, limit, offset),
     )
-    return page(rows, limit, offset)
+    return page(rows, limit, offset, total=int((total_row or {}).get("total") or 0))
 
 
 @router.get(

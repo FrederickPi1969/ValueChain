@@ -14,7 +14,7 @@ export function IssuerDirectory({ token, onOpenIssuer }) {
       </div>
       <div className="directory-search">
         <IssuerSearch token={token} sourceId="" selectedIssuer={null} onSelect={onOpenIssuer} autoOpen />
-        <div className="directory-hint"><Search size={15} /> The menu opens with the most recently filed companies and narrows as you type.</div>
+        <div className="directory-hint"><Search size={15} /> Up to 50 results are shown at a time, ordered by latest filing; the total above is the full matching issuer count.</div>
       </div>
     </section>
   );

@@ -234,8 +234,11 @@ a:hover { text-decoration: underline; }
   box-shadow: var(--shadow);
 }
 
-.directory-search .issuer-search { min-height: 420px; }
-.directory-search .issuer-menu { max-height: 360px; }
+.directory-search .issuer-menu {
+  position: static;
+  max-height: 420px;
+  margin-top: 8px;
+}
 
 .directory-hint {
   display: flex;
@@ -1109,6 +1112,25 @@ tbody tr:hover {
   border-radius: 6px;
   box-shadow: none;
   text-align: left;
+}
+
+.issuer-menu-summary {
+  position: sticky;
+  top: -6px;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  background: #fff;
+  font-size: 11px;
+}
+
+.issuer-menu-summary strong {
+  color: var(--ink);
+  font-size: 11px;
 }
 
 .issuer-menu button:hover,

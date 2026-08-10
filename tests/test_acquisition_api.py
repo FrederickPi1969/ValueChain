@@ -149,3 +149,32 @@ def test_sources_endpoint_returns_serializable_rows(
 
     assert response.status_code == 200
     assert response.json()["items"][0]["source_id"] == "sec_edgar"
+
+
+def test_issuer_search_reports_total_matching_records(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_fetch_one(*_args, **_kwargs):
+        return {"total": 123}
+
+    async def fake_fetch_all(*_args, **_kwargs):
+        return [
+            {
+                "source_id": "sec_edgar",
+                "source_issuer_id": "0001045810",
+                "ticker": "NVDA",
+                "company_name": "NVIDIA Corporation",
+                "filing_count": 12,
+            }
+        ]
+
+    monkeypatch.setattr(acquisition_api, "_fetch_one", fake_fetch_one)
+    monkeypatch.setattr(acquisition_api, "_fetch_all", fake_fetch_all)
+    client = TestClient(build_test_app(tmp_path))
+
+    response = client.get("/api/acquisition/issuers?q=NVIDIA&limit=50")
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 123
+    assert response.json()["has_more"] is True
+    assert len(response.json()["items"]) == 1
