@@ -11,6 +11,7 @@ from valuechain.dashboard import canonical_network_edges
 from valuechain.evaluation import evaluate_canonical_relationships, load_gold
 from valuechain.evidence_audit import apply_latest_audit_decisions, audit_canonical_relationships, audit_summary, attach_audits_to_dashboard, attach_enrichment_to_dashboard, build_direction_correction_proposals, merge_audit_history, migrate_relationship_evidence_ids
 from valuechain.human_review import VALID_STATUSES, apply_human_reviews, inherit_prior_reviews, publish_human_review_to_dashboard, read_review_csv
+from valuechain.industry_expansion import ExpansionConfig, build_industry_expansion
 from valuechain.gleif import (
     EntityObjectContext,
     GLEIFClient,
@@ -144,6 +145,16 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--run-id", required=True, help="Run id containing canonical_relationships.jsonl.")
     evaluate.add_argument("--gold", required=True, help="Path to a gold JSON file.")
     evaluate.add_argument("--output", default="", help="Optional JSON report path.")
+    expand = sub.add_parser("expand-industry", help="Build a bounded 10-K/10-Q relationship expansion for an existing run.")
+    expand.add_argument("--run-id", required=True, help="Existing extracted run to expand.")
+    expand.add_argument("--industry", default="semiconductor", help="Industry preset used when --seeds is omitted.")
+    expand.add_argument("--seeds", default="", help="Comma-separated company names or tickers.")
+    expand.add_argument("--max-hops", type=int, default=2)
+    expand.add_argument("--max-nodes", type=int, default=1500)
+    expand.add_argument("--max-edges", type=int, default=5000)
+    expand.add_argument("--max-seeds", type=int, default=50)
+    expand.add_argument("--forms", default="10-K,10-Q")
+    expand.add_argument("--accepted-only", action="store_true")
     return parser
 
 
@@ -241,6 +252,41 @@ def main(argv: list[str] | None = None) -> None:
         print(f"graph_edges={len(result.edges)}")
         print(f"dashboard={result.dashboard_path}")
         print(f"frontend_index={result.index_path}")
+        return
+    if args.command == "expand-industry":
+        settings = Settings()
+        ensure_dirs(settings)
+        run_dir = settings.processed_dir / "runs" / args.run_id
+        companies = read_universe(run_dir / "company_universe_resolved.csv")
+        entities = read_jsonl(run_dir / "canonical_entities.jsonl")
+        relationships = read_jsonl(run_dir / "canonical_relationships_reviewed.jsonl") or read_jsonl(run_dir / "canonical_relationships.jsonl")
+        if not companies or not relationships:
+            parser.error("This run needs company_universe_resolved.csv and canonical_relationships.jsonl.")
+        expansion = build_industry_expansion(
+            companies, entities, relationships,
+            ExpansionConfig(
+                industry=args.industry, seeds=parse_csv_arg(args.seeds) or [], max_hops=args.max_hops,
+                max_nodes=args.max_nodes, max_edges=args.max_edges, max_seeds=args.max_seeds,
+                forms=tuple(parse_forms(args.forms)), include_candidates=not args.accepted_only,
+            ),
+        )
+        write_json(run_dir / "industry_expansion.json", expansion)
+        dashboard_paths = [
+            settings.reports_dir / "runs" / args.run_id / "dashboard-data.json",
+            settings.root_dir / "frontend" / "public" / "data" / "runs" / args.run_id / "dashboard-data.json",
+        ]
+        updated = 0
+        for path in dashboard_paths:
+            if not path.exists():
+                continue
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            payload["industry_expansion"] = expansion
+            payload.setdefault("summary", {})["expansion_node_count"] = expansion["summary"]["node_count"]
+            payload["summary"]["expansion_edge_count"] = expansion["summary"]["edge_count"]
+            write_json(path, payload)
+            updated += 1
+        print(json.dumps({**expansion["summary"], "dashboard_files_updated": updated}, ensure_ascii=False))
+        print(f"expansion={run_dir / 'industry_expansion.json'}")
         return
     if args.command == "resolve-entities":
         settings = Settings()

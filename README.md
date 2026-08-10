@@ -208,6 +208,27 @@ The frontend requires Node 20.19 or later. With nvm, run `nvm use` from the
 repository root before starting Vite; `.nvmrc` pins the currently verified
 version.
 
+An existing extraction run can be projected into a bounded industry graph
+without re-downloading filings:
+
+```bash
+valuechain expand-industry \
+  --run-id <run_id> \
+  --industry semiconductor \
+  --seeds NVDA,AMD,TSM,ASML \
+  --max-hops 3 \
+  --max-nodes 1500 \
+  --max-edges 5000
+```
+
+The command reads canonical company-to-company facts from 10-K/10-Q evidence,
+writes `industry_expansion.json`, and updates the run's dashboard data. Each
+node records its shortest expansion depth, discovery relationship/accessions,
+and filing-coverage state. Rejected facts and non-company fragments never
+enter the expansion. The Topology lab uses ForceAtlas2 for detail graphs and a
+deterministic industry-partitioned layout for larger batches, with an explicit
+edge display budget and accepted/candidate layers.
+
 Open:
 
 ```text

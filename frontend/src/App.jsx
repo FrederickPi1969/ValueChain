@@ -216,6 +216,7 @@ export function App() {
                     edges={filteredEdges}
                     networkEdges={filterEdges(data.network_edges || [], filters)}
                     companies={data.companies || []}
+                    industryExpansion={data.industry_expansion || {}}
                   />
                 )}
                 {activeTab === 'network' && data && <Network edges={filterEdges(data.network_edges || [], filters)} allEdges={data.network_edges || []} lineageEvents={data.relationship_lineage_events || []} companies={data.companies || []} onFocus={focusNetworkNode} />}

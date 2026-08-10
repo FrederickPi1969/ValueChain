@@ -18,6 +18,7 @@ from valuechain.acquisition_api import router as acquisition_router
 from valuechain.acquisition_resolver_api import router as acquisition_resolver_router
 from valuechain.acquisition_schema import prepare_acquisition_schema
 from valuechain.dashboard import build_dashboard_data
+from valuechain.industry_expansion import ExpansionConfig, build_industry_expansion
 from valuechain.models import Company, GraphEdge, RelationEvidence, SourceDocument
 from valuechain.universe_policy_api import router as universe_policy_router
 
@@ -421,6 +422,18 @@ async def dashboard_data(run_id: str, request: Request) -> dict[str, Any]:
     for row in canonical_relationship_rows:
         if audit := audit_by_relationship.get(str(row["relationship_id"])):
             row["llm_audit"] = audit
+    industry_expansion = build_industry_expansion(
+        companies,
+        canonical_entity_rows,
+        canonical_relationship_rows,
+        ExpansionConfig(
+            industry="run-universe",
+            seeds=[company.company_name for company in companies],
+            max_seeds=max(50, len(companies)),
+            max_nodes=5_000,
+            max_edges=15_000,
+        ),
+    )
     return build_dashboard_data(
         edges,
         records,
@@ -429,6 +442,7 @@ async def dashboard_data(run_id: str, request: Request) -> dict[str, Any]:
         company_activity=company_activity,
         canonical_entities=canonical_entity_rows,
         canonical_relationships=canonical_relationship_rows,
+        industry_expansion=industry_expansion,
     )
 
 

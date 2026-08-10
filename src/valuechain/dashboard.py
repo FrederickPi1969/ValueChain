@@ -24,6 +24,7 @@ def render_dashboard(
     canonical_entities: list[dict[str, object]] | None = None,
     canonical_relationships: list[dict[str, object]] | None = None,
     canonicalization_diagnostics: list[dict[str, object]] | None = None,
+    industry_expansion: dict[str, object] | None = None,
 ) -> dict:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     template_dir = Path(__file__).resolve().parents[2] / "templates"
@@ -44,6 +45,7 @@ def render_dashboard(
         canonical_entities=canonical_entities,
         canonical_relationships=canonical_relationships,
         canonicalization_diagnostics=canonicalization_diagnostics,
+        industry_expansion=industry_expansion,
     )
     output_path.write_text(
         template.render(
@@ -76,6 +78,7 @@ def build_dashboard_data(
     canonical_entities: list[dict[str, object]] | None = None,
     canonical_relationships: list[dict[str, object]] | None = None,
     canonicalization_diagnostics: list[dict[str, object]] | None = None,
+    industry_expansion: dict[str, object] | None = None,
 ) -> dict:
     evidence_by_company = Counter(record.subject for record in evidence)
     relation_mix = Counter(record.relation_type for record in evidence)
@@ -123,6 +126,8 @@ def build_dashboard_data(
             ),
             "source_document_count": len(source_documents or []),
             "exhibit_document_count": sum(1 for document in source_documents or [] if not document.is_primary),
+            "expansion_node_count": int((industry_expansion or {}).get("summary", {}).get("node_count", 0)),
+            "expansion_edge_count": int((industry_expansion or {}).get("summary", {}).get("edge_count", 0)),
         },
         "relation_mix": relation_mix.most_common(),
         "modality_mix": modality_mix.most_common(),
@@ -139,6 +144,7 @@ def build_dashboard_data(
         "canonical_entities": canonical_entities or [],
         "canonical_relationships": canonical_relationships or [],
         "canonicalization_diagnostics": canonicalization_diagnostics or [],
+        "industry_expansion": industry_expansion or {},
         "evidence": [record.to_dict() for record in evidence_rows],
     }
     return dashboard_data

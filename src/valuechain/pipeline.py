@@ -22,6 +22,7 @@ from valuechain.resolution_records import build_resolution_records
 from valuechain.planning import build_execution_plan
 from valuechain.postgres import write_run_to_postgres
 from valuechain.human_review import inherit_prior_reviews
+from valuechain.industry_expansion import ExpansionConfig, build_industry_expansion
 from valuechain.relation_llm import HybridRelationExtractor, LLMRelationExtractor
 from valuechain.relation_rules import RuleBasedRelationExtractor
 from valuechain.relevance import filter_candidates
@@ -199,6 +200,19 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
     write_jsonl(run_processed_dir / "canonical_entities.jsonl", canonical_entities)
     write_jsonl(run_processed_dir / "canonical_relationships.jsonl", canonical_relationships)
     write_csv(run_processed_dir / "canonicalization_diagnostics.csv", canonical_diagnostics)
+    industry_expansion = build_industry_expansion(
+        resolved_companies,
+        canonical_entities,
+        canonical_relationships,
+        ExpansionConfig(
+            industry="run-universe",
+            seeds=[company.company_name for company in resolved_companies],
+            max_seeds=max(50, len(resolved_companies)),
+            max_nodes=5_000,
+            max_edges=15_000,
+        ),
+    )
+    write_json(run_processed_dir / "industry_expansion.json", industry_expansion)
 
     edges = aggregate_edges(evidence, apply_quality_gate=False)
     write_csv(run_processed_dir / "graph_edges.csv", [edge.to_dict() for edge in edges])
@@ -223,6 +237,7 @@ def run_pipeline(settings: Settings, options: PipelineOptions) -> PipelineResult
         canonical_entities=canonical_entities,
         canonical_relationships=canonical_relationships,
         canonicalization_diagnostics=canonical_diagnostics,
+        industry_expansion=industry_expansion,
     )
     write_json(run_report_dir / "dashboard-data.json", dashboard_data)
     summary = build_run_summary(
@@ -546,6 +561,7 @@ def build_run_summary(
             "canonical_entities": str(processed_dir / "canonical_entities.jsonl"),
             "canonical_relationships": str(processed_dir / "canonical_relationships.jsonl"),
             "canonicalization_diagnostics": str(processed_dir / "canonicalization_diagnostics.csv"),
+            "industry_expansion": str(processed_dir / "industry_expansion.json"),
             "validation_sample": str(processed_dir / "validation_sample.csv"),
             "dashboard": str(dashboard_path),
             "dashboard_data": str(dashboard_path.parent / "dashboard-data.json"),

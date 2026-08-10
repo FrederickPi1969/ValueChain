@@ -342,6 +342,8 @@ main {
 
 .topology-lab { display: grid; gap: 14px; }
 .topology-toolbar { display: grid; grid-template-columns: minmax(310px, 1fr) minmax(185px, .5fr) minmax(185px, .5fr) minmax(130px, .35fr) auto; gap: 12px; align-items: end; padding: 2px 2px 0; }
+.topology-toolbar-large { grid-template-columns: minmax(330px, 1.4fr) repeat(3, minmax(135px, .45fr)) repeat(3, auto); }
+.topology-intro { min-width: 0; }
 .topology-scope-note { align-self: end; min-height: 36px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); background: var(--surface-2); font-size: 12px; white-space: nowrap; }
 .topology-toolbar h2 { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 18px; }
 .topology-toolbar p { margin: 5px 0 0; max-width: 690px; color: var(--muted); font-size: 13px; }
@@ -353,6 +355,11 @@ main {
 .topology-stats { display: flex; flex-wrap: wrap; gap: 7px; }
 .topology-stats span { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--surface-2); font-size: 12px; }
 .topology-stats b { color: var(--ink); }
+.seed-picker { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+.seed-picker > span { margin-right: 4px; color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.seed-picker button { min-height: 27px; padding: 4px 8px; border: 1px solid #9aaabc; border-radius: 999px; color: var(--muted); background: #fff; font-size: 11px; }
+.seed-picker button.active { border-color: #db2777; color: #9d174d; background: #fdf2f8; }
+.seed-picker small { color: var(--muted); }
 .topology-layout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 14px; align-items: stretch; }
 .topology-canvas { height: 720px; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: #f8fafc; }
 .force-topology .topology-canvas { position: relative; border-color: #1e3a5f; background: radial-gradient(circle at 50% 38%, #15243c 0%, #09111f 58%, #060b15 100%); }
