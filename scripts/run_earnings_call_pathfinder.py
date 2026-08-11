@@ -17,6 +17,7 @@ import httpx
 
 from run_earnings_call_downstream import download_pdf, kind, opencli_extract, scrape_web, video_transcript
 from valuechain.config import Settings
+from valuechain.earnings_call_artifacts import compress_artifact_directory
 from valuechain.earnings_call_content import transcript_closing_signals, transcript_is_complete
 from valuechain.earnings_calls import BLOCKED_TRANSCRIPT_DOMAINS
 from valuechain.llm_client import LLMConfig, OpenAICompatibleClient, parse_json_content
@@ -126,7 +127,7 @@ async def sync_to_cosmos(local_dir: Path, remote_dir: str) -> None:
     created = await asyncio.to_thread(subprocess.run, ["ssh", "pi@100.102.250.107", "mkdir", "-p", remote_path], capture_output=True, text=True, timeout=60)
     if created.returncode:
         raise RuntimeError(created.stderr[-500:])
-    completed = await asyncio.to_thread(subprocess.run, ["rsync", "-a", f"{local_dir}/", f"{COSMOS}/{remote_dir}/"], capture_output=True, text=True, timeout=180)
+    completed = await asyncio.to_thread(subprocess.run, ["rsync", "-a", "--delete", f"{local_dir}/", f"{COSMOS}/{remote_dir}/"], capture_output=True, text=True, timeout=180)
     if completed.returncode:
         raise RuntimeError(completed.stderr[-500:])
 
@@ -210,6 +211,8 @@ async def process_company(db: sqlite3.Connection, row: sqlite3.Row, year: int, q
             verdict["pathfinder_qa_present"] = qa_present
             metadata["validation"] = verdict
             (target / "metadata.json").write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
+            compressed = compress_artifact_directory(target)
+            transcript = compressed.get(transcript, Path(f"{transcript}.zst"))
             status = "validated" if pathfinder_full and float(verdict.get("confidence", 0)) >= .80 else "rejected"
             cosmos_dir = f"{year}/{quarter}/{ticker}/{candidate['id']}"
             if status == "validated":
@@ -224,6 +227,10 @@ async def process_company(db: sqlite3.Connection, row: sqlite3.Row, year: int, q
                 return
             db.execute("INSERT OR REPLACE INTO pathfinder_transcripts(company_id, accepted_url_id, candidate_rank, status, source_url, source_kind, local_path, cosmos_path, text_chars, validation_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)", (company_id, candidate["id"], rank, status, candidate["url"], kind(candidate["url"]), str(transcript), len(text), json.dumps(verdict), now(), now()))
         except Exception as exc:
+            try:
+                compress_artifact_directory(target)
+            except Exception as compression_exc:
+                exc = RuntimeError(f"{exc}; artifact compression failed: {compression_exc}")
             db.execute("INSERT OR REPLACE INTO pathfinder_transcripts(company_id, accepted_url_id, candidate_rank, status, source_url, source_kind, local_path, cosmos_path, text_chars, validation_json, created_at, updated_at) VALUES (?, ?, ?, 'download_failed', ?, ?, NULL, NULL, NULL, ?, ?, ?)", (company_id, candidate["id"], rank, candidate["url"], kind(candidate["url"]), json.dumps({"error": f"{type(exc).__name__}: {exc}"}), now(), now()))
     db.execute("INSERT OR REPLACE INTO pathfinder_company_status(company_id, status, updated_at) VALUES (?, 'exhausted', ?)", (company_id, now()))
     print(f"NO_VALID_TRANSCRIPT {ticker}", flush=True)

@@ -24,7 +24,9 @@ The Google SERP endpoint remains the private Tailnet address, `100.114.26.88:100
 
 `valuechain.earnings_calls` sends all candidate title/URL/snippet fields to local `Qwen/Qwen3.6-35B-A3B` with thinking disabled, temperature 0, and a strict JSON schema. It accepts only confidence >= 0.70 results classified as an official/third-party transcript, official webcast, or YouTube video. A deterministic guard excludes 10-K, 10-Q, 8-K, annual-report, and EDGAR links even if the model makes an error. Every result from every executed query is retained in `manifest.json`, whether it is accepted, rejected, a YouTube URL, PDF, webcast, or unrelated link.
 
-HTML candidates are archived as normalized text. For YouTube, the pipeline runs `yt-dlp --write-auto-subs --sub-langs en --skip-download` and writes the automatic English captions to `transcript.txt`. The manifest preserves the original link, query, engine, model judgement, and local artifact path.
+HTML candidates are archived as normalized text. YouTube captions come from the dedicated transcript service, and PDF calls are converted with `pdftotext`. Before an artifact is recorded or synchronized to Cosmos, every `transcript.txt`, `metadata.json`, and retained `source.pdf` is compressed independently with Zstandard level 10 and verified with `zstd -t`. Only the resulting `*.zst` file remains; SQLite paths point directly to `transcript.txt.zst`. This keeps each component stream-readable without unpacking a tar archive. Use `zstd -d -c artifact.txt.zst` to read one artifact.
+
+Browser extraction follows OpenCLI's `next_start_char` cursor until the full page is retrieved. Web transcripts must pass Qwen's exact-period/full-call judgement and contain a call-ending signal near the actual document boundary. A partial call, a different quarter, or a browser extraction that stops before `total_chars` is rejected.
 
 Run one company:
 

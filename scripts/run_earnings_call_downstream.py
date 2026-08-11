@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import os
 import shutil
 import sqlite3
@@ -16,6 +15,7 @@ import requests
 
 from valuechain.earnings_calls import USER_AGENT, _rotating_proxy
 from valuechain.earnings_call_content import parse_opencli_extract_chunk
+from valuechain.earnings_call_artifacts import compress_artifact_directory
 
 VIDEO_URL = "http://100.114.26.88:13131/transcript"
 ULSCR_URL = "http://100.114.26.88:23355"
@@ -171,6 +171,7 @@ async def process(client: httpx.AsyncClient, db: sqlite3.Connection, row: sqlite
         else:
             text, method = await scrape_web(client, url)
         artifact = target / "transcript.txt"; artifact.write_text(text, encoding="utf-8")
+        artifact = compress_artifact_directory(target)[artifact]
         db.execute("UPDATE downstream_downloads SET status='downloaded', artifact_path=?, text_chars=?, fetch_method=?, error=NULL, updated_at=? WHERE accepted_url_id=?", (str(artifact), len(text), method, now(), link_id))
         print(f"downloaded {link_id} {source_kind} {len(text)} chars", flush=True)
     except Exception as primary_error:
@@ -178,6 +179,7 @@ async def process(client: httpx.AsyncClient, db: sqlite3.Connection, row: sqlite
         # uses the dedicated transcript service and PDFs use binary download +
         # pdftotext; neither should open a browser page as a substitute.
         if source_kind != "web":
+            compress_artifact_directory(target)
             db.execute("UPDATE downstream_downloads SET status='failed', error=?, updated_at=? WHERE accepted_url_id=?", (f"{type(primary_error).__name__}: {primary_error}", now(), link_id))
             print(f"FAILED {link_id} {source_kind}: {primary_error}", flush=True)
             return
@@ -187,9 +189,11 @@ async def process(client: httpx.AsyncClient, db: sqlite3.Connection, row: sqlite
             async with fallback_lock:
                 text, method = await asyncio.to_thread(opencli_extract, url, opencli_profile, f"earnings-{link_id}")
             artifact = target / "transcript.txt"; artifact.write_text(text, encoding="utf-8")
+            artifact = compress_artifact_directory(target)[artifact]
             db.execute("UPDATE downstream_downloads SET status='downloaded', artifact_path=?, text_chars=?, fetch_method=?, error=?, updated_at=? WHERE accepted_url_id=?", (str(artifact), len(text), method, f"primary_failed: {type(primary_error).__name__}: {primary_error}", now(), link_id))
             print(f"downloaded {link_id} via OpenCLI", flush=True)
         except Exception as fallback_error:
+            compress_artifact_directory(target)
             db.execute("UPDATE downstream_downloads SET status='failed', error=?, updated_at=? WHERE accepted_url_id=?", (f"primary={type(primary_error).__name__}: {primary_error}; opencli={type(fallback_error).__name__}: {fallback_error}", now(), link_id))
             print(f"FAILED {link_id} {source_kind}: {primary_error}; OpenCLI: {fallback_error}", flush=True)
 
