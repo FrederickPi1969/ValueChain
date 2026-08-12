@@ -38,3 +38,7 @@ def test_openapi_exposes_acquisition_query_and_download_routes() -> None:
     assert "/api/acquisition/documents/{document_id}/download" in paths
     assert "/api/acquisition/snapshots/{snapshot_id}/download" in paths
     assert "/api/acquisition/objects/{source_id}/{object_key}/download" in paths
+
+
+def test_openapi_exposes_evidence_bounded_relationship_assistant() -> None:
+    assert "/api/runs/{run_id}/relationships/{relationship_id}/challenge" in app.openapi()["paths"]

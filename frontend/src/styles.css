@@ -1465,6 +1465,7 @@ tbody tr:hover {
 .evidence-card p, .evidence-card blockquote { margin: 0; font-size: 12px; line-height: 1.5; }.evidence-card blockquote { padding-left: 8px; border-left: 2px solid var(--teal); color: #334155; }
 .evidence-card footer { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 10px; }.evidence-card footer a { white-space: nowrap; }
 .audit-body blockquote { margin: 0; padding-left: 8px; border-left: 2px solid var(--teal); color: var(--muted); font-size: 12px; }
+.challenge-prompts { display: flex; flex-wrap: wrap; gap: 5px; }.challenge-prompts button { padding: 4px 6px; font-size: 10px; }.relationship-assistant textarea { width: 100%; resize: vertical; font: inherit; font-size: 12px; }.challenge-answer { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; font-size: 12px; }.challenge-answer p, .challenge-answer blockquote { margin: 0; line-height: 1.45; }.challenge-answer.supported b { color: #047857; }.challenge-answer.concern { border-color: #f59e0b; background: #fffbeb; }.challenge-answer.concern b, .challenge-error { color: #b45309; }.challenge-answer small { color: var(--muted); }
 .topology-legend p { margin: 0; color: var(--muted); line-height: 1.55; }
 .topology-legend b { color: var(--ink); }
 .topology-empty { padding: 42px; }

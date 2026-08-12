@@ -5,6 +5,7 @@ import Sigma from 'sigma';
 import { Building2, Layers3, Network, Radio, ShieldCheck, X } from 'lucide-react';
 import { shortRelation } from '../components/format.js';
 import { confirmationStatus } from '../lib/filters.js';
+import { challengeRelationship } from '../api/data.js';
 
 const EDGE_LIMITS = [250, 750, 1_500, 3_000, 5_000];
 const FORCE_LAYOUT_NODE_LIMIT = 650;
@@ -15,7 +16,7 @@ const RELATION_COLORS = {
   distribution_or_channel_dependency: '#e879f9', licensing_dependency: '#60a5fa', strategic_partner: '#22d3ee', co_investment: '#f472b6',
 };
 
-export function TopologyMap({ edges = [], networkEdges = [], companies = [], evidence = [], lineageEvents = [], industryExpansion = {} }) {
+export function TopologyMap({ runId = '', edges = [], networkEdges = [], companies = [], evidence = [], lineageEvents = [], industryExpansion = {} }) {
   const expansionEdges = industryExpansion?.edges || [];
   const sourceEdges = expansionEdges.length ? expansionEdges : (networkEdges.length ? networkEdges : edges);
   const expansionNodes = industryExpansion?.nodes || [];
@@ -106,7 +107,7 @@ export function TopologyMap({ edges = [], networkEdges = [], companies = [], evi
         <ForceGraph topology={topology} onSelect={selectEdge} onToggleAnchor={toggleAnchor} />
         <aside className="topology-detail panel">
           <div className="panel-head"><h2>{activeNode ? 'Company research' : selectedEdge ? 'Selected relationship' : 'Reading the graph'}</h2></div>
-          {activeNode ? <CompanyDetail name={activeNode} topology={topology} anchors={anchors} onToggleAnchor={toggleAnchor} onSelectEdge={selectEdge} /> : selectedEdge ? <EdgeDetail edge={selectedEdge} evidence={evidence} lineage={lineageEvents.filter((event) => event.relationship_id === selectedEdge.relationship_id)} /> : <TopologyLegend expansion={industryExpansion} />}
+          {activeNode ? <CompanyDetail name={activeNode} topology={topology} anchors={anchors} onToggleAnchor={toggleAnchor} onSelectEdge={selectEdge} /> : selectedEdge ? <EdgeDetail runId={runId} edge={selectedEdge} evidence={evidence} lineage={lineageEvents.filter((event) => event.relationship_id === selectedEdge.relationship_id)} /> : <TopologyLegend expansion={industryExpansion} />}
         </aside>
       </div>
     </section>
@@ -166,7 +167,7 @@ function ForceGraph({ topology, onSelect, onToggleAnchor }) {
   return <div className="topology-canvas sigma-canvas" ref={containerRef} />;
 }
 
-function EdgeDetail({ edge, evidence, lineage }) {
+function EdgeDetail({ runId, edge, evidence, lineage }) {
   const supportingEvidence = evidenceForRelationship(edge, evidence);
   const audit = edge.llm_audit || {};
   return <div className="topology-edge-detail"><strong>{edge.object} <span>→</span> {edge.subject}</strong><dl>
@@ -177,8 +178,24 @@ function EdgeDetail({ edge, evidence, lineage }) {
     <div><dt>Status</dt><dd>{confirmationStatus(edge)}</dd></div>{edge.product_or_service && <div><dt>Product</dt><dd>{edge.product_or_service}</dd></div>}{edge.risk_flags?.length > 0 && <div><dt>Audit flags</dt><dd>{edge.risk_flags.join(', ')}</dd></div>}
   </dl>
   <EvidenceDrilldown evidence={supportingEvidence} expectedCount={edge.evidence_count} />
+  <RelationshipAssistant runId={runId} edge={edge} />
   <AuditDrilldown audit={audit} lineage={lineage} decisionReason={edge.decision_reason} decisionSource={edge.decision_source} />
   {!supportingEvidence.length && edge.source_urls && <a href={String(edge.source_urls).split(';')[0]} target="_blank" rel="noreferrer">Open supporting filing</a>}</div>;
+}
+
+function RelationshipAssistant({ runId, edge }) {
+  const [question, setQuestion] = useState('Does this connection match the evidence?');
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  if (!edge.relationship_id) return null;
+  const ask = async (value = question) => {
+    setLoading(true); setError('');
+    try { const response = await challengeRelationship(runId, edge.relationship_id, value); setResult(response.response); }
+    catch (err) { setError('The connection assistant needs the local API and the saved evidence corpus.'); }
+    finally { setLoading(false); }
+  };
+  return <details className="topology-drilldown relationship-assistant"><summary>Ask about this connection <small>evidence-only AI</small></summary><div className="drilldown-body"><div className="challenge-prompts"><button type="button" onClick={() => { setQuestion('Does this connection match the evidence?'); ask('Does this connection match the evidence?'); }}>Confirm connection</button><button type="button" onClick={() => { setQuestion('Could this be a competitor or market reference instead?'); ask('Could this be a competitor or market reference instead?'); }}>Could it be competition?</button><button type="button" onClick={() => { setQuestion('Is the displayed direction supported by the evidence?'); ask('Is the displayed direction supported by the evidence?'); }}>Check direction</button></div><textarea value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask a short question about this connection" rows={2} /><button type="button" className="compact-button" disabled={loading} onClick={() => ask()}>{loading ? 'Checking evidence…' : 'Ask AI'}</button>{error && <p className="challenge-error">{error}</p>}{result && <article className={`challenge-answer ${result.assessment}`}><b>{({ supported: 'Evidence supports this connection', concern: 'Possible issue — marked for re-audit', inconclusive: 'Evidence is not conclusive' })[result.assessment]}</b><p>{result.answer}</p>{result.evidence_quote && <blockquote>“{result.evidence_quote}”</blockquote>}{result.needs_reaudit && <small>This did not change the graph. It was recorded for a later re-audit{result.re_audit_reason ? `: ${result.re_audit_reason}` : '.'}</small>}</article>}</div></details>;
 }
 
 function EvidenceDrilldown({ evidence, expectedCount }) {

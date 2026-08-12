@@ -117,6 +117,18 @@ export async function fetchDashboardData(run) {
   return response.json();
 }
 
+export async function challengeRelationship(runId, relationshipId, question) {
+  const response = await fetch(`${API_BASE}/api/runs/${encodeURIComponent(runId)}/relationships/${encodeURIComponent(relationshipId)}/challenge`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question }),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw new Error(detail || `Relationship assistant returned ${response.status}`);
+  }
+  return response.json();
+}
+
 export async function fetchResolutionRecords(run) {
   if (!run?.run_id) return [];
   const response = await fetch(`/data/runs/${run.run_id}/entity_resolution_records.jsonl`, { cache: 'no-store' });
