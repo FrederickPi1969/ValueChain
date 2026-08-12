@@ -161,7 +161,9 @@ function ForceGraph({ topology, onSelect, onToggleAnchor }) {
     });
     renderer.on('enterNode', ({ node }) => { hoveredNode = node; renderer.refresh(); });
     renderer.on('leaveNode', () => { hoveredNode = null; renderer.refresh(); });
-    renderer.on('enterEdge', ({ edge }) => onSelect(graph.getEdgeAttribute(edge, 'edge')));
+    // Hover is deliberately visual-only. Selecting an edge on hover used to
+    // replace the active company panel before a researcher finished reading it.
+    // A relationship now opens only after an explicit edge click.
     renderer.on('clickEdge', ({ edge }) => onSelect(graph.getEdgeAttribute(edge, 'edge')));
     renderer.on('clickNode', ({ node }) => {
       const name = decodeNodeName(node);
