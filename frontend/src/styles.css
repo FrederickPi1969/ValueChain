@@ -1420,7 +1420,7 @@ tbody tr:hover {
 .topology-layout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 14px; align-items: stretch; min-width: 0; }
 .topology-canvas { height: 720px; min-width: 0; max-width: 100%; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: #f8fafc; }
 .force-topology .topology-canvas { position: relative; border-color: #1e3a5f; background: radial-gradient(circle at 50% 38%, #15243c 0%, #09111f 58%, #060b15 100%); }
-.force-topology .sigma-canvas canvas { border-radius: 8px; }
+.force-topology .sigma-canvas canvas { border-radius: 8px; }.sigma-renderer { width: 100%; height: 100%; }.topology-edge-tooltip { position: absolute; z-index: 12; display: grid; gap: 3px; max-width: 290px; padding: 7px 9px; border: 1px solid #47627c; border-radius: 6px; color: #e2e8f0; background: rgba(9, 17, 31, .95); box-shadow: 0 7px 20px rgba(0, 0, 0, .25); pointer-events: none; font-size: 11px; line-height: 1.3; }.topology-edge-tooltip b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.topology-edge-tooltip span { color: #7dd3fc; }
 .relation-legend { display: flex; flex-wrap: wrap; gap: 7px; padding: 2px 0; }
 .relation-legend button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 5px 8px; color: #94a3b8; background: #fff; font-size: 11px; cursor: pointer; }
 .relation-legend button.active { color: #172033; border-color: #91a4b5; background: #edf6ff; }

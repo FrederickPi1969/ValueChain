@@ -127,6 +127,7 @@ function SeedPicker({ options, selected, onChange }) {
 
 function ForceGraph({ topology, onSelect, onToggleAnchor }) {
   const containerRef = useRef(null);
+  const [hoveredEdge, setHoveredEdge] = useState(null);
   useEffect(() => {
     if (!containerRef.current || !topology.rows.length) return undefined;
     const graph = new MultiDirectedGraph();
@@ -161,9 +162,16 @@ function ForceGraph({ topology, onSelect, onToggleAnchor }) {
     });
     renderer.on('enterNode', ({ node }) => { hoveredNode = node; renderer.refresh(); });
     renderer.on('leaveNode', () => { hoveredNode = null; renderer.refresh(); });
-    // Hover is deliberately visual-only. Selecting an edge on hover used to
-    // replace the active company panel before a researcher finished reading it.
-    // A relationship now opens only after an explicit edge click.
+    // Hover is deliberately visual-only: it previews a short relationship
+    // tooltip and never replaces the active company panel.
+    renderer.on('enterEdge', ({ edge, event }) => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      const pointerX = Number(event?.x); const pointerY = Number(event?.y);
+      const x = rect ? (pointerX >= 0 && pointerX <= rect.width ? pointerX : pointerX - rect.left) : 0;
+      const y = rect ? (pointerY >= 0 && pointerY <= rect.height ? pointerY : pointerY - rect.top) : 0;
+      setHoveredEdge({ edge: graph.getEdgeAttribute(edge, 'edge'), x, y });
+    });
+    renderer.on('leaveEdge', () => setHoveredEdge(null));
     renderer.on('clickEdge', ({ edge }) => onSelect(graph.getEdgeAttribute(edge, 'edge')));
     renderer.on('clickNode', ({ node }) => {
       const name = decodeNodeName(node);
@@ -171,7 +179,12 @@ function ForceGraph({ topology, onSelect, onToggleAnchor }) {
     });
     return () => renderer.kill();
   }, [topology, onSelect, onToggleAnchor]);
-  return <div className="topology-canvas sigma-canvas" ref={containerRef} />;
+  return <div className="topology-canvas sigma-canvas"><div className="sigma-renderer" ref={containerRef} />{hoveredEdge && <EdgeTooltip {...hoveredEdge} />}</div>;
+}
+
+function EdgeTooltip({ edge, x, y }) {
+  const relation = edge.isIndustryMembership ? 'industry membership' : shortRelation(edge.relation_type);
+  return <div className="topology-edge-tooltip" style={{ left: `${Math.max(12, x + 12)}px`, top: `${Math.max(12, y + 12)}px` }} role="tooltip"><b>{trim(edge.object, 32)} → {trim(edge.subject, 32)}</b><span>{relation}</span></div>;
 }
 
 function EdgeDetail({ runId, edge, evidence, lineage }) {
