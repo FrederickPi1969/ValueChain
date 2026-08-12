@@ -46,9 +46,9 @@ export function TopologyMap({ runId = '', edges = [], networkEdges = [], compani
   useEffect(() => setEnabledFamilies((current) => current.filter((family) => availableFamilies.includes(family)).length ? current.filter((family) => availableFamilies.includes(family)) : availableFamilies.includes('supply_chain') ? ['supply_chain'] : availableFamilies), [availableFamilies]);
 
   const topology = useMemo(() => buildTopology({
-    rows: sourceEdges, companies, expansionNodes, anchors, selectedSeeds, scope, depth, edgeLimit,
+    rows: sourceEdges, companies, expansionNodes, focus: activeNode, anchors, selectedSeeds, scope, depth, edgeLimit,
     showExposure, showIndustries, showContext, includeCandidates, enabledTypes, enabledFamilies,
-  }), [sourceEdges, companies, expansionNodes, anchors, selectedSeeds, scope, depth, edgeLimit, showExposure, showIndustries, showContext, includeCandidates, enabledTypes, enabledFamilies]);
+  }), [sourceEdges, companies, expansionNodes, activeNode, anchors, selectedSeeds, scope, depth, edgeLimit, showExposure, showIndustries, showContext, includeCandidates, enabledTypes, enabledFamilies]);
 
   const toggleAnchor = (name) => {
     setAnchors((current) => {
@@ -104,7 +104,7 @@ export function TopologyMap({ runId = '', edges = [], networkEdges = [], compani
           <i style={{ background: relationColor(type) }} />{shortRelation(type)} <b>{count}</b>
         </button>)}
       </div>
-      <div className="topology-node-legend" aria-label="Node and edge meaning"><span><i className="node-anchor" />Research-set company</span><span><i className="node-seed" />Expansion seed</span><span><i className="node-issuer" />Universe company</span><span><i className="node-counterparty" />External named company</span><span><i className="node-industry" />Industry group</span><span><i className="edge-focus" />One-hop focus link</span><span><i className="edge-context" />Muted context</span></div>
+      <div className="topology-node-legend" aria-label="Node and edge meaning"><span><i className="node-anchor" />Research-set company</span><span><i className="node-inspected" />Viewing in side panel</span><span><i className="node-seed" />Expansion seed</span><span><i className="node-issuer" />Universe company</span><span><i className="node-counterparty" />External named company</span><span><i className="node-industry" />Industry group</span><span><i className="edge-focus" />One-hop focus link</span><span><i className="edge-context" />Muted context</span></div>
       <div className="topology-layout">
         <ForceGraph topology={topology} onSelect={selectEdge} onToggleAnchor={toggleAnchor} />
         <aside className="topology-detail panel">
@@ -270,7 +270,7 @@ export function buildTopology({ rows, companies = [], expansionNodes = [], focus
   const prioritized = activeAnchors.length ? [...anchorRows.sort(edgeRank), ...ranked.filter((edge) => !anchorKeys.has(relationshipRowKey(edge)))] : ranked;
   const ego = (activeAnchors.length && !showContext ? anchorRows.sort(edgeRank) : prioritized).slice(0, edgeLimit);
   const visibleNames = new Set(ego.flatMap((edge) => [edge.object, edge.subject]));
-  [...seeds, ...activeAnchors].forEach((name) => name && visibleNames.add(name));
+  [...seeds, ...activeAnchors, focus].forEach((name) => name && visibleNames.add(name));
   const visibleCompanies = [...visibleNames].map((name) => ({ company: name, role: nodeMetadata.get(name)?.role || companies.find((row) => row.company === name)?.role || '' }));
   const industryMemberships = showIndustries ? buildIndustryMemberships(visibleCompanies) : [];
   const names = new Set(visibleNames); industryMemberships.forEach((edge) => { names.add(edge.object); names.add(edge.subject); });
@@ -286,9 +286,9 @@ export function buildTopology({ rows, companies = [], expansionNodes = [], focus
   const nodes = [...names].map((name) => {
     const stat = stats.get(name) || { degree: 0, evidence: 0 }; const kind = nodeKind(name, issuers);
     const position = partitionPositions.get(name);
-    const isAnchor = anchorSet.has(name); const isNeighbor = neighborSet.has(name);
+    const isAnchor = anchorSet.has(name); const isNeighbor = neighborSet.has(name); const isInspected = name === focus;
     const contextOnly = activeAnchors.length > 0 && !isAnchor && !isNeighbor && kind !== 'industry';
-    return { id: nodeId(name), label: contextOnly ? '' : trim(name, 34), x: position.x, y: position.y, size: kind === 'industry' ? 17 : contextOnly ? Math.min(3.2, 1.8 + Math.sqrt(stat.degree)) : 4 + Math.min(14, Math.sqrt(stat.degree) * 2.6) + (isAnchor ? 3 : 0), color: contextOnly ? '#334155' : nodeColor(kind, { isAnchor, isSeed: seedSet.has(name) }), forceLabel: !contextOnly && (kind === 'industry' || seedSet.has(name) || isAnchor || isNeighbor || name === focus || stat.degree >= labelDegree), zIndex: isAnchor ? 6 : isNeighbor ? 4 : seedSet.has(name) ? 4 : kind === 'industry' ? 3 : 1, fixed: kind === 'industry', kind, isAnchor, isNeighbor, contextOnly };
+    return { id: nodeId(name), label: contextOnly && !isInspected ? '' : trim(name, 34), x: position.x, y: position.y, size: kind === 'industry' ? 17 : contextOnly && !isInspected ? Math.min(3.2, 1.8 + Math.sqrt(stat.degree)) : 4 + Math.min(14, Math.sqrt(stat.degree) * 2.6) + (isAnchor ? 3 : 0) + (isInspected ? 2.5 : 0), color: isInspected ? '#f8fafc' : contextOnly ? '#334155' : nodeColor(kind, { isAnchor, isSeed: seedSet.has(name) }), forceLabel: !contextOnly || isInspected ? (kind === 'industry' || seedSet.has(name) || isAnchor || isNeighbor || isInspected || stat.degree >= labelDegree) : false, zIndex: isInspected ? 7 : isAnchor ? 6 : isNeighbor ? 4 : seedSet.has(name) ? 4 : kind === 'industry' ? 3 : 1, fixed: kind === 'industry', kind, isAnchor, isNeighbor, isInspected, contextOnly };
   });
   const nodeByName = new Map(nodes.map((node) => [node.id.slice(5), node.id]));
   const graphRows = [...ego, ...industryMemberships].map((edge, index) => ({ ...edge, id: `rel-${index}-${nodeId(edge.object)}-${nodeId(edge.subject)}-${edge.relation_type}`, objectId: nodeByName.get(encodeURIComponent(edge.object)), subjectId: nodeByName.get(encodeURIComponent(edge.subject)), isFocused: anchorKeys.has(relationshipRowKey(edge)), isAnchorLink: anchorSet.has(edge.object) && anchorSet.has(edge.subject), isContext: activeAnchors.length > 0 && !anchorKeys.has(relationshipRowKey(edge)) && !edge.isIndustryMembership })).filter((edge) => edge.objectId && edge.subjectId);

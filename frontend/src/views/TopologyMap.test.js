@@ -60,6 +60,18 @@ describe('large topology projection', () => {
     expect(graphRows.some((row) => row.object === 'Elsewhere')).toBe(false);
   });
 
+  it('keeps the side-panel company visible and highlighted independently of the research set', () => {
+    const topology = buildTopology({
+      rows: [edge(0, 'Anchor', 'Neighbor'), edge(1, 'Elsewhere', 'Inspected')],
+      anchors: ['Anchor'], focus: 'Inspected', showContext: false,
+      enabledTypes: ['supplies_to'], enabledFamilies: ['supply_chain'], edgeLimit: 20,
+    });
+    const inspected = topology.nodes.find((node) => node.id.includes('Inspected'));
+    expect(inspected.isInspected).toBe(true);
+    expect(inspected.label).toBe('Inspected');
+    expect(inspected.color).toBe('#f8fafc');
+  });
+
   it('summarizes directed relationships and ownership for a selected company', () => {
     const rows = [
       { ...edge(0, 'Supplier', 'Company'), product_or_service: 'Memory', source_accession_numbers: ['0001'], verification_status: 'cross_filing_verified' },
