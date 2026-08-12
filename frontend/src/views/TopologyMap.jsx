@@ -146,6 +146,10 @@ function ForceGraph({ topology, onSelect, onToggleAnchor }) {
       labelSize: topology.nodes.length > 1_000 ? 10 : 12, labelWeight: '600', labelRenderedSizeThreshold: topology.nodes.length > 500 ? 14 : 10, stagePadding: 38,
       nodeReducer: (node, data) => {
         if (!hoveredNode) return data;
+        // Context nodes intentionally omit labels at rest. Reveal the exact
+        // company name under the pointer before a user decides to add it to
+        // the research set, even when it is disconnected from existing anchors.
+        if (node === hoveredNode) return { ...data, label: trim(decodeNodeName(node), 34), forceLabel: true, color: data.contextOnly ? '#94a3b8' : data.color, size: Math.max(data.size, 4), zIndex: 7 };
         const connected = node === hoveredNode || graph.areNeighbors(node, hoveredNode);
         return connected ? { ...data, forceLabel: true } : { ...data, color: '#263548', label: '', zIndex: 0, size: Math.min(data.size, 2) };
       },
@@ -160,7 +164,7 @@ function ForceGraph({ topology, onSelect, onToggleAnchor }) {
     renderer.on('enterEdge', ({ edge }) => onSelect(graph.getEdgeAttribute(edge, 'edge')));
     renderer.on('clickEdge', ({ edge }) => onSelect(graph.getEdgeAttribute(edge, 'edge')));
     renderer.on('clickNode', ({ node }) => {
-      const name = decodeURIComponent(String(node).replace(/^node:/, ''));
+      const name = decodeNodeName(node);
       if (!name.startsWith('Industry · ')) onToggleAnchor(name);
     });
     return () => renderer.kill();
@@ -339,6 +343,7 @@ function edgeRank(a, b) { return (a.review_status === 'accepted' ? 0 : 1) - (b.r
 function relationColor(type) { return RELATION_COLORS[type] || '#94a3b8'; }
 function nodeColor(kind, { isAnchor = false, isSeed = false } = {}) { if (isAnchor) return '#f472b6'; if (isSeed) return '#fbbf24'; return { issuer: '#2dd4bf', counterparty: '#60a5fa', exposure: '#fb7185', industry: '#c084fc' }[kind] || '#94a3b8'; }
 function nodeId(value) { return `node:${encodeURIComponent(value)}`; }
+function decodeNodeName(node) { return decodeURIComponent(String(node).replace(/^node:/, '')); }
 function centeredCoordinate(value, salt) { let hash = 2166136261 + salt; for (let i = 0; i < value.length; i += 1) { hash ^= value.charCodeAt(i); hash = Math.imul(hash, 16777619); } return (((hash >>> 0) % 2001) - 1000) / 1000; }
 function trim(value, limit) { return value.length > limit ? `${value.slice(0, limit - 1)}…` : value; }
 function joinValues(first, second) { return [...new Set(`${first || ''};${second || ''}`.split(';').filter(Boolean))].join(';'); }
