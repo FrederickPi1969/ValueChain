@@ -1410,6 +1410,13 @@ tbody tr:hover {
 .seed-picker button { min-height: 27px; padding: 4px 8px; border: 1px solid #9aaabc; border-radius: 999px; color: var(--muted); background: #fff; font-size: 11px; }
 .seed-picker button.active { border-color: #db2777; color: #9d174d; background: #fdf2f8; }
 .seed-picker small { color: var(--muted); }
+.anchor-bar, .topology-layer-picker { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+.anchor-bar > span, .topology-layer-picker > span { margin-right: 3px; color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.anchor-bar button { display: inline-flex; align-items: center; gap: 4px; min-height: 27px; padding: 4px 8px; border: 1px solid #77d7ca; border-radius: 999px; color: #115e59; background: #ecfdf5; font-size: 11px; }
+.anchor-bar .anchor-clear { border-color: transparent; color: var(--muted); background: transparent; }
+.anchor-bar.muted { color: var(--muted); font-size: 12px; }
+.topology-layer-picker { padding-block: 4px; }
+.topology-layer-picker .topology-checkbox { min-height: 28px; }
 .topology-layout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 14px; align-items: stretch; min-width: 0; }
 .topology-canvas { height: 720px; min-width: 0; max-width: 100%; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: #f8fafc; }
 .force-topology .topology-canvas { position: relative; border-color: #1e3a5f; background: radial-gradient(circle at 50% 38%, #15243c 0%, #09111f 58%, #060b15 100%); }
@@ -1423,6 +1430,25 @@ tbody tr:hover {
 .relation-dot { margin-right: 4px; }
 .topology-detail { min-height: 360px; }
 .topology-edge-detail, .topology-legend { display: grid; gap: 11px; }
+.topology-company-detail { display: grid; gap: 14px; }
+.company-detail-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.company-detail-title > div { display: grid; gap: 3px; min-width: 0; }
+.company-detail-title strong { overflow-wrap: anywhere; }
+.company-detail-title small { color: var(--muted); font-size: 11px; }
+.company-detail-title button { flex: 0 0 auto; padding: 5px 7px; font-size: 11px; }
+.company-detail-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.company-detail-stats span { display: grid; gap: 2px; padding: 7px; border-radius: 6px; background: var(--surface-2); color: var(--muted); font-size: 10px; text-transform: uppercase; }
+.company-detail-stats b { color: var(--ink); font-size: 16px; }
+.company-detail-section { display: grid; gap: 7px; }
+.company-detail-section h3 { margin: 0; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.company-detail-section p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.company-relationship-list { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.company-relationship-list button { display: grid; grid-template-columns: 14px minmax(0, 1fr); width: 100%; gap: 1px 6px; padding: 6px; text-align: left; background: var(--surface-2); }
+.company-relationship-list b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.company-relationship-list small { grid-column: 2; overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.status-accepted { color: #059669; font-weight: 700; }.status-candidate { color: #d97706; font-weight: 700; }
+.product-list { display: flex; flex-wrap: wrap; gap: 5px; }.product-list span { padding: 3px 6px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 10px; }
+.ownership details { color: var(--muted); font-size: 12px; }.ownership summary { cursor: pointer; }.ownership ul { display: grid; gap: 4px; margin: 7px 0 0; padding-left: 16px; }.text-button { padding: 0; border: 0; color: var(--teal); background: transparent; font: inherit; cursor: pointer; }
 .topology-edge-detail > strong { line-height: 1.4; overflow-wrap: anywhere; }
 .topology-edge-detail > strong span { color: var(--teal); }
 .topology-edge-detail dl { display: grid; gap: 7px; margin: 0; }
