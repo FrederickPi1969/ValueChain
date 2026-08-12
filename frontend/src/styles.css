@@ -1428,6 +1428,7 @@ tbody tr:hover {
 .relation-legend i, .relation-dot { width: 8px; height: 8px; display: inline-block; flex: 0 0 auto; border-radius: 50%; }
 .relation-legend b { color: inherit; font-size: 10px; }
 .relation-dot { margin-right: 4px; }
+.topology-node-legend { display: flex; flex-wrap: wrap; gap: 8px 13px; color: var(--muted); font-size: 11px; }.topology-node-legend span { display: inline-flex; align-items: center; gap: 5px; }.topology-node-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }.topology-node-legend .node-anchor { background: #f472b6; }.topology-node-legend .node-seed { background: #fbbf24; }.topology-node-legend .node-issuer { background: #2dd4bf; }.topology-node-legend .node-counterparty { background: #60a5fa; }.topology-node-legend .node-industry { background: #c084fc; }.topology-node-legend .edge-focus, .topology-node-legend .edge-context { width: 17px; height: 2px; border-radius: 0; }.topology-node-legend .edge-focus { background: #22d3ee; }.topology-node-legend .edge-context { background: #334155; }
 .topology-detail { min-height: 360px; }
 .topology-edge-detail, .topology-legend { display: grid; gap: 11px; }
 .topology-company-detail { display: grid; gap: 14px; }

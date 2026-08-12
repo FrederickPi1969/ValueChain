@@ -103,6 +103,7 @@ export function TopologyMap({ runId = '', edges = [], networkEdges = [], compani
           <i style={{ background: relationColor(type) }} />{shortRelation(type)} <b>{count}</b>
         </button>)}
       </div>
+      <div className="topology-node-legend" aria-label="Node and edge meaning"><span><i className="node-anchor" />Research-set company</span><span><i className="node-seed" />Expansion seed</span><span><i className="node-issuer" />Universe company</span><span><i className="node-counterparty" />External named company</span><span><i className="node-industry" />Industry group</span><span><i className="edge-focus" />One-hop focus link</span><span><i className="edge-context" />Muted context</span></div>
       <div className="topology-layout">
         <ForceGraph topology={topology} onSelect={selectEdge} onToggleAnchor={toggleAnchor} />
         <aside className="topology-detail panel">
@@ -267,7 +268,7 @@ export function buildTopology({ rows, companies = [], expansionNodes = [], focus
     const position = partitionPositions.get(name);
     const isAnchor = anchorSet.has(name); const isNeighbor = neighborSet.has(name);
     const contextOnly = activeAnchors.length > 0 && !isAnchor && !isNeighbor && kind !== 'industry';
-    return { id: nodeId(name), label: contextOnly ? '' : trim(name, 34), x: position.x, y: position.y, size: kind === 'industry' ? 17 : contextOnly ? Math.min(3.2, 1.8 + Math.sqrt(stat.degree)) : 4 + Math.min(14, Math.sqrt(stat.degree) * 2.6) + (isAnchor ? 3 : 0), color: contextOnly ? '#334155' : nodeColor(kind, seedSet.has(name) || isAnchor), forceLabel: !contextOnly && (kind === 'industry' || seedSet.has(name) || isAnchor || isNeighbor || name === focus || stat.degree >= labelDegree), zIndex: isAnchor ? 6 : isNeighbor ? 4 : seedSet.has(name) ? 4 : kind === 'industry' ? 3 : 1, fixed: kind === 'industry', kind, isAnchor, isNeighbor, contextOnly };
+    return { id: nodeId(name), label: contextOnly ? '' : trim(name, 34), x: position.x, y: position.y, size: kind === 'industry' ? 17 : contextOnly ? Math.min(3.2, 1.8 + Math.sqrt(stat.degree)) : 4 + Math.min(14, Math.sqrt(stat.degree) * 2.6) + (isAnchor ? 3 : 0), color: contextOnly ? '#334155' : nodeColor(kind, { isAnchor, isSeed: seedSet.has(name) }), forceLabel: !contextOnly && (kind === 'industry' || seedSet.has(name) || isAnchor || isNeighbor || name === focus || stat.degree >= labelDegree), zIndex: isAnchor ? 6 : isNeighbor ? 4 : seedSet.has(name) ? 4 : kind === 'industry' ? 3 : 1, fixed: kind === 'industry', kind, isAnchor, isNeighbor, contextOnly };
   });
   const nodeByName = new Map(nodes.map((node) => [node.id.slice(5), node.id]));
   const graphRows = [...ego, ...industryMemberships].map((edge, index) => ({ ...edge, id: `rel-${index}-${nodeId(edge.object)}-${nodeId(edge.subject)}-${edge.relation_type}`, objectId: nodeByName.get(encodeURIComponent(edge.object)), subjectId: nodeByName.get(encodeURIComponent(edge.subject)), isFocused: anchorKeys.has(relationshipRowKey(edge)), isAnchorLink: anchorSet.has(edge.object) && anchorSet.has(edge.subject), isContext: activeAnchors.length > 0 && !anchorKeys.has(relationshipRowKey(edge)) && !edge.isIndustryMembership })).filter((edge) => edge.objectId && edge.subjectId);
@@ -336,7 +337,7 @@ function nodeKind(name, issuers) { if (String(name).startsWith('Industry · ')) 
 function isAnonymousOrLowQuality(name) { const value = String(name || '').trim(); return /^(?:(?:direct|major|large|significant)\s+)?(?:customer|customers|supplier|suppliers|vendor|vendors|distributor|distributors|partner|partners)\s+(?:[a-z](?:\s+(?:and|or)\s+[a-z])?|[0-9]+)$/i.test(value) || /\b(class|dependency class|capacity class)\b/i.test(value) || /^(contents?|table of contents)\b/i.test(value); }
 function edgeRank(a, b) { return (a.review_status === 'accepted' ? 0 : 1) - (b.review_status === 'accepted' ? 0 : 1) || Number(b.evidence_count || 0) - Number(a.evidence_count || 0) || Number(b.confidence || b.avg_confidence || 0) - Number(a.confidence || a.avg_confidence || 0) || String(a.relationship_id || '').localeCompare(String(b.relationship_id || '')); }
 function relationColor(type) { return RELATION_COLORS[type] || '#94a3b8'; }
-function nodeColor(kind, seed) { if (seed) return '#f472b6'; return { issuer: '#2dd4bf', counterparty: '#60a5fa', exposure: '#fbbf24', industry: '#c084fc' }[kind] || '#94a3b8'; }
+function nodeColor(kind, { isAnchor = false, isSeed = false } = {}) { if (isAnchor) return '#f472b6'; if (isSeed) return '#fbbf24'; return { issuer: '#2dd4bf', counterparty: '#60a5fa', exposure: '#fb7185', industry: '#c084fc' }[kind] || '#94a3b8'; }
 function nodeId(value) { return `node:${encodeURIComponent(value)}`; }
 function centeredCoordinate(value, salt) { let hash = 2166136261 + salt; for (let i = 0; i < value.length; i += 1) { hash ^= value.charCodeAt(i); hash = Math.imul(hash, 16777619); } return (((hash >>> 0) % 2001) - 1000) / 1000; }
 function trim(value, limit) { return value.length > limit ? `${value.slice(0, limit - 1)}…` : value; }
