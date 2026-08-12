@@ -66,6 +66,7 @@ export function TopologyMap({ runId = '', edges = [], networkEdges = [], compani
     });
   };
   const selectEdge = (edge) => { setSelectedEdge(edge); setActiveNode(''); };
+  const inspectCompany = (name) => { setActiveNode(name); setSelectedEdge(null); };
 
   if (!sourceEdges.length) return <div className="empty topology-empty">No canonical company relationships are available for this run.</div>;
   return (
@@ -108,7 +109,7 @@ export function TopologyMap({ runId = '', edges = [], networkEdges = [], compani
         <ForceGraph topology={topology} onSelect={selectEdge} onToggleAnchor={toggleAnchor} />
         <aside className="topology-detail panel">
           <div className="panel-head"><h2>{activeNode ? 'Company research' : selectedEdge ? 'Selected relationship' : 'Reading the graph'}</h2></div>
-          {activeNode ? <CompanyDetail name={activeNode} topology={topology} anchors={anchors} onToggleAnchor={toggleAnchor} onSelectEdge={selectEdge} /> : selectedEdge ? <EdgeDetail runId={runId} edge={selectedEdge} evidence={evidence} lineage={lineageEvents.filter((event) => event.relationship_id === selectedEdge.relationship_id)} /> : <TopologyLegend expansion={industryExpansion} />}
+          {activeNode ? <CompanyDetail name={activeNode} topology={topology} anchors={anchors} onToggleAnchor={toggleAnchor} onInspectCompany={inspectCompany} onSelectEdge={selectEdge} /> : selectedEdge ? <EdgeDetail runId={runId} edge={selectedEdge} evidence={evidence} lineage={lineageEvents.filter((event) => event.relationship_id === selectedEdge.relationship_id)} /> : <TopologyLegend expansion={industryExpansion} />}
         </aside>
       </div>
     </section>
@@ -230,22 +231,22 @@ function AuditDrilldown({ audit, lineage, decisionReason, decisionSource }) {
   return <details className="topology-drilldown"><summary>Audit & lineage <small>{audit.decision || decisionSource || 'recorded'}</small></summary><div className="drilldown-body audit-body">{reason && <p><b>Current conclusion:</b> {reason}</p>}{audit.evidence_quote && <blockquote>“{audit.evidence_quote}”</blockquote>}{history.map((event, index) => <p key={`${event.reviewed_at || index}`}><b>{event.decision}</b> · {event.reason || event.follow_up_reason || 'No reason recorded'}</p>)}{lineage.map((event) => <p key={event.event_id}><b>{event.stage}</b> · {event.decision_source || event.actor || 'system'}{event.created_at ? ` · ${new Date(event.created_at).toLocaleString()}` : ''}<br /><span className="muted">{event.before_state?.review_status || 'new'} → {event.after_state?.review_status || 'current'}</span></p>)}</div></details>;
 }
 
-function CompanyDetail({ name, topology, anchors, onToggleAnchor, onSelectEdge }) {
+function CompanyDetail({ name, topology, anchors, onToggleAnchor, onInspectCompany, onSelectEdge }) {
   const profile = buildNodeProfile(topology.relationshipRows, name);
   const isAnchor = anchors.includes(name);
   return <div className="topology-company-detail">
     <div className="company-detail-title"><div><strong>{name}</strong><small>{isAnchor ? 'Pinned research anchor' : 'Context company'}</small></div><button type="button" onClick={() => onToggleAnchor(name)}>{isAnchor ? 'Remove from set' : 'Add to set'}</button></div>
     <div className="company-detail-stats"><span><b>{profile.accepted}</b> confirmed</span><span><b>{profile.candidate}</b> candidate</span><span><b>{profile.filingCount}</b> source filings</span></div>
-    <RelationshipList title="Upstream / incoming" rows={profile.incoming} counterpart={(edge) => edge.object} empty="No visible incoming relationships." onSelect={onSelectEdge} />
-    <RelationshipList title="Downstream / outgoing" rows={profile.outgoing} counterpart={(edge) => edge.subject} empty="No visible outgoing relationships." onSelect={onSelectEdge} />
+    <RelationshipList title="Upstream / incoming" rows={profile.incoming} counterpart={(edge) => edge.object} empty="No visible incoming relationships." onInspectCompany={onInspectCompany} onSelect={onSelectEdge} />
+    <RelationshipList title="Downstream / outgoing" rows={profile.outgoing} counterpart={(edge) => edge.subject} empty="No visible outgoing relationships." onInspectCompany={onInspectCompany} onSelect={onSelectEdge} />
     {profile.products.length > 0 && <section className="company-detail-section"><h3>Products / services</h3><div className="product-list">{profile.products.map((value) => <span key={value}>{value}</span>)}</div></section>}
     <section className="company-detail-section"><h3>Evidence status</h3><p>{profile.crossFiled} cross-file verified relationship{profile.crossFiled === 1 ? '' : 's'}; {profile.evidenceCount} supporting passage{profile.evidenceCount === 1 ? '' : 's'} across the visible relationships.</p></section>
-    {(profile.parent || profile.subsidiaries.length > 0) && <section className="company-detail-section ownership"><h3>Ownership / control</h3>{profile.parent && <p><b>Parent:</b> <button type="button" className="text-button" onClick={() => onToggleAnchor(profile.parent.object)}>{profile.parent.object}</button></p>}{profile.subsidiaries.length > 0 && <details><summary>{profile.subsidiaries.length} direct subsidiary relationship{profile.subsidiaries.length === 1 ? '' : 's'}</summary><ul>{profile.subsidiaries.slice(0, 12).map((edge) => <li key={edge.id}><button type="button" className="text-button" onClick={() => onToggleAnchor(edge.subject)}>{edge.subject}</button></li>)}</ul></details>}</section>}
+    {(profile.parent || profile.subsidiaries.length > 0) && <section className="company-detail-section ownership"><h3>Ownership / control</h3>{profile.parent && <p><b>Parent:</b> <button type="button" className="text-button" onClick={() => onInspectCompany(profile.parent.object)}>{profile.parent.object}</button></p>}{profile.subsidiaries.length > 0 && <details><summary>{profile.subsidiaries.length} direct subsidiary relationship{profile.subsidiaries.length === 1 ? '' : 's'}</summary><ul>{profile.subsidiaries.slice(0, 12).map((edge) => <li key={relationshipRowKey(edge)}><button type="button" className="text-button" onClick={() => onInspectCompany(edge.subject)}>{edge.subject}</button></li>)}</ul></details>}</section>}
   </div>;
 }
 
-function RelationshipList({ title, rows, counterpart, empty, onSelect }) {
-  return <section className="company-detail-section"><h3>{title}</h3>{rows.length ? <ul className="company-relationship-list">{rows.slice(0, 6).map((edge) => <li key={relationshipRowKey(edge)}><button type="button" onClick={() => onSelect(edge)}><span className={edge.review_status === 'accepted' ? 'status-accepted' : 'status-candidate'}>{edge.review_status === 'accepted' ? '✓' : '○'}</span><b>{counterpart(edge)}</b><small>{edge.product_or_service || shortRelation(edge.relation_type)}</small></button></li>)}</ul> : <p>{empty}</p>}</section>;
+function RelationshipList({ title, rows, counterpart, empty, onInspectCompany, onSelect }) {
+  return <section className="company-detail-section"><h3>{title}</h3>{rows.length ? <ul className="company-relationship-list">{rows.slice(0, 6).map((edge) => { const company = counterpart(edge); return <li key={relationshipRowKey(edge)}><span className={edge.review_status === 'accepted' ? 'status-accepted' : 'status-candidate'}>{edge.review_status === 'accepted' ? '✓' : '○'}</span><button type="button" className="relationship-company" onClick={() => onInspectCompany(company)} title={`Open ${company} company research`}><b>{company}</b><small>{edge.product_or_service || 'Product not specified'}</small></button><button type="button" className="relationship-detail" onClick={() => onSelect(edge)} title={`Open ${shortRelation(edge.relation_type)} relationship details`}><span>→</span>{shortRelation(edge.relation_type)}</button></li>; })}</ul> : <p>{empty}</p>}</section>;
 }
 
 function TopologyLegend({ expansion }) {
