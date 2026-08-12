@@ -69,7 +69,7 @@ describe('large topology projection', () => {
     const inspected = topology.nodes.find((node) => node.id.includes('Inspected'));
     expect(inspected.isInspected).toBe(true);
     expect(inspected.label).toBe('Inspected');
-    expect(inspected.color).toBe('#f8fafc');
+    expect(inspected.color).toBe('#f472b6');
   });
 
   it('summarizes directed relationships and ownership for a selected company', () => {

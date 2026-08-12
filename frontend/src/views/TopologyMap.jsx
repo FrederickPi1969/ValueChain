@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MultiDirectedGraph } from 'graphology';
 import forceAtlas2 from 'graphology-layout-forceatlas2';
 import Sigma from 'sigma';
@@ -33,6 +33,7 @@ export function TopologyMap({ runId = '', edges = [], networkEdges = [], compani
   const [enabledFamilies, setEnabledFamilies] = useState(['supply_chain']);
   const [anchors, setAnchors] = useState([]);
   const [activeNode, setActiveNode] = useState('');
+  const [hoveredCompany, setHoveredCompany] = useState('');
   const [selectedEdge, setSelectedEdge] = useState(null);
   const availableTypes = useMemo(() => relationTypes(sourceEdges), [sourceEdges]);
   const availableFamilies = useMemo(() => relationFamilies(sourceEdges), [sourceEdges]);
@@ -50,23 +51,25 @@ export function TopologyMap({ runId = '', edges = [], networkEdges = [], compani
     showExposure, showIndustries, showContext, includeCandidates, enabledTypes, enabledFamilies,
   }), [sourceEdges, companies, expansionNodes, activeNode, anchors, selectedSeeds, scope, depth, edgeLimit, showExposure, showIndustries, showContext, includeCandidates, enabledTypes, enabledFamilies]);
 
-  const toggleAnchor = (name) => {
+  const toggleAnchor = useCallback((name) => {
+    setHoveredCompany('');
     setAnchors((current) => {
       const next = current.includes(name) ? current.filter((item) => item !== name) : [...current, name];
       setActiveNode((active) => active === name ? (next.at(-1) || '') : name);
       return next;
     });
     setSelectedEdge(null);
-  };
-  const removeAnchor = (name) => {
+  }, []);
+  const removeAnchor = useCallback((name) => {
     setAnchors((current) => {
       const next = current.filter((item) => item !== name);
       setActiveNode((active) => active === name ? (next.at(-1) || '') : active);
       return next;
     });
-  };
-  const selectEdge = (edge) => { setSelectedEdge(edge); setActiveNode(''); };
-  const inspectCompany = (name) => { setActiveNode(name); setSelectedEdge(null); };
+  }, []);
+  const selectEdge = useCallback((edge) => { setHoveredCompany(''); setSelectedEdge(edge); setActiveNode(''); }, []);
+  const inspectCompany = useCallback((name) => { setHoveredCompany(''); setActiveNode(name); setSelectedEdge(null); }, []);
+  const displayedCompany = hoveredCompany || activeNode;
 
   if (!sourceEdges.length) return <div className="empty topology-empty">No canonical company relationships are available for this run.</div>;
   return (
@@ -104,12 +107,12 @@ export function TopologyMap({ runId = '', edges = [], networkEdges = [], compani
           <i style={{ background: relationColor(type) }} />{shortRelation(type)} <b>{count}</b>
         </button>)}
       </div>
-      <div className="topology-node-legend" aria-label="Node and edge meaning"><span><i className="node-anchor" />Research-set company</span><span><i className="node-inspected" />Viewing in side panel</span><span><i className="node-seed" />Expansion seed</span><span><i className="node-issuer" />Universe company</span><span><i className="node-counterparty" />External named company</span><span><i className="node-industry" />Industry group</span><span><i className="edge-focus" />One-hop focus link</span><span><i className="edge-context" />Muted context</span></div>
+      <div className="topology-node-legend" aria-label="Node and edge meaning"><span><i className="node-anchor" />Selected / viewing company</span><span><i className="node-seed" />Expansion seed</span><span><i className="node-issuer" />Universe company</span><span><i className="node-counterparty" />External named company</span><span><i className="node-industry" />Industry group</span><span><i className="edge-focus" />One-hop focus link</span><span><i className="edge-context" />Muted context</span></div>
       <div className="topology-layout">
-        <ForceGraph topology={topology} onSelect={selectEdge} onToggleAnchor={toggleAnchor} />
+        <ForceGraph topology={topology} onSelect={selectEdge} onToggleAnchor={toggleAnchor} onHoverCompany={setHoveredCompany} />
         <aside className="topology-detail panel">
-          <div className="panel-head"><h2>{activeNode ? 'Company research' : selectedEdge ? 'Selected relationship' : 'Reading the graph'}</h2></div>
-          {activeNode ? <CompanyDetail name={activeNode} topology={topology} anchors={anchors} onToggleAnchor={toggleAnchor} onInspectCompany={inspectCompany} onSelectEdge={selectEdge} /> : selectedEdge ? <EdgeDetail runId={runId} edge={selectedEdge} evidence={evidence} lineage={lineageEvents.filter((event) => event.relationship_id === selectedEdge.relationship_id)} /> : <TopologyLegend expansion={industryExpansion} />}
+          <div className="panel-head"><h2>{displayedCompany ? 'Company research' : selectedEdge ? 'Selected relationship' : 'Reading the graph'}</h2></div>
+          {displayedCompany ? <CompanyDetail name={displayedCompany} topology={topology} anchors={anchors} onToggleAnchor={toggleAnchor} onInspectCompany={inspectCompany} onSelectEdge={selectEdge} /> : selectedEdge ? <EdgeDetail runId={runId} edge={selectedEdge} evidence={evidence} lineage={lineageEvents.filter((event) => event.relationship_id === selectedEdge.relationship_id)} /> : <TopologyLegend expansion={industryExpansion} />}
         </aside>
       </div>
     </section>
@@ -126,7 +129,7 @@ function SeedPicker({ options, selected, onChange }) {
   return <div className="seed-picker"><span>Seeds</span>{shown.map((name) => <button type="button" key={name} className={selected.includes(name) ? 'active' : ''} onClick={() => onChange(selected.includes(name) && selected.length > 1 ? selected.filter((item) => item !== name) : selected.includes(name) ? selected : [...selected, name])}>{trim(name, 25)}</button>)}{options.length > shown.length && <small>+{options.length - shown.length} additional seeds in artifact</small>}</div>;
 }
 
-function ForceGraph({ topology, onSelect, onToggleAnchor }) {
+function ForceGraph({ topology, onSelect, onToggleAnchor, onHoverCompany }) {
   const containerRef = useRef(null);
   const [hoveredEdge, setHoveredEdge] = useState(null);
   useEffect(() => {
@@ -151,7 +154,7 @@ function ForceGraph({ topology, onSelect, onToggleAnchor }) {
         // Context nodes intentionally omit labels at rest. Reveal the exact
         // company name under the pointer before a user decides to add it to
         // the research set, even when it is disconnected from existing anchors.
-        if (node === hoveredNode) return { ...data, label: trim(decodeNodeName(node), 34), forceLabel: true, color: data.contextOnly ? '#94a3b8' : data.color, size: Math.max(data.size, 4), zIndex: 7 };
+        if (node === hoveredNode) return { ...data, label: trim(decodeNodeName(node), 34), forceLabel: true, color: '#f472b6', size: Math.max(data.size, 5), zIndex: 8 };
         const connected = node === hoveredNode || graph.areNeighbors(node, hoveredNode);
         return connected ? { ...data, forceLabel: true } : { ...data, color: '#263548', label: '', zIndex: 0, size: Math.min(data.size, 2) };
       },
@@ -161,8 +164,8 @@ function ForceGraph({ topology, onSelect, onToggleAnchor }) {
         return source === hoveredNode || target === hoveredNode ? { ...data, size: data.size + 1.1, forceLabel: true } : { ...data, color: '#263548', size: 0.25, zIndex: 0, label: '' };
       },
     });
-    renderer.on('enterNode', ({ node }) => { hoveredNode = node; renderer.refresh(); });
-    renderer.on('leaveNode', () => { hoveredNode = null; renderer.refresh(); });
+    renderer.on('enterNode', ({ node }) => { hoveredNode = node; const name = decodeNodeName(node); if (!name.startsWith('Industry · ')) onHoverCompany(name); renderer.refresh(); });
+    renderer.on('leaveNode', () => { hoveredNode = null; onHoverCompany(''); renderer.refresh(); });
     // Hover is deliberately visual-only: it previews a short relationship
     // tooltip and never replaces the active company panel.
     renderer.on('enterEdge', ({ edge, event }) => {
@@ -179,7 +182,7 @@ function ForceGraph({ topology, onSelect, onToggleAnchor }) {
       if (!name.startsWith('Industry · ')) onToggleAnchor(name);
     });
     return () => renderer.kill();
-  }, [topology, onSelect, onToggleAnchor]);
+  }, [topology, onSelect, onToggleAnchor, onHoverCompany]);
   return <div className="topology-canvas sigma-canvas"><div className="sigma-renderer" ref={containerRef} />{hoveredEdge && <EdgeTooltip {...hoveredEdge} />}</div>;
 }
 
@@ -288,7 +291,7 @@ export function buildTopology({ rows, companies = [], expansionNodes = [], focus
     const position = partitionPositions.get(name);
     const isAnchor = anchorSet.has(name); const isNeighbor = neighborSet.has(name); const isInspected = name === focus;
     const contextOnly = activeAnchors.length > 0 && !isAnchor && !isNeighbor && kind !== 'industry';
-    return { id: nodeId(name), label: contextOnly && !isInspected ? '' : trim(name, 34), x: position.x, y: position.y, size: kind === 'industry' ? 17 : contextOnly && !isInspected ? Math.min(3.2, 1.8 + Math.sqrt(stat.degree)) : 4 + Math.min(14, Math.sqrt(stat.degree) * 2.6) + (isAnchor ? 3 : 0) + (isInspected ? 2.5 : 0), color: isInspected ? '#f8fafc' : contextOnly ? '#334155' : nodeColor(kind, { isAnchor, isSeed: seedSet.has(name) }), forceLabel: !contextOnly || isInspected ? (kind === 'industry' || seedSet.has(name) || isAnchor || isNeighbor || isInspected || stat.degree >= labelDegree) : false, zIndex: isInspected ? 7 : isAnchor ? 6 : isNeighbor ? 4 : seedSet.has(name) ? 4 : kind === 'industry' ? 3 : 1, fixed: kind === 'industry', kind, isAnchor, isNeighbor, isInspected, contextOnly };
+    return { id: nodeId(name), label: contextOnly && !isInspected ? '' : trim(name, 34), x: position.x, y: position.y, size: kind === 'industry' ? 17 : contextOnly && !isInspected ? Math.min(3.2, 1.8 + Math.sqrt(stat.degree)) : 4 + Math.min(14, Math.sqrt(stat.degree) * 2.6) + (isAnchor ? 3 : 0) + (isInspected ? 2.5 : 0), color: isInspected ? '#f472b6' : contextOnly ? '#334155' : nodeColor(kind, { isAnchor, isSeed: seedSet.has(name) }), forceLabel: !contextOnly || isInspected ? (kind === 'industry' || seedSet.has(name) || isAnchor || isNeighbor || isInspected || stat.degree >= labelDegree) : false, zIndex: isInspected ? 7 : isAnchor ? 6 : isNeighbor ? 4 : seedSet.has(name) ? 4 : kind === 'industry' ? 3 : 1, fixed: kind === 'industry', kind, isAnchor, isNeighbor, isInspected, contextOnly };
   });
   const nodeByName = new Map(nodes.map((node) => [node.id.slice(5), node.id]));
   const graphRows = [...ego, ...industryMemberships].map((edge, index) => ({ ...edge, id: `rel-${index}-${nodeId(edge.object)}-${nodeId(edge.subject)}-${edge.relation_type}`, objectId: nodeByName.get(encodeURIComponent(edge.object)), subjectId: nodeByName.get(encodeURIComponent(edge.subject)), isFocused: anchorKeys.has(relationshipRowKey(edge)), isAnchorLink: anchorSet.has(edge.object) && anchorSet.has(edge.subject), isContext: activeAnchors.length > 0 && !anchorKeys.has(relationshipRowKey(edge)) && !edge.isIndustryMembership })).filter((edge) => edge.objectId && edge.subjectId);
