@@ -1455,6 +1455,16 @@ tbody tr:hover {
 .topology-edge-detail dl div { display: grid; grid-template-columns: 90px 1fr; gap: 7px; }
 .topology-edge-detail dt { color: var(--muted); font-size: 12px; }
 .topology-edge-detail dd { margin: 0; overflow-wrap: anywhere; }
+.topology-drilldown { border: 1px solid var(--line); border-radius: 7px; background: var(--surface-2); }
+.topology-drilldown summary { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 8px; color: var(--ink); font-size: 12px; font-weight: 700; cursor: pointer; }
+.topology-drilldown summary small { color: var(--muted); font-weight: 400; }
+.drilldown-body { display: grid; gap: 8px; max-height: 390px; overflow: auto; padding: 0 8px 8px; }
+.drilldown-body > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.evidence-card { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.evidence-card > div { color: var(--muted); font-size: 11px; }.evidence-card > div b { color: var(--ink); }
+.evidence-card p, .evidence-card blockquote { margin: 0; font-size: 12px; line-height: 1.5; }.evidence-card blockquote { padding-left: 8px; border-left: 2px solid var(--teal); color: #334155; }
+.evidence-card footer { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 10px; }.evidence-card footer a { white-space: nowrap; }
+.audit-body blockquote { margin: 0; padding-left: 8px; border-left: 2px solid var(--teal); color: var(--muted); font-size: 12px; }
 .topology-legend p { margin: 0; color: var(--muted); line-height: 1.55; }
 .topology-legend b { color: var(--ink); }
 .topology-empty { padding: 42px; }

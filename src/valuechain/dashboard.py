@@ -177,7 +177,7 @@ def canonical_network_edges(relationships: list[dict[str, object]]) -> list[dict
                 "first_seen": relationship.get("first_observed_date", ""),
                 "last_seen": relationship.get("last_observed_date", ""),
                 "forms": ";".join(map(str, relationship.get("source_types", []))),
-                "accessions": "",
+                "accessions": ";".join(map(str, relationship.get("source_accession_numbers", []))),
                 "source_urls": "",
                 "relationship_id": relationship.get("relationship_id", ""),
                 "review_status": relationship.get("review_status", "unreviewed"),
@@ -193,6 +193,12 @@ def canonical_network_edges(relationships: list[dict[str, object]]) -> list[dict
                 "risk_flags": relationship.get("risk_flags", []),
                 "source_role": relationship.get("source_role", "supplier"),
                 "target_role": relationship.get("target_role", "customer"),
+                "evidence_ids": relationship.get("evidence_ids", []),
+                "source_accession_numbers": relationship.get("source_accession_numbers", []),
+                "source_types": relationship.get("source_types", []),
+                "decision_reason": relationship.get("decision_reason", ""),
+                "decision_source": relationship.get("decision_source", ""),
+                "llm_audit": relationship.get("llm_audit", {}),
             }
         )
     return rows

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('sigma', () => ({ default: class SigmaMock {} }));
-import { buildNodeProfile, buildTopology, selectMultiEgo } from './TopologyMap.jsx';
+import { buildNodeProfile, buildTopology, evidenceForRelationship, selectMultiEgo } from './TopologyMap.jsx';
 
 function edge(index, object = `Company ${index}`, subject = `Company ${index + 1}`) {
   return {
@@ -74,5 +74,15 @@ describe('large topology projection', () => {
     expect(profile.subsidiaries[0].subject).toBe('Subsidiary');
     expect(profile.products).toEqual(['Memory']);
     expect(profile.crossFiled).toBe(1);
+  });
+
+  it('joins drill-down evidence through immutable evidence ids with legacy passage fallback', () => {
+    const relationship = { evidence_ids: ['evidence:one', 'legacy-passage'] };
+    const result = evidenceForRelationship(relationship, [
+      { evidence_id: 'evidence:one', passage_id: 'p1' },
+      { evidence_id: 'evidence:two', passage_id: 'legacy-passage' },
+      { evidence_id: 'evidence:three', passage_id: 'p3' },
+    ]);
+    expect(result).toHaveLength(2);
   });
 });

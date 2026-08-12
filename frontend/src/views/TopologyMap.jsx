@@ -15,7 +15,7 @@ const RELATION_COLORS = {
   distribution_or_channel_dependency: '#e879f9', licensing_dependency: '#60a5fa', strategic_partner: '#22d3ee', co_investment: '#f472b6',
 };
 
-export function TopologyMap({ edges = [], networkEdges = [], companies = [], industryExpansion = {} }) {
+export function TopologyMap({ edges = [], networkEdges = [], companies = [], evidence = [], lineageEvents = [], industryExpansion = {} }) {
   const expansionEdges = industryExpansion?.edges || [];
   const sourceEdges = expansionEdges.length ? expansionEdges : (networkEdges.length ? networkEdges : edges);
   const expansionNodes = industryExpansion?.nodes || [];
@@ -106,7 +106,7 @@ export function TopologyMap({ edges = [], networkEdges = [], companies = [], ind
         <ForceGraph topology={topology} onSelect={selectEdge} onToggleAnchor={toggleAnchor} />
         <aside className="topology-detail panel">
           <div className="panel-head"><h2>{activeNode ? 'Company research' : selectedEdge ? 'Selected relationship' : 'Reading the graph'}</h2></div>
-          {activeNode ? <CompanyDetail name={activeNode} topology={topology} anchors={anchors} onToggleAnchor={toggleAnchor} onSelectEdge={selectEdge} /> : selectedEdge ? <EdgeDetail edge={selectedEdge} /> : <TopologyLegend expansion={industryExpansion} />}
+          {activeNode ? <CompanyDetail name={activeNode} topology={topology} anchors={anchors} onToggleAnchor={toggleAnchor} onSelectEdge={selectEdge} /> : selectedEdge ? <EdgeDetail edge={selectedEdge} evidence={evidence} lineage={lineageEvents.filter((event) => event.relationship_id === selectedEdge.relationship_id)} /> : <TopologyLegend expansion={industryExpansion} />}
         </aside>
       </div>
     </section>
@@ -166,14 +166,31 @@ function ForceGraph({ topology, onSelect, onToggleAnchor }) {
   return <div className="topology-canvas sigma-canvas" ref={containerRef} />;
 }
 
-function EdgeDetail({ edge }) {
+function EdgeDetail({ edge, evidence, lineage }) {
+  const supportingEvidence = evidenceForRelationship(edge, evidence);
+  const audit = edge.llm_audit || {};
   return <div className="topology-edge-detail"><strong>{edge.object} <span>→</span> {edge.subject}</strong><dl>
     <div><dt>Relation</dt><dd><i className="relation-dot" style={{ background: relationColor(edge.relation_type) }} /> {shortRelation(edge.relation_type)}</dd></div>
     <div><dt>Layer</dt><dd>{edge.review_status === 'accepted' ? 'accepted / verified' : 'candidate — requires review'}</dd></div>
     <div><dt>Hop</dt><dd>{edge.expansion_depth ?? 'not recorded'}</dd></div><div><dt>Modality</dt><dd>{edge.modality || 'not recorded'}</dd></div>
-    <div><dt>Evidence</dt><dd>{edge.evidence_count || 1} passage{Number(edge.evidence_count || 1) === 1 ? '' : 's'}; {(edge.source_accession_numbers || []).length} filing accession(s)</dd></div>
+    <div><dt>Evidence</dt><dd>{edge.evidence_count || 1} passage{Number(edge.evidence_count || 1) === 1 ? '' : 's'}; {listValue(edge.source_accession_numbers || edge.accessions).length} filing accession(s)</dd></div>
     <div><dt>Status</dt><dd>{confirmationStatus(edge)}</dd></div>{edge.product_or_service && <div><dt>Product</dt><dd>{edge.product_or_service}</dd></div>}{edge.risk_flags?.length > 0 && <div><dt>Audit flags</dt><dd>{edge.risk_flags.join(', ')}</dd></div>}
-  </dl>{edge.source_urls && <a href={String(edge.source_urls).split(';')[0]} target="_blank" rel="noreferrer">Open supporting filing</a>}</div>;
+  </dl>
+  <EvidenceDrilldown evidence={supportingEvidence} expectedCount={edge.evidence_count} />
+  <AuditDrilldown audit={audit} lineage={lineage} decisionReason={edge.decision_reason} decisionSource={edge.decision_source} />
+  {!supportingEvidence.length && edge.source_urls && <a href={String(edge.source_urls).split(';')[0]} target="_blank" rel="noreferrer">Open supporting filing</a>}</div>;
+}
+
+function EvidenceDrilldown({ evidence, expectedCount }) {
+  return <details className="topology-drilldown" open={evidence.length === 1}><summary>Evidence drill-down <small>{evidence.length ? `${evidence.length} loaded` : `${expectedCount || 0} linked`}</small></summary><div className="drilldown-body">
+    {evidence.length ? evidence.slice(0, 6).map((item, index) => <article key={item.evidence_id || item.passage_id || index} className="evidence-card"><div><b>{item.form || item.source_document_type || 'SEC filing'}</b>{item.filing_date && ` · ${item.filing_date}`}{item.source_section && ` · ${item.source_section}`}</div>{item.evidence_quote && <blockquote>“{item.evidence_quote}”</blockquote>}<p>{item.evidence_text || 'No passage text was retained for this evidence record.'}</p><footer><span>{item.accession_number || 'Accession not recorded'}{Number.isFinite(Number(item.paragraph_offset)) ? ` · paragraph ${Number(item.paragraph_offset) + 1}` : ''}</span>{item.source_document_url && <a href={item.source_document_url} target="_blank" rel="noreferrer">Open SEC filing ↗</a>}</footer></article>) : <p className="muted">This saved graph has relationship-level provenance, but not the underlying passage text. Rebuild or serve the run through the API to load its evidence corpus.</p>}</div></details>;
+}
+
+function AuditDrilldown({ audit, lineage, decisionReason, decisionSource }) {
+  const history = [...(audit.decision_history || [])].reverse();
+  const reason = audit.reason || decisionReason;
+  if (!reason && !history.length && !lineage.length) return null;
+  return <details className="topology-drilldown"><summary>Audit & lineage <small>{audit.decision || decisionSource || 'recorded'}</small></summary><div className="drilldown-body audit-body">{reason && <p><b>Current conclusion:</b> {reason}</p>}{audit.evidence_quote && <blockquote>“{audit.evidence_quote}”</blockquote>}{history.map((event, index) => <p key={`${event.reviewed_at || index}`}><b>{event.decision}</b> · {event.reason || event.follow_up_reason || 'No reason recorded'}</p>)}{lineage.map((event) => <p key={event.event_id}><b>{event.stage}</b> · {event.decision_source || event.actor || 'system'}{event.created_at ? ` · ${new Date(event.created_at).toLocaleString()}` : ''}<br /><span className="muted">{event.before_state?.review_status || 'new'} → {event.after_state?.review_status || 'current'}</span></p>)}</div></details>;
 }
 
 function CompanyDetail({ name, topology, anchors, onToggleAnchor, onSelectEdge }) {
@@ -279,6 +296,7 @@ function relationshipFamily(row) {
 }
 function relationshipRowKey(edge) { return `${edge.object}|${edge.subject}|${edge.relation_type}|${edge.modality || 'not_recorded'}`; }
 function listValue(value) { return Array.isArray(value) ? value.filter(Boolean) : String(value || '').split(/[;,]/).map((item) => item.trim()).filter(Boolean); }
+export function evidenceForRelationship(relationship, evidence) { const ids = new Set(listValue(relationship.evidence_ids)); return evidence.filter((item) => ids.has(item.evidence_id) || ids.has(item.passage_id)); }
 export function buildNodeProfile(rows, name) {
   const connected = rows.filter((edge) => edge.object === name || edge.subject === name);
   const incoming = connected.filter((edge) => edge.subject === name).sort(edgeRank);
