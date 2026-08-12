@@ -24,7 +24,10 @@ from valuechain.industry_expansion import ExpansionConfig, build_industry_expans
 from valuechain.models import Company, GraphEdge, RelationEvidence, SourceDocument
 from valuechain.evidence_identity import stable_evidence_id
 from valuechain.llm_client import LLMConfig, OpenAICompatibleClient
-from valuechain.relationship_challenge import SYSTEM_PROMPT as CHALLENGE_PROMPT, challenge_payload, normalize_challenge
+from valuechain.relationship_challenge import (
+    REWRITE_PROMPT as CHALLENGE_REWRITE_PROMPT, SYSTEM_PROMPT as CHALLENGE_PROMPT,
+    apply_explanation_rewrite, challenge_payload, normalize_challenge, rewrite_payload,
+)
 from valuechain.universe_policy_api import router as universe_policy_router
 
 
@@ -497,6 +500,12 @@ async def challenge_relationship(
     try:
         raw = await asyncio.to_thread(client.chat_json, CHALLENGE_PROMPT, json.dumps(challenge_payload(relationship, evidence, body.question), ensure_ascii=False), 360)
         result = normalize_challenge(raw)
+        if result["explanation_inconsistent"]:
+            rewrite = await asyncio.to_thread(
+                client.chat_json, CHALLENGE_REWRITE_PROMPT,
+                json.dumps(rewrite_payload(result), ensure_ascii=False), 140,
+            )
+            result = apply_explanation_rewrite(result, rewrite)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Relationship assistant unavailable: {exc}") from exc
     finally:
