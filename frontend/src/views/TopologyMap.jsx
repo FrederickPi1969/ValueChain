@@ -100,6 +100,7 @@ export function TopologyMap({ runId = '', edges = [], networkEdges = [], compani
         {(scope === 'expansion' || scope === 'ego') && <span><b>+{topology.hopDelta}</b> nodes beyond one hop</span>}
         {topology.omittedEdgeCount > 0 && <span><b>{topology.omittedEdgeCount.toLocaleString()}</b> lower-ranked links hidden by display budget</span>}
         <span><Layers3 size={14} /> {topology.layoutMode === 'force' ? 'ForceAtlas2 detail layout' : 'partitioned large-graph layout'}</span>
+        <span title={topology.layoutBasisDetail}><Network size={14} /> {topology.layoutBasisLabel}</span>
         <span>{expansionEdges.length ? <><ShieldCheck size={14} /> filing-grounded expansion artifact</> : <><Radio size={14} /> legacy graph projection</>}</span>
       </div>
       <div className="relation-legend" aria-label="Relationship type filters">
@@ -131,19 +132,40 @@ function SeedPicker({ options, selected, onChange }) {
 
 function ForceGraph({ topology, onSelect, onToggleAnchor, onHoverCompany }) {
   const containerRef = useRef(null);
+  const positionsRef = useRef(new Map());
+  const laidOutProjectionRef = useRef('');
   const [hoveredEdge, setHoveredEdge] = useState(null);
   useEffect(() => {
     if (!containerRef.current || !topology.rows.length) return undefined;
     const graph = new MultiDirectedGraph();
-    topology.nodes.forEach((node) => graph.addNode(node.id, node));
+    topology.nodes.forEach((node) => graph.addNode(node.id, { ...node, ...(positionsRef.current.get(node.id) || {}) }));
     topology.rows.forEach((edge, index) => graph.addDirectedEdgeWithKey(edge.id || `edge-${index}`, edge.objectId, edge.subjectId, {
       label: edge.isFocused ? shortRelation(edge.relation_type) : '', color: edge.isIndustryMembership ? '#475569' : edge.isContext ? '#263548' : edge.review_status === 'accepted' ? relationColor(edge.relation_type) : `${relationColor(edge.relation_type)}99`,
       size: edge.isIndustryMembership ? 0.4 : edge.isAnchorLink ? Math.min(5.5, 1.8 + Math.log2(Number(edge.evidence_count || 1) + 1)) : edge.isContext ? 0.22 : Math.min(4, 0.7 + Math.log2(Number(edge.evidence_count || 1) + 1)),
       type: edge.isIndustryMembership ? 'line' : 'arrow', edge,
     }));
-    if (topology.layoutMode === 'force') {
-      forceAtlas2.assign(graph, { iterations: Math.max(35, Math.min(110, Math.round(500 / Math.max(graph.order, 1)))), settings: { ...forceAtlas2.inferSettings(graph), gravity: 1.4, scalingRatio: 8, slowDown: 2, barnesHutOptimize: graph.order > 180, barnesHutTheta: 0.6 } });
+    const layoutSignature = topology.layoutRows.map(relationshipRowKey).sort().join('||');
+    const layoutIsAlreadyStable = layoutSignature && layoutSignature === laidOutProjectionRef.current
+      && topology.layoutRows.every((edge) => positionsRef.current.has(edge.objectId) && positionsRef.current.has(edge.subjectId));
+    if (topology.layoutMode === 'force' && topology.layoutRows.length && !layoutIsAlreadyStable) {
+      // The display graph may contain ownership, transaction, or other future
+      // overlays. They must not alter a user's spatial memory of the supply
+      // graph, so run the physics only over the structural-layout projection.
+      const layoutGraph = new MultiDirectedGraph();
+      const visibleLayoutIds = new Set(topology.layoutRows.flatMap((edge) => [edge.objectId, edge.subjectId]));
+      visibleLayoutIds.forEach((id) => {
+        if (graph.hasNode(id)) layoutGraph.addNode(id, { ...graph.getNodeAttributes(id) });
+      });
+      topology.layoutRows.forEach((edge, index) => {
+        if (layoutGraph.hasNode(edge.objectId) && layoutGraph.hasNode(edge.subjectId)) layoutGraph.addDirectedEdgeWithKey(`layout-${index}`, edge.objectId, edge.subjectId);
+      });
+      if (layoutGraph.order > 1 && layoutGraph.size) {
+        forceAtlas2.assign(layoutGraph, { iterations: Math.max(35, Math.min(110, Math.round(500 / Math.max(layoutGraph.order, 1)))), settings: { ...forceAtlas2.inferSettings(layoutGraph), gravity: 1.4, scalingRatio: 8, slowDown: 2, barnesHutOptimize: layoutGraph.order > 180, barnesHutTheta: 0.6 } });
+        layoutGraph.forEachNode((id, attributes) => graph.mergeNodeAttributes(id, { x: attributes.x, y: attributes.y }));
+        laidOutProjectionRef.current = layoutSignature;
+      }
     }
+    graph.forEachNode((id, attributes) => positionsRef.current.set(id, { x: attributes.x, y: attributes.y }));
     let hoveredNode = null;
     const renderer = new Sigma(graph, containerRef.current, {
       renderEdgeLabels: topology.rows.length <= 70, enableEdgeEvents: true, zIndex: true, defaultEdgeType: 'arrow',
@@ -254,7 +276,7 @@ function RelationshipList({ title, rows, counterpart, empty, onInspectCompany, o
 
 function TopologyLegend({ expansion }) {
   const summary = expansion?.summary || {};
-  return <div className="topology-legend"><p><b>Level of detail:</b> seed companies, selected nodes, industry anchors and high-degree hubs keep labels. Hovering a node isolates its neighborhood, so a large graph stays readable.</p><p><b>Layout:</b> smaller subgraphs use ForceAtlas2. Above {FORCE_LAYOUT_NODE_LIMIT} nodes, deterministic industry partitions avoid a blocking force simulation and keep repeated renders stable.</p><p><b>Trust:</b> solid/high-opacity links are accepted; translucent links are candidates. A candidate is evidence-backed but not yet verified.</p>{summary.node_cap_reached && <p><b>Expansion cap reached:</b> generate a larger artifact or choose fewer seeds to continue the frontier.</p>}</div>;
+  return <div className="topology-legend"><p><b>Level of detail:</b> seed companies, selected nodes, industry anchors and high-degree hubs keep labels. Hovering a node isolates its neighborhood, so a large graph stays readable.</p><p><b>Layout:</b> smaller subgraphs use ForceAtlas2. Above {FORCE_LAYOUT_NODE_LIMIT} nodes, deterministic industry partitions avoid a blocking force simulation and keep repeated renders stable. The supply-chain structural projection sets positions; other relationship layers are overlays.</p><p><b>Trust:</b> solid/high-opacity links are accepted; translucent links are candidates. A candidate is evidence-backed but not yet verified.</p>{summary.node_cap_reached && <p><b>Expansion cap reached:</b> generate a larger artifact or choose fewer seeds to continue the frontier.</p>}</div>;
 }
 
 export function buildTopology({ rows, companies = [], expansionNodes = [], focus = '', anchors = [], selectedSeeds = [], scope = 'global', depth = 2, edgeLimit = 1500, showExposure = false, showIndustries = true, showContext = true, includeCandidates = true, enabledTypes = [], enabledFamilies = [] }) {
@@ -262,7 +284,19 @@ export function buildTopology({ rows, companies = [], expansionNodes = [], focus
   const allowed = new Set(enabledTypes);
   const allowedFamilies = new Set(enabledFamilies);
   const nodeMetadata = new Map(expansionNodes.map((row) => [row.canonical_name, row]));
-  const normalized = collapseRows(rows, issuers, showExposure).filter((edge) => allowed.has(edge.relation_type) && (!allowedFamilies.size || allowedFamilies.has(edge.relationship_family)) && (includeCandidates || edge.review_status === 'accepted'));
+  const collapsed = collapseRows(rows, issuers, showExposure);
+  const normalized = collapsed.filter((edge) => allowed.has(edge.relation_type) && (!allowedFamilies.size || allowedFamilies.has(edge.relationship_family)) && (includeCandidates || edge.review_status === 'accepted'));
+  // Keep geometry independent from the active display lens. Confirmed supply
+  // relationships are the preferred structural projection. Until a run has
+  // enough confirmed data, a clearly labelled supply-candidate fallback keeps
+  // the graph usable without letting other relationship families move nodes.
+  const confirmedSupply = collapsed.filter((edge) => edge.relationship_family === 'supply_chain' && edge.review_status === 'accepted');
+  const supplyFallback = collapsed.filter((edge) => edge.relationship_family === 'supply_chain');
+  const structuralRows = confirmedSupply.length ? confirmedSupply : supplyFallback;
+  const layoutBasisLabel = confirmedSupply.length ? 'layout: confirmed supply links' : 'layout: supply candidate fallback';
+  const layoutBasisDetail = confirmedSupply.length
+    ? `${confirmedSupply.length} accepted supply-chain links determine node positions. Other relationship layers are visual overlays.`
+    : `This run has no accepted supply-chain links, so ${supplyFallback.length} supply candidates provisionally determine node positions. Other relationship layers are visual overlays.`;
   const seeds = scope === 'ego' ? [focus] : selectedSeeds;
   const activeAnchors = anchors.filter((name) => normalized.some((edge) => edge.object === name || edge.subject === name));
   const oneHop = scope === 'global' ? normalized : selectMultiEgo(normalized, seeds, 1);
@@ -295,8 +329,10 @@ export function buildTopology({ rows, companies = [], expansionNodes = [], focus
   });
   const nodeByName = new Map(nodes.map((node) => [node.id.slice(5), node.id]));
   const graphRows = [...ego, ...industryMemberships].map((edge, index) => ({ ...edge, id: `rel-${index}-${nodeId(edge.object)}-${nodeId(edge.subject)}-${edge.relation_type}`, objectId: nodeByName.get(encodeURIComponent(edge.object)), subjectId: nodeByName.get(encodeURIComponent(edge.subject)), isFocused: anchorKeys.has(relationshipRowKey(edge)), isAnchorLink: anchorSet.has(edge.object) && anchorSet.has(edge.subject), isContext: activeAnchors.length > 0 && !anchorKeys.has(relationshipRowKey(edge)) && !edge.isIndustryMembership })).filter((edge) => edge.objectId && edge.subjectId);
+  const layoutKeys = new Set(structuralRows.map(relationshipRowKey));
+  const layoutRows = graphRows.filter((edge) => layoutKeys.has(relationshipRowKey(edge)));
   const oneHopNodes = new Set([...seeds, ...oneHop.flatMap((edge) => [edge.object, edge.subject])]);
-  return { rows: graphRows, nodes, relationshipRows: normalized, layoutMode, displayedEdgeCount: ego.length, availableEdgeCount: scoped.length, omittedEdgeCount: Math.max(0, scoped.length - ego.length), companyCount: nodes.filter((node) => node.kind === 'issuer' || node.kind === 'counterparty').length, industryCount: nodes.filter((node) => node.kind === 'industry').length, exposureCount: nodes.filter((node) => node.kind === 'exposure').length, hopDelta: Math.max(0, visibleNames.size - oneHopNodes.size), acceptedCount: ego.filter((row) => row.review_status === 'accepted').length, candidateCount: ego.filter((row) => row.review_status !== 'accepted').length };
+  return { rows: graphRows, nodes, relationshipRows: normalized, layoutRows, layoutBasisLabel, layoutBasisDetail, layoutMode, displayedEdgeCount: ego.length, availableEdgeCount: scoped.length, omittedEdgeCount: Math.max(0, scoped.length - ego.length), companyCount: nodes.filter((node) => node.kind === 'issuer' || node.kind === 'counterparty').length, industryCount: nodes.filter((node) => node.kind === 'industry').length, exposureCount: nodes.filter((node) => node.kind === 'exposure').length, hopDelta: Math.max(0, visibleNames.size - oneHopNodes.size), acceptedCount: ego.filter((row) => row.review_status === 'accepted').length, candidateCount: ego.filter((row) => row.review_status !== 'accepted').length };
 }
 
 function buildIndustryMemberships(companies) { const seen = new Set(); return companies.filter((row) => row.company).map((row) => ({ object: `Industry · ${industryGroup(row.role)}`, subject: row.company, relation_type: 'industry_membership', modality: 'taxonomy', evidence_count: 0, review_status: 'taxonomy', isIndustryMembership: true })).filter((row) => { const key = `${row.object}|${row.subject}`; if (seen.has(key)) return false; seen.add(key); return true; }); }

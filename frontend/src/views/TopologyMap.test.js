@@ -72,6 +72,20 @@ describe('large topology projection', () => {
     expect(inspected.color).toBe('#f472b6');
   });
 
+  it('uses confirmed supply relationships as the layout projection while showing other layers', () => {
+    const rows = [
+      { ...edge(0, 'Supplier', 'Company'), review_status: 'accepted' },
+      { ...edge(1, 'Company', 'Partner'), relation_type: 'strategic_partner', relationship_family: 'commercial_relationship' },
+    ];
+    const topology = buildTopology({
+      rows, enabledTypes: ['supplies_to', 'strategic_partner'], enabledFamilies: ['supply_chain', 'commercial_relationship'], edgeLimit: 20,
+    });
+    expect(topology.layoutBasisLabel).toBe('layout: confirmed supply links');
+    expect(topology.layoutRows).toHaveLength(1);
+    expect(topology.layoutRows[0].relation_type).toBe('supplies_to');
+    expect(topology.rows.some((row) => row.relation_type === 'strategic_partner')).toBe(true);
+  });
+
   it('summarizes directed relationships and ownership for a selected company', () => {
     const rows = [
       { ...edge(0, 'Supplier', 'Company'), product_or_service: 'Memory', source_accession_numbers: ['0001'], verification_status: 'cross_filing_verified' },
