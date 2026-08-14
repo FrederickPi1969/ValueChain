@@ -110,7 +110,7 @@ export function TopologyMap({ runId = '', edges = [], networkEdges = [], compani
         </button>)}
       </div>
       <div className="topology-node-legend" aria-label="Node and edge meaning"><span><i className="node-anchor" />Selected / viewing company</span><span><i className="node-seed" />Expansion seed</span><span><i className="node-issuer" />Universe company</span><span><i className="node-counterparty" />External named company</span><span><i className="node-industry" />Industry group</span><span><i className="edge-focus" />One-hop focus link</span><span><i className="edge-context" />Muted context</span></div>
-      <div className="topology-edge-legend" aria-label="Relationship visual encoding"><span><i className="edge-confirmed" />Accepted</span><span><i className="edge-candidate" />Candidate</span><span><i className="edge-support-strong" />Candidate evidence: strong</span><span><i className="edge-support-moderate" />moderate</span><span><i className="edge-support-limited" />limited</span></div>
+      <div className="topology-edge-legend" aria-label="Relationship visual encoding"><b>Status</b><span><i className="edge-confirmed" />Accepted</span><span><i className="edge-candidate" />Candidate</span><b>Candidate evidence</b><span><i className="edge-support-strong" />Strong</span><span><i className="edge-support-moderate" />Moderate</span><span><i className="edge-support-limited" />Limited</span></div>
       <div className="topology-layout">
         <ForceGraph topology={topology} onSelect={selectEdge} onToggleAnchor={toggleAnchor} onHoverCompany={setHoveredCompany} />
         <aside className="topology-detail panel">
@@ -413,7 +413,7 @@ function edgeOpacity(edge) {
 function edgeVisualSize(edge) {
   // Width represents decision commitment only. It must never be derived from
   // passage count because repeated wording is not economic importance.
-  const base = edge.review_status === 'accepted' ? 2.05 : 1.38;
+  const base = edge.review_status === 'accepted' ? 2.8 : 1.18;
   return edge.isAnchorLink ? base + 0.42 : edge.isFocused ? base + 0.18 : base;
 }
 function withAlpha(hex, opacity) { return `${hex}${Math.round(Math.max(0, Math.min(1, opacity)) * 255).toString(16).padStart(2, '0')}`; }
