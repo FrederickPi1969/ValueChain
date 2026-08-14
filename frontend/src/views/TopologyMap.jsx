@@ -9,11 +9,11 @@ import { challengeRelationship } from '../api/data.js';
 
 const EDGE_LIMITS = [250, 750, 1_500, 3_000, 5_000];
 const FORCE_LAYOUT_NODE_LIMIT = 650;
-const RELATION_COLORS = {
-  supplies_to: '#38bdf8', supplier_dependency: '#38bdf8', manufacturing_dependency: '#a78bfa', foundry_dependency: '#a78bfa',
-  customer_dependency: '#fbbf24', purchases_from: '#fbbf24', cloud_or_hosting_dependency: '#34d399',
-  data_center_dependency: '#34d399', power_or_utility_dependency: '#fb7185', network_or_interconnection_dependency: '#f97316',
-  distribution_or_channel_dependency: '#e879f9', licensing_dependency: '#60a5fa', strategic_partner: '#22d3ee', co_investment: '#f472b6',
+const FAMILY_COLORS = {
+  supply_chain: '#38bdf8',
+  ownership_control: '#a78bfa',
+  corporate_transaction: '#fb923c',
+  commercial_relationship: '#34d399',
 };
 
 export function TopologyMap({ runId = '', edges = [], networkEdges = [], companies = [], evidence = [], lineageEvents = [], industryExpansion = {} }) {
@@ -97,6 +97,7 @@ export function TopologyMap({ runId = '', edges = [], networkEdges = [], compani
       <div className="topology-stats">
         <span><b>{topology.companyCount}</b> named companies</span><span><b>{topology.industryCount}</b> industry groups</span><span><b>{topology.displayedEdgeCount}</b> of {topology.availableEdgeCount.toLocaleString()} eligible links</span>
         <span><b>{topology.acceptedCount}</b> accepted</span><span><b>{topology.candidateCount}</b> candidates</span>
+        {topology.candidateCount > 0 && <span title="Candidate evidence support is filled by the evidence/audit pipeline; older runs remain intentionally unassessed."><b>{topology.candidateSupport.not_assessed || 0}</b> candidate support unassessed</span>}
         {(scope === 'expansion' || scope === 'ego') && <span><b>+{topology.hopDelta}</b> nodes beyond one hop</span>}
         {topology.omittedEdgeCount > 0 && <span><b>{topology.omittedEdgeCount.toLocaleString()}</b> lower-ranked links hidden by display budget</span>}
         <span><Layers3 size={14} /> {topology.layoutMode === 'force' ? 'ForceAtlas2 detail layout' : 'partitioned large-graph layout'}</span>
@@ -109,6 +110,7 @@ export function TopologyMap({ runId = '', edges = [], networkEdges = [], compani
         </button>)}
       </div>
       <div className="topology-node-legend" aria-label="Node and edge meaning"><span><i className="node-anchor" />Selected / viewing company</span><span><i className="node-seed" />Expansion seed</span><span><i className="node-issuer" />Universe company</span><span><i className="node-counterparty" />External named company</span><span><i className="node-industry" />Industry group</span><span><i className="edge-focus" />One-hop focus link</span><span><i className="edge-context" />Muted context</span></div>
+      <div className="topology-edge-legend" aria-label="Relationship visual encoding"><span><i className="edge-confirmed" />Accepted</span><span><i className="edge-candidate" />Candidate</span><span><i className="edge-support-strong" />Candidate evidence: strong</span><span><i className="edge-support-moderate" />moderate</span><span><i className="edge-support-limited" />limited</span></div>
       <div className="topology-layout">
         <ForceGraph topology={topology} onSelect={selectEdge} onToggleAnchor={toggleAnchor} onHoverCompany={setHoveredCompany} />
         <aside className="topology-detail panel">
@@ -140,8 +142,8 @@ function ForceGraph({ topology, onSelect, onToggleAnchor, onHoverCompany }) {
     const graph = new MultiDirectedGraph();
     topology.nodes.forEach((node) => graph.addNode(node.id, { ...node, ...(positionsRef.current.get(node.id) || {}) }));
     topology.rows.forEach((edge, index) => graph.addDirectedEdgeWithKey(edge.id || `edge-${index}`, edge.objectId, edge.subjectId, {
-      label: edge.isFocused ? shortRelation(edge.relation_type) : '', color: edge.isIndustryMembership ? '#475569' : edge.isContext ? '#263548' : edge.review_status === 'accepted' ? relationColor(edge.relation_type) : `${relationColor(edge.relation_type)}99`,
-      size: edge.isIndustryMembership ? 0.4 : edge.isAnchorLink ? Math.min(5.5, 1.8 + Math.log2(Number(edge.evidence_count || 1) + 1)) : edge.isContext ? 0.22 : Math.min(4, 0.7 + Math.log2(Number(edge.evidence_count || 1) + 1)),
+      label: edge.isFocused ? shortRelation(edge.relation_type) : '', color: edge.isIndustryMembership ? '#475569' : edge.isContext ? '#263548' : withAlpha(edgeColor(edge), edgeOpacity(edge)),
+      size: edge.isIndustryMembership ? 0.4 : edge.isContext ? 0.22 : edgeVisualSize(edge),
       type: edge.isIndustryMembership ? 'line' : 'arrow', edge,
     }));
     const layoutSignature = topology.layoutRows.map(relationshipRowKey).sort().join('||');
@@ -210,18 +212,19 @@ function ForceGraph({ topology, onSelect, onToggleAnchor, onHoverCompany }) {
 
 function EdgeTooltip({ edge, x, y }) {
   const relation = edge.isIndustryMembership ? 'industry membership' : shortRelation(edge.relation_type);
-  return <div className="topology-edge-tooltip" style={{ left: `${Math.max(12, x + 12)}px`, top: `${Math.max(12, y + 12)}px` }} role="tooltip"><b>{trim(edge.object, 32)} → {trim(edge.subject, 32)}</b><span>{relation}</span></div>;
+  const support = edge.review_status === 'accepted' ? 'Accepted' : `Candidate · ${supportLabel(evidenceSupportLevel(edge))}`;
+  return <div className="topology-edge-tooltip" style={{ left: `${Math.max(12, x + 12)}px`, top: `${Math.max(12, y + 12)}px` }} role="tooltip"><b>{trim(edge.object, 32)} → {trim(edge.subject, 32)}</b><span>{relation} · {support}</span></div>;
 }
 
 function EdgeDetail({ runId, edge, evidence, lineage }) {
   const supportingEvidence = evidenceForRelationship(edge, evidence);
   const audit = edge.llm_audit || {};
   return <div className="topology-edge-detail"><strong>{edge.object} <span>→</span> {edge.subject}</strong><dl>
-    <div><dt>Relation</dt><dd><i className="relation-dot" style={{ background: relationColor(edge.relation_type) }} /> {shortRelation(edge.relation_type)}</dd></div>
+    <div><dt>Relation</dt><dd><i className="relation-dot" style={{ background: edgeColor(edge) }} /> {shortRelation(edge.relation_type)}</dd></div>
     <div><dt>Layer</dt><dd>{edge.review_status === 'accepted' ? 'accepted / verified' : 'candidate — requires review'}</dd></div>
     <div><dt>Hop</dt><dd>{edge.expansion_depth ?? 'not recorded'}</dd></div><div><dt>Modality</dt><dd>{edge.modality || 'not recorded'}</dd></div>
     <div><dt>Evidence</dt><dd>{edge.evidence_count || 1} passage{Number(edge.evidence_count || 1) === 1 ? '' : 's'}; {listValue(edge.source_accession_numbers || edge.accessions).length} filing accession(s)</dd></div>
-    <div><dt>Status</dt><dd>{confirmationStatus(edge)}</dd></div>{edge.product_or_service && <div><dt>Product</dt><dd>{edge.product_or_service}</dd></div>}{edge.risk_flags?.length > 0 && <div><dt>Audit flags</dt><dd>{edge.risk_flags.join(', ')}</dd></div>}
+    <div><dt>Status</dt><dd>{confirmationStatus(edge)}</dd></div>{edge.review_status !== 'accepted' && <div><dt>Evidence support</dt><dd>{supportLabel(evidenceSupportLevel(edge))}</dd></div>}{edge.product_or_service && <div><dt>Product</dt><dd>{edge.product_or_service}</dd></div>}{edge.risk_flags?.length > 0 && <div><dt>Audit flags</dt><dd>{edge.risk_flags.join(', ')}</dd></div>}
   </dl>
   <EvidenceDrilldown evidence={supportingEvidence} expectedCount={edge.evidence_count} />
   <RelationshipAssistant runId={runId} edge={edge} evidenceAvailable={supportingEvidence.length > 0} />
@@ -276,7 +279,7 @@ function RelationshipList({ title, rows, counterpart, empty, onInspectCompany, o
 
 function TopologyLegend({ expansion }) {
   const summary = expansion?.summary || {};
-  return <div className="topology-legend"><p><b>Level of detail:</b> seed companies, selected nodes, industry anchors and high-degree hubs keep labels. Hovering a node isolates its neighborhood, so a large graph stays readable.</p><p><b>Layout:</b> smaller subgraphs use ForceAtlas2. Above {FORCE_LAYOUT_NODE_LIMIT} nodes, deterministic industry partitions avoid a blocking force simulation and keep repeated renders stable. The supply-chain structural projection sets positions; other relationship layers are overlays.</p><p><b>Trust:</b> solid/high-opacity links are accepted; translucent links are candidates. A candidate is evidence-backed but not yet verified.</p>{summary.node_cap_reached && <p><b>Expansion cap reached:</b> generate a larger artifact or choose fewer seeds to continue the frontier.</p>}</div>;
+  return <div className="topology-legend"><p><b>Level of detail:</b> seed companies, selected nodes, industry anchors and high-degree hubs keep labels. Hovering a node isolates its neighborhood, so a large graph stays readable.</p><p><b>Layout:</b> smaller subgraphs use ForceAtlas2. Above {FORCE_LAYOUT_NODE_LIMIT} nodes, deterministic industry partitions avoid a blocking force simulation and keep repeated renders stable. The supply-chain structural projection sets positions; other relationship layers are overlays.</p><p><b>Edge encoding:</b> family sets color; direction uses arrows; accepted links are slightly stronger than candidates. Candidate opacity reflects evidence support when it has been assessed. Accepted links remain fully visible.</p>{summary.node_cap_reached && <p><b>Expansion cap reached:</b> generate a larger artifact or choose fewer seeds to continue the frontier.</p>}</div>;
 }
 
 export function buildTopology({ rows, companies = [], expansionNodes = [], focus = '', anchors = [], selectedSeeds = [], scope = 'global', depth = 2, edgeLimit = 1500, showExposure = false, showIndustries = true, showContext = true, includeCandidates = true, enabledTypes = [], enabledFamilies = [] }) {
@@ -332,7 +335,8 @@ export function buildTopology({ rows, companies = [], expansionNodes = [], focus
   const layoutKeys = new Set(structuralRows.map(relationshipRowKey));
   const layoutRows = graphRows.filter((edge) => layoutKeys.has(relationshipRowKey(edge)));
   const oneHopNodes = new Set([...seeds, ...oneHop.flatMap((edge) => [edge.object, edge.subject])]);
-  return { rows: graphRows, nodes, relationshipRows: normalized, layoutRows, layoutBasisLabel, layoutBasisDetail, layoutMode, displayedEdgeCount: ego.length, availableEdgeCount: scoped.length, omittedEdgeCount: Math.max(0, scoped.length - ego.length), companyCount: nodes.filter((node) => node.kind === 'issuer' || node.kind === 'counterparty').length, industryCount: nodes.filter((node) => node.kind === 'industry').length, exposureCount: nodes.filter((node) => node.kind === 'exposure').length, hopDelta: Math.max(0, visibleNames.size - oneHopNodes.size), acceptedCount: ego.filter((row) => row.review_status === 'accepted').length, candidateCount: ego.filter((row) => row.review_status !== 'accepted').length };
+  const candidateSupport = ego.filter((row) => row.review_status !== 'accepted').reduce((summary, row) => ({ ...summary, [evidenceSupportLevel(row)]: (summary[evidenceSupportLevel(row)] || 0) + 1 }), {});
+  return { rows: graphRows, nodes, relationshipRows: normalized, layoutRows, layoutBasisLabel, layoutBasisDetail, layoutMode, displayedEdgeCount: ego.length, availableEdgeCount: scoped.length, omittedEdgeCount: Math.max(0, scoped.length - ego.length), companyCount: nodes.filter((node) => node.kind === 'issuer' || node.kind === 'counterparty').length, industryCount: nodes.filter((node) => node.kind === 'industry').length, exposureCount: nodes.filter((node) => node.kind === 'exposure').length, hopDelta: Math.max(0, visibleNames.size - oneHopNodes.size), acceptedCount: ego.filter((row) => row.review_status === 'accepted').length, candidateCount: ego.filter((row) => row.review_status !== 'accepted').length, candidateSupport };
 }
 
 function buildIndustryMemberships(companies) { const seen = new Set(); return companies.filter((row) => row.company).map((row) => ({ object: `Industry · ${industryGroup(row.role)}`, subject: row.company, relation_type: 'industry_membership', modality: 'taxonomy', evidence_count: 0, review_status: 'taxonomy', isIndustryMembership: true })).filter((row) => { const key = `${row.object}|${row.subject}`; if (seen.has(key)) return false; seen.add(key); return true; }); }
@@ -395,7 +399,26 @@ function expansionSeedNames(expansion) { const ids = new Set(expansion?.seed_ent
 function nodeKind(name, issuers) { if (String(name).startsWith('Industry · ')) return 'industry'; if (issuers.has(name)) return 'issuer'; return isAnonymousOrLowQuality(name) ? 'exposure' : 'counterparty'; }
 function isAnonymousOrLowQuality(name) { const value = String(name || '').trim(); return /^(?:(?:direct|major|large|significant)\s+)?(?:customer|customers|supplier|suppliers|vendor|vendors|distributor|distributors|partner|partners)\s+(?:[a-z](?:\s+(?:and|or)\s+[a-z])?|[0-9]+)$/i.test(value) || /\b(class|dependency class|capacity class)\b/i.test(value) || /^(contents?|table of contents)\b/i.test(value); }
 function edgeRank(a, b) { return (a.review_status === 'accepted' ? 0 : 1) - (b.review_status === 'accepted' ? 0 : 1) || Number(b.evidence_count || 0) - Number(a.evidence_count || 0) || Number(b.confidence || b.avg_confidence || 0) - Number(a.confidence || a.avg_confidence || 0) || String(a.relationship_id || '').localeCompare(String(b.relationship_id || '')); }
-function relationColor(type) { return RELATION_COLORS[type] || '#94a3b8'; }
+export function evidenceSupportLevel(edge = {}) {
+  const value = String(edge.evidence_support_level || edge.evidenceSupportLevel || '').trim().toLowerCase();
+  return ['strong', 'moderate', 'limited'].includes(value) ? value : 'not_assessed';
+}
+function supportLabel(level) { return ({ strong: 'Strong', moderate: 'Moderate', limited: 'Limited', not_assessed: 'Not assessed' })[level] || 'Not assessed'; }
+function edgeOpacity(edge) {
+  // Accepted is the final decision, so it remains visually stable. Evidence
+  // support is intentionally visible only for still-open candidate questions.
+  if (edge.review_status === 'accepted') return 0.96;
+  return ({ strong: 0.95, moderate: 0.78, limited: 0.58, not_assessed: 0.76 })[evidenceSupportLevel(edge)];
+}
+function edgeVisualSize(edge) {
+  // Width represents decision commitment only. It must never be derived from
+  // passage count because repeated wording is not economic importance.
+  const base = edge.review_status === 'accepted' ? 2.05 : 1.38;
+  return edge.isAnchorLink ? base + 0.42 : edge.isFocused ? base + 0.18 : base;
+}
+function withAlpha(hex, opacity) { return `${hex}${Math.round(Math.max(0, Math.min(1, opacity)) * 255).toString(16).padStart(2, '0')}`; }
+function edgeColor(edge) { return FAMILY_COLORS[relationshipFamily(edge)] || '#94a3b8'; }
+function relationColor(type) { return edgeColor({ relation_type: type }); }
 function nodeColor(kind, { isAnchor = false, isSeed = false } = {}) { if (isAnchor) return '#f472b6'; if (isSeed) return '#fbbf24'; return { issuer: '#2dd4bf', counterparty: '#60a5fa', exposure: '#fb7185', industry: '#c084fc' }[kind] || '#94a3b8'; }
 function nodeId(value) { return `node:${encodeURIComponent(value)}`; }
 function decodeNodeName(node) { return decodeURIComponent(String(node).replace(/^node:/, '')); }

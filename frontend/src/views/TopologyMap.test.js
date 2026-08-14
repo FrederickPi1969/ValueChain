@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('sigma', () => ({ default: class SigmaMock {} }));
-import { buildNodeProfile, buildTopology, evidenceForRelationship, selectMultiEgo } from './TopologyMap.jsx';
+import { buildNodeProfile, buildTopology, evidenceForRelationship, evidenceSupportLevel, selectMultiEgo } from './TopologyMap.jsx';
 
 function edge(index, object = `Company ${index}`, subject = `Company ${index + 1}`) {
   return {
@@ -84,6 +84,12 @@ describe('large topology projection', () => {
     expect(topology.layoutRows).toHaveLength(1);
     expect(topology.layoutRows[0].relation_type).toBe('supplies_to');
     expect(topology.rows.some((row) => row.relation_type === 'strategic_partner')).toBe(true);
+  });
+
+  it('preserves explicit candidate evidence support and defaults old rows to not assessed', () => {
+    expect(evidenceSupportLevel({ evidence_support_level: 'moderate' })).toBe('moderate');
+    expect(evidenceSupportLevel({ evidenceSupportLevel: 'LIMITED' })).toBe('limited');
+    expect(evidenceSupportLevel({ evidence_count: 12 })).toBe('not_assessed');
   });
 
   it('summarizes directed relationships and ownership for a selected company', () => {
