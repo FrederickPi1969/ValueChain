@@ -413,7 +413,7 @@ function edgeOpacity(edge) {
 function edgeVisualSize(edge) {
   // Width represents decision commitment only. It must never be derived from
   // passage count because repeated wording is not economic importance.
-  const base = edge.review_status === 'accepted' ? 2.8 : 1.18;
+  const base = edge.review_status === 'accepted' ? 4.5 : 2.5;
   return edge.isAnchorLink ? base + 0.42 : edge.isFocused ? base + 0.18 : base;
 }
 function withAlpha(hex, opacity) { return `${hex}${Math.round(Math.max(0, Math.min(1, opacity)) * 255).toString(16).padStart(2, '0')}`; }
