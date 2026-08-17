@@ -1,0 +1,19 @@
+[Unit]
+Description=ValueChain verified zstd document compression worker %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/ValueChain
+EnvironmentFile=/home/pi/ValueChain/.env
+ExecStart=/home/pi/ValueChain/.venv/bin/valuechain-compress run-worker --limit 1 --minimum-age-minutes 10 --idle-seconds 20
+Restart=always
+RestartSec=10s
+Nice=15
+IOSchedulingClass=idle
+IOSchedulingPriority=7
+TimeoutStopSec=5min
+
+[Install]
+WantedBy=default.target

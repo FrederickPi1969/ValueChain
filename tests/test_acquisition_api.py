@@ -13,6 +13,7 @@ from valuechain.acquisition_api import (
     resolve_download_path,
     router,
 )
+from valuechain.document_storage import finalize_compression, prepare_compression
 
 
 def test_legacy_file_api_rows_include_canonical_document_type() -> None:
@@ -126,6 +127,41 @@ def test_document_download_supports_http_range(
     assert response.content == b"2345"
     assert response.headers["content-range"] == "bytes 2-5/10"
     assert response.headers["etag"] == '"abc123"'
+
+
+def test_document_download_transparently_decompresses_zstd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    content = b"original disclosure\n" * 50_000
+    document = tmp_path / "filing.txt"
+    document.write_bytes(content)
+    prepared = prepare_compression(document)
+    assert prepared is not None
+    finalize_compression(prepared)
+
+    async def fake_fetch_one(*_args, **_kwargs):
+        return {
+            "document_id": 8,
+            "local_path": str(prepared.stored_path),
+            "content_type": "text/plain",
+            "byte_size": len(content),
+            "sha256": "compressed-test",
+            "status": "complete",
+        }
+
+    monkeypatch.setattr(acquisition_api, "_fetch_one", fake_fetch_one)
+    client = TestClient(build_test_app(tmp_path))
+
+    response = client.get(
+        "/api/acquisition/documents/8/download",
+        headers={"Range": "bytes=2-5"},
+    )
+
+    assert response.status_code == 200
+    assert response.content == content
+    assert response.headers["content-length"] == str(len(content))
+    assert "accept-ranges" not in response.headers
+    assert response.headers["content-disposition"] == 'attachment; filename="filing.txt"'
 
 
 def test_file_api_token_protects_acquisition_routes(tmp_path: Path) -> None:

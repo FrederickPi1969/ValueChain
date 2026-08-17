@@ -14,10 +14,10 @@ import re
 import shutil
 import subprocess
 import time
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Iterable
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import requests
@@ -268,7 +268,7 @@ def search_candidates(company: str, year: int, quarter: str, *, max_queries: int
 
 def _judge_prompt(company: str, year: int, quarter: str, candidates: list[Candidate]) -> tuple[str, str]:
     system = """You are a precision financial-research link classifier. Return only valid JSON.
-Accept a link only if it is a recording, webcast, or verbatim/near-verbatim transcript of the named company's requested quarterly earnings/results call. A press release or results deck alone is not a transcript, but an official webcast is acceptable as an acquisition lead. Reject SEC filings (10-K, 10-Q, 8-K), annual reports, estimates, news summaries, unrelated companies, and calls for a different quarter/year. Fiscal-year labels such as FY26 may correctly refer to calendar 2026 only when the candidate itself makes the requested period clear. Do not infer from a URL alone."""
+Accept a link only if it is a recording, webcast, or verbatim/near-verbatim transcript of the named company's requested quarterly earnings/results call. Official hosting is NOT required: a YouTube result whose title explicitly identifies the target company, requested quarter/year, and an earnings/results/conference call is a valid youtube_video acquisition lead even when its snippet is generic YouTube boilerplate or the uploader is third-party. Reject YouTube summaries, highlights, previews, reactions, and analysis videos that are not the call itself. A press release or results deck alone is not a transcript. Reject SEC filings (10-K, 10-Q, 8-K), annual reports, estimates, news summaries, unrelated companies, and calls for a different quarter/year. Fiscal-year labels such as FY26 may correctly refer to calendar 2026 only when the candidate itself makes the requested period clear. An explicit title is evidence; do not infer from a bare URL alone."""
     rows = [{"candidate_index": i, "url": c.url, "title": c.title, "snippet": c.snippet, "source_type": c.source_type} for i, c in enumerate(candidates)]
     user = f"Target: company={company!r}; period={quarter.upper()} {year}.\nCandidates:\n{json.dumps(rows, ensure_ascii=False)}\nReturn a JSON array; every object must have candidate_index, is_target, confidence (0..1), content_kind (official_transcript|third_party_transcript|official_webcast|youtube_video|other), and reason."
     return system, user
@@ -281,7 +281,13 @@ def judge_candidates(company: str, year: int, quarter: str, candidates: list[Can
     client = OpenAICompatibleClient(LLMConfig(settings.llm_base_url, settings.llm_api_key, settings.complex_model, timeout_s=180))
     system, user = _judge_prompt(company, year, quarter, candidates)
     payload = client.chat_json(system, user, max_tokens=max(800, 110 * len(candidates)))
-    return _parse_judgements(payload, len(candidates))
+    return apply_deterministic_candidate_rules(
+        company,
+        year,
+        quarter,
+        candidates,
+        _parse_judgements(payload, len(candidates)),
+    )
 
 
 async def judge_candidates_async(company: str, year: int, quarter: str, candidates: list[Candidate], settings: Settings | None = None) -> list[Judgement]:
@@ -289,24 +295,144 @@ async def judge_candidates_async(company: str, year: int, quarter: str, candidat
     if not candidates:
         return []
     settings = settings or Settings()
-    system, user = _judge_prompt(company, year, quarter, candidates)
-    last_error: Exception | None = None
-    for attempt in range(3):
-        client = OpenAICompatibleClient(LLMConfig(settings.llm_base_url, settings.llm_api_key, settings.complex_model, timeout_s=180))
+
+    async def classify_batch(batch: list[Candidate]) -> list[Judgement]:
+        system, user = _judge_prompt(company, year, quarter, batch)
+        last_error: Exception | None = None
+        for attempt in range(3):
+            client = OpenAICompatibleClient(
+                LLMConfig(
+                    settings.llm_base_url,
+                    settings.llm_api_key,
+                    settings.complex_model,
+                    timeout_s=180,
+                )
+            )
+            try:
+                payload = await client.chat_json_async(
+                    system,
+                    user,
+                    max_tokens=max(800, 110 * len(batch)),
+                )
+                parsed = _parse_judgements(payload, len(batch))
+                indexes = [item.candidate_index for item in parsed]
+                if sorted(indexes) != list(range(len(batch))) or len(set(indexes)) != len(indexes):
+                    raise ValueError(
+                        f"Qwen judgement indexes were incomplete or duplicated: {indexes}"
+                    )
+                return parsed
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                last_error = exc
+                await asyncio.sleep(0.6 * (attempt + 1))
+            finally:
+                await client.aclose()
+        raise RuntimeError(f"Qwen returned invalid JSON after 3 attempts: {last_error}")
+
+    async def classify_resilient(batch: list[Candidate], offset: int) -> list[Judgement]:
         try:
-            payload = await client.chat_json_async(system, user, max_tokens=max(800, 110 * len(candidates)))
-            return _parse_judgements(payload, len(candidates))
-        except (ValueError, json.JSONDecodeError) as exc:
-            last_error = exc
-            await asyncio.sleep(0.6 * (attempt + 1))
-        finally:
-            await client.aclose()
-    raise RuntimeError(f"Qwen returned invalid JSON after 3 attempts: {last_error}")
+            parsed = await classify_batch(batch)
+        except RuntimeError:
+            if len(batch) == 1:
+                raise
+            midpoint = len(batch) // 2
+            left = await classify_resilient(batch[:midpoint], offset)
+            right = await classify_resilient(batch[midpoint:], offset + midpoint)
+            return left + right
+        return [
+            Judgement(
+                candidate_index=item.candidate_index + offset,
+                is_target=item.is_target,
+                confidence=item.confidence,
+                content_kind=item.content_kind,
+                reason=item.reason,
+            )
+            for item in parsed
+        ]
+
+    return apply_deterministic_candidate_rules(
+        company,
+        year,
+        quarter,
+        candidates,
+        await classify_resilient(candidates, 0),
+    )
+
+
+def _explicit_youtube_call_title(
+    company: str,
+    year: int,
+    quarter: str,
+    candidate: Candidate,
+) -> bool:
+    host = urlparse(candidate.url).netloc.lower().removeprefix("www.")
+    if host not in {"youtube.com", "youtu.be", "m.youtube.com"}:
+        return False
+    title = candidate.title.lower()
+    normalized_quarter = quarter.upper()
+    ordinal = {"Q1": "first", "Q2": "second", "Q3": "third", "Q4": "fourth"}.get(
+        normalized_quarter
+    )
+    if ordinal is None:
+        return False
+    yy = str(year)[-2:]
+    period_match = bool(
+        re.search(rf"\b{re.escape(normalized_quarter.lower())}\b", title)
+        or f"{ordinal} quarter" in title
+    ) and bool(
+        re.search(rf"\b{year}\b", title)
+        or re.search(rf"\bfy\s*{re.escape(yy)}\b", title)
+    )
+    call_match = bool(
+        re.search(
+            r"\b(?:earnings|results)(?:\s+conference)?\s+call\b|"
+            r"\b(?:earnings|results)\s+webcast\b",
+            title,
+        )
+    )
+    if not period_match or not call_match:
+        return False
+
+    ticker_match = re.search(r"\(([A-Za-z0-9.\-]{1,12})\)\s*$", company)
+    ticker = ticker_match.group(1).lower() if ticker_match else ""
+    if ticker and re.search(rf"(?:\$|\b){re.escape(ticker)}\b", title):
+        return True
+    company_name = company[: ticker_match.start()].strip() if ticker_match else company
+    stopwords = {
+        "company", "corporation", "corp", "inc", "incorporated", "limited",
+        "ltd", "plc", "group", "holding", "holdings", "the", "and", "co",
+    }
+    identity_tokens = [
+        token
+        for token in re.findall(r"[a-z0-9]+", company_name.lower())
+        if len(token) >= 4 and token not in stopwords
+    ]
+    return any(re.search(rf"\b{re.escape(token)}\b", title) for token in identity_tokens)
+
+
+def apply_deterministic_candidate_rules(
+    company: str,
+    year: int,
+    quarter: str,
+    candidates: list[Candidate],
+    judgements: list[Judgement],
+) -> list[Judgement]:
+    by_index = {item.candidate_index: item for item in judgements}
+    for index, candidate in enumerate(candidates):
+        if _explicit_youtube_call_title(company, year, quarter, candidate):
+            prior = by_index.get(index)
+            by_index[index] = Judgement(
+                index,
+                True,
+                max(0.95, prior.confidence if prior is not None else 0.0),
+                "youtube_video",
+                "Deterministic rule: title explicitly matches company, period, and earnings call.",
+            )
+    return [by_index[index] for index in sorted(by_index)]
 
 
 def _parse_judgements(payload: object, candidate_count: int) -> list[Judgement]:
     if not isinstance(payload, list):
-        raise ValueError("Qwen judgement response was not a JSON list")
+        raise TypeError("Qwen judgement response was not a JSON list")
     allowed = {"official_transcript", "third_party_transcript", "official_webcast", "youtube_video", "other"}
     return [Judgement(int(x["candidate_index"]), bool(x["is_target"]), float(x["confidence"]), str(x["content_kind"]) if str(x["content_kind"]) in allowed else "other", str(x.get("reason", ""))) for x in payload if isinstance(x, dict) and int(x.get("candidate_index", -1)) in range(candidate_count)]
 

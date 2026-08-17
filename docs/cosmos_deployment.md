@@ -94,7 +94,25 @@ VALUECHAIN_OPENDART_FILING_LIMIT=16
 VALUECHAIN_EDINET_CONCURRENCY=2
 VALUECHAIN_EDINET_FILING_LIMIT=16
 VALUECHAIN_ACQUISITION_RETRIES=5
+VALUECHAIN_DOCUMENT_COMPRESSION=true
+VALUECHAIN_DOCUMENT_COMPRESSION_LEVEL=3
+VALUECHAIN_DOCUMENT_COMPRESSION_MIN_BYTES=262144
 ```
+
+Completed compressible documents are stored as verified zstd frames. The database
+keeps the original byte size and SHA-256 while `metadata.storage.stored_byte_size`
+tracks physical usage. Install and run two low-I/O historical backfill workers:
+
+```bash
+install -m 644 deploy/systemd/valuechain-compression@.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now valuechain-compression@1.service valuechain-compression@2.service
+journalctl --user -u 'valuechain-compression@*' -f
+```
+
+The workers only claim completed documents older than ten minutes, verify a full
+decompression checksum before changing PostgreSQL, and delete the original only
+after the database commit. ZIP and other already-compressed formats are skipped.
 
 OpenDART's official error-code documentation says status `020` is generally
 returned after at least 20,000 requests, while explicitly warning that a key can
@@ -107,6 +125,7 @@ per second. The current Cosmos runtime uses two workers for this lane:
 ```dotenv
 OPENDART_API_KEY=...
 VALUECHAIN_OPENDART_DAILY_REQUEST_BUDGET=10000
+VALUECHAIN_OPENDART_RETRY_REQUEST_RESERVE=500
 VALUECHAIN_OPENDART_REQUESTS_PER_SECOND=1.0
 VALUECHAIN_OPENDART_CONCURRENCY=2
 VALUECHAIN_OPENDART_FILING_LIMIT=16

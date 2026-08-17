@@ -8,7 +8,7 @@ from typing import Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Security
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
 from valuechain.disclosure_schema import (
@@ -17,6 +17,7 @@ from valuechain.disclosure_schema import (
     canonicalize_document_type,
     normalize_source_document_type,
 )
+from valuechain.document_storage import is_compressed_path, iter_bytes, logical_path
 
 
 router = APIRouter(prefix="/api/acquisition", tags=["acquisition-files"])
@@ -171,17 +172,27 @@ def resolve_download_path(value: str, allowed_roots: tuple[Path, ...]) -> Path:
 
 def download_response(
     row: dict[str, Any], allowed_roots: tuple[Path, ...]
-) -> FileResponse:
+) -> Response:
     path = resolve_download_path(str(row.get("local_path") or ""), allowed_roots)
     sha256 = str(row.get("sha256") or "").strip()
     headers = {
-        "Accept-Ranges": "bytes",
         "Cache-Control": "private, max-age=0, must-revalidate",
         "X-Content-Type-Options": "nosniff",
     }
     if sha256:
         headers["ETag"] = f'"{sha256}"'
         headers["X-Checksum-SHA256"] = sha256
+    if is_compressed_path(path):
+        filename = logical_path(path).name
+        headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        if row.get("byte_size") is not None:
+            headers["Content-Length"] = str(row["byte_size"])
+        return StreamingResponse(
+            iter_bytes(path),
+            media_type=str(row.get("content_type") or "application/octet-stream"),
+            headers=headers,
+        )
+    headers["Accept-Ranges"] = "bytes"
     return FileResponse(
         path,
         filename=path.name,
@@ -546,7 +557,7 @@ async def head_acquisition_snapshot(
 
 async def _document_download_response(
     document_id: int, request: Request
-) -> FileResponse:
+) -> Response:
     row = await _fetch_one(
         request,
         """
@@ -569,7 +580,7 @@ async def _document_download_response(
 )
 async def download_acquisition_document(
     document_id: int, request: Request
-) -> FileResponse:
+) -> Response:
     """Stream an original disclosure document with byte-range and checksum headers."""
     return await _document_download_response(document_id, request)
 
@@ -581,7 +592,7 @@ async def download_acquisition_document(
 )
 async def head_acquisition_document(
     document_id: int, request: Request
-) -> FileResponse:
+) -> Response:
     return await _document_download_response(document_id, request)
 
 
