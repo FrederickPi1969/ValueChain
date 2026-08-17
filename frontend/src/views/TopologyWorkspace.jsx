@@ -48,7 +48,7 @@ export function TopologyWorkspace() {
     </div>
     {loading && !data && <div className="topology-state panel">Loading relationship graph…</div>}
     {error && <div className="topology-state topology-error panel"><AlertTriangle size={18} /> {error}</div>}
-    {data && <TopologyMap edges={data.edges || []} networkEdges={data.network_edges || []} companies={data.companies || []} industryExpansion={data.industry_expansion || {}} />}
+    {data && <TopologyMap runId={runId} edges={data.edges || []} networkEdges={data.network_edges || []} companies={data.companies || []} evidence={data.evidence || []} lineageEvents={data.relationship_lineage_events || []} industryExpansion={data.industry_expansion || {}} />}
     {!loading && !error && !data && <div className="topology-state panel">No extracted relationship run is available.</div>}
   </section>;
 }

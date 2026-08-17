@@ -62,7 +62,10 @@ function viewFromLocation() {
 }
 
 export function App() {
-  const [session, setSession] = useState(null);
+  // The filing archive is protected in production.  Local Vite development is
+  // used for graph research against public/static run artifacts and should not
+  // be blocked by an archive-only credential gate.
+  const [session, setSession] = useState(() => import.meta.env.DEV ? { localResearch: true, token: '' } : null);
   const [view, setView] = useState(viewFromLocation);
   const [requestedIssuer, setRequestedIssuer] = useState(null);
   const [runs, setRuns] = useState([]);

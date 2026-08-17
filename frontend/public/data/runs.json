@@ -2,7 +2,7 @@
   "runs": [
     {
       "run_id": "semiconductor-expansion-v1",
-      "run_label": "Semiconductor 10-K / 10-Q expansion · NVDA AMD TSM ASML",
+      "run_label": "Semiconductor 10-K / 10-Q graph projection · evidence not bundled",
       "created_at": "2026-08-09T19:50:00",
       "dashboard": "",
       "data_path": "/data/runs/semiconductor-expansion-v1/dashboard-data.json",

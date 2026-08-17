@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import asyncio
+import json
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
+from pydantic import BaseModel, Field
 
 from valuechain.config import Settings
 from valuechain.acquisition_api import router as acquisition_router
@@ -20,6 +22,12 @@ from valuechain.acquisition_schema import prepare_acquisition_schema
 from valuechain.dashboard import build_dashboard_data
 from valuechain.industry_expansion import ExpansionConfig, build_industry_expansion
 from valuechain.models import Company, GraphEdge, RelationEvidence, SourceDocument
+from valuechain.evidence_identity import stable_evidence_id
+from valuechain.llm_client import LLMConfig, OpenAICompatibleClient
+from valuechain.relationship_challenge import (
+    REWRITE_PROMPT as CHALLENGE_REWRITE_PROMPT, SYSTEM_PROMPT as CHALLENGE_PROMPT,
+    apply_explanation_rewrite, challenge_payload, normalize_challenge, rewrite_payload,
+)
 from valuechain.universe_policy_api import router as universe_policy_router
 
 
@@ -144,6 +152,10 @@ app.add_middleware(
 app.include_router(acquisition_router)
 app.include_router(acquisition_resolver_router)
 app.include_router(universe_policy_router)
+
+
+class RelationshipChallengeRequest(BaseModel):
+    question: str = Field(default="", max_length=1000)
 
 if (FRONTEND_DIST / "assets").is_dir():
     app.mount(
@@ -450,6 +462,62 @@ async def dashboard_data(run_id: str, request: Request) -> dict[str, Any]:
         canonical_relationships=canonical_relationship_rows,
         industry_expansion=industry_expansion,
     )
+
+
+@app.post("/api/runs/{run_id}/relationships/{relationship_id}/challenge")
+async def challenge_relationship(
+    run_id: str, relationship_id: str, body: RelationshipChallengeRequest, request: Request,
+) -> dict[str, Any]:
+    """Explain one edge from its evidence and only flag, never mutate, a concern."""
+    relationship = await fetch_one(
+        request,
+        """SELECT relationship_id, source_entity_name, target_entity_name, supplier_name, customer_name,
+                  relationship_type, product_or_service, evidence_ids
+           FROM canonical_relationships
+           WHERE run_id = %s AND relationship_id = %s AND is_active = true""",
+        (run_id, relationship_id),
+    )
+    if not relationship:
+        raise HTTPException(status_code=404, detail="Canonical relationship not found")
+    evidence_rows = await fetch_all(
+        request,
+        """SELECT subject, object, relation_type, direction, evidence_text, form,
+                  filing_date::text AS filing_date, accession_number, source_document_url,
+                  source_section, passage_id, paragraph_offset
+           FROM relation_evidence
+           WHERE run_id = %s AND (subject IN (%s, %s) OR object IN (%s, %s))""",
+        (run_id, relationship["source_entity_name"], relationship["target_entity_name"], relationship["source_entity_name"], relationship["target_entity_name"]),
+    )
+    ids = {str(value) for value in relationship.get("evidence_ids", [])}
+    evidence = [row for row in evidence_rows if stable_evidence_id(row) in ids or str(row.get("passage_id", "")) in ids]
+    if not evidence:
+        raise HTTPException(status_code=409, detail="Evidence passages are unavailable for this relationship")
+    client = OpenAICompatibleClient(LLMConfig(
+        base_url=settings.llm_base_url, api_key=settings.llm_api_key,
+        model=settings.complex_model, report_url=settings.llm_report_url,
+        max_connections=1,
+    ))
+    try:
+        raw = await asyncio.to_thread(client.chat_json, CHALLENGE_PROMPT, json.dumps(challenge_payload(relationship, evidence, body.question), ensure_ascii=False), 360)
+        result = normalize_challenge(raw)
+        if result["explanation_inconsistent"]:
+            rewrite = await asyncio.to_thread(
+                client.chat_json, CHALLENGE_REWRITE_PROMPT,
+                json.dumps(rewrite_payload(result), ensure_ascii=False), 140,
+            )
+            result = apply_explanation_rewrite(result, rewrite)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Relationship assistant unavailable: {exc}") from exc
+    finally:
+        await client.aclose()
+    async with request.app.state.pool.connection() as conn:
+        await conn.execute(
+            """INSERT INTO relationship_challenges
+               (run_id, relationship_id, question, response, needs_reaudit)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (run_id, relationship_id, body.question or "Does this connection match the evidence?", json.dumps(result), result["needs_reaudit"]),
+        )
+    return {"relationship_id": relationship_id, "response": result}
 
 
 def build_filters(

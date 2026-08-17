@@ -261,6 +261,20 @@ CREATE TABLE IF NOT EXISTS relationship_lineage_events (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- User questions never overwrite an audit or a canonical decision.  A model may
+-- flag a connection for later review, but the original fact remains intact.
+CREATE TABLE IF NOT EXISTS relationship_challenges (
+  challenge_id BIGSERIAL PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  relationship_id TEXT NOT NULL,
+  question TEXT NOT NULL,
+  response JSONB NOT NULL,
+  needs_reaudit BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  FOREIGN KEY (run_id, relationship_id)
+    REFERENCES canonical_relationships(run_id, relationship_id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_relation_evidence_run_subject ON relation_evidence(run_id, subject);
 CREATE INDEX IF NOT EXISTS idx_relation_evidence_run_object ON relation_evidence(run_id, object);
 CREATE INDEX IF NOT EXISTS idx_relation_evidence_run_type ON relation_evidence(run_id, relation_type);
@@ -273,6 +287,7 @@ CREATE INDEX IF NOT EXISTS idx_source_documents_run_accession ON source_document
 CREATE INDEX IF NOT EXISTS idx_canonical_relationships_run_family ON canonical_relationships(run_id, relationship_family);
 CREATE INDEX IF NOT EXISTS idx_canonical_relationships_run_decision ON canonical_relationships(run_id, review_status);
 CREATE INDEX IF NOT EXISTS idx_relationship_lineage_run_relationship ON relationship_lineage_events(run_id, relationship_id);
+CREATE INDEX IF NOT EXISTS idx_relationship_challenges_run_relationship ON relationship_challenges(run_id, relationship_id);
 
 ALTER TABLE passages ADD COLUMN IF NOT EXISTS source_document_url TEXT;
 ALTER TABLE passages ADD COLUMN IF NOT EXISTS source_document TEXT;

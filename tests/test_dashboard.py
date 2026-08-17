@@ -112,7 +112,7 @@ def test_dashboard_prefers_canonical_supply_direction_for_network() -> None:
     assert data["network_edges"] == [{
         "subject": "A Corp", "object": "TSMC", "relation_type": "supplies_to",
         "modality": "current_fact", "evidence_count": 2, "avg_confidence": 0.9,
-        "first_seen": "", "last_seen": "", "forms": "10-K", "accessions": "", "source_urls": "", "relationship_id": "rel-1", "review_status": "unreviewed", "confirmation_status": "candidate", "relationship_family": "supply_chain", "categories": [], "product_or_service": "", "verification_status": "single_filing_candidate", "risk_flags": [], "source_role": "supplier", "target_role": "customer",
+        "first_seen": "", "last_seen": "", "forms": "10-K", "accessions": "", "source_urls": "", "relationship_id": "rel-1", "review_status": "unreviewed", "confirmation_status": "candidate", "relationship_family": "supply_chain", "categories": [], "product_or_service": "", "verification_status": "single_filing_candidate", "risk_flags": [], "source_role": "supplier", "target_role": "customer", "evidence_ids": [], "source_accession_numbers": [], "source_types": ["10-K"], "decision_reason": "", "decision_source": "", "llm_audit": {},
     }]
 
 

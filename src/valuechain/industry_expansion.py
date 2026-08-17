@@ -282,6 +282,8 @@ def _edge_row(row: dict[str, object], depth_by_id: dict[str, int]) -> dict[str, 
         "source_accession_numbers": list(row.get("source_accession_numbers", [])),
         "source_types": list(row.get("source_types", [])), "issuer_names": list(row.get("issuer_names", [])),
         "product_or_service": row.get("product_or_service", ""), "risk_flags": list(row.get("risk_flags", [])),
+        "decision_reason": row.get("decision_reason", ""), "decision_source": row.get("decision_source", ""),
+        "llm_audit": row.get("llm_audit", {}),
         "expansion_depth": max(depth_by_id[source_id], depth_by_id[target_id]),
     }
 

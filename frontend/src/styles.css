@@ -1410,10 +1410,17 @@ tbody tr:hover {
 .seed-picker button { min-height: 27px; padding: 4px 8px; border: 1px solid #9aaabc; border-radius: 999px; color: var(--muted); background: #fff; font-size: 11px; }
 .seed-picker button.active { border-color: #db2777; color: #9d174d; background: #fdf2f8; }
 .seed-picker small { color: var(--muted); }
+.anchor-bar, .topology-layer-picker { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+.anchor-bar > span, .topology-layer-picker > span { margin-right: 3px; color: var(--muted); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+.anchor-bar button { display: inline-flex; align-items: center; gap: 4px; min-height: 27px; padding: 4px 8px; border: 1px solid #77d7ca; border-radius: 999px; color: #115e59; background: #ecfdf5; font-size: 11px; }
+.anchor-bar .anchor-clear { border-color: transparent; color: var(--muted); background: transparent; }
+.anchor-bar.muted { color: var(--muted); font-size: 12px; }
+.topology-layer-picker { padding-block: 4px; }
+.topology-layer-picker .topology-checkbox { min-height: 28px; }
 .topology-layout { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 14px; align-items: stretch; min-width: 0; }
 .topology-canvas { height: 720px; min-width: 0; max-width: 100%; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: #f8fafc; }
 .force-topology .topology-canvas { position: relative; border-color: #1e3a5f; background: radial-gradient(circle at 50% 38%, #15243c 0%, #09111f 58%, #060b15 100%); }
-.force-topology .sigma-canvas canvas { border-radius: 8px; }
+.force-topology .sigma-canvas canvas { border-radius: 8px; }.sigma-renderer { width: 100%; height: 100%; }.topology-edge-tooltip { position: absolute; z-index: 12; display: grid; gap: 3px; max-width: 290px; padding: 7px 9px; border: 1px solid #47627c; border-radius: 6px; color: #e2e8f0; background: rgba(9, 17, 31, .95); box-shadow: 0 7px 20px rgba(0, 0, 0, .25); pointer-events: none; font-size: 11px; line-height: 1.3; }.topology-edge-tooltip b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.topology-edge-tooltip span { color: #7dd3fc; }
 .relation-legend { display: flex; flex-wrap: wrap; gap: 7px; padding: 2px 0; }
 .relation-legend button { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 5px 8px; color: #94a3b8; background: #fff; font-size: 11px; cursor: pointer; }
 .relation-legend button.active { color: #172033; border-color: #91a4b5; background: #edf6ff; }
@@ -1421,14 +1428,43 @@ tbody tr:hover {
 .relation-legend i, .relation-dot { width: 8px; height: 8px; display: inline-block; flex: 0 0 auto; border-radius: 50%; }
 .relation-legend b { color: inherit; font-size: 10px; }
 .relation-dot { margin-right: 4px; }
+.topology-node-legend { display: flex; flex-wrap: wrap; gap: 8px 13px; color: var(--muted); font-size: 11px; }.topology-node-legend span { display: inline-flex; align-items: center; gap: 5px; }.topology-node-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }.topology-node-legend .node-anchor { background: #f472b6; }.topology-node-legend .node-seed { background: #fbbf24; }.topology-node-legend .node-issuer { background: #2dd4bf; }.topology-node-legend .node-counterparty { background: #60a5fa; }.topology-node-legend .node-industry { background: #c084fc; }.topology-node-legend .edge-focus, .topology-node-legend .edge-context { width: 17px; height: 2px; border-radius: 0; }.topology-node-legend .edge-focus { background: #22d3ee; }.topology-node-legend .edge-context { background: #334155; }
+.topology-edge-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 2px 0; color: var(--muted); font-size: 11px; }.topology-edge-legend b { margin-right: -5px; color: var(--ink); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }.topology-edge-legend b:not(:first-child) { margin-left: 7px; padding-left: 12px; border-left: 1px solid var(--line); }.topology-edge-legend span { display: inline-flex; align-items: center; gap: 6px; }.topology-edge-legend i { display: inline-block; width: 38px; border-radius: 999px; background: #0284c7; box-shadow: 0 0 0 1px rgba(2,132,199,.12); }.topology-edge-legend .edge-confirmed { height: 4.5px; opacity: 1; }.topology-edge-legend .edge-candidate { height: 2.5px; opacity: 1; }.topology-edge-legend .edge-support-strong { height: 3px; background: #0369a1; opacity: 1; }.topology-edge-legend .edge-support-moderate { height: 3px; opacity: .70; }.topology-edge-legend .edge-support-limited { height: 3px; opacity: .42; }
 .topology-detail { min-height: 360px; }
 .topology-edge-detail, .topology-legend { display: grid; gap: 11px; }
+.topology-company-detail { display: grid; gap: 14px; }
+.company-detail-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.company-detail-title > div { display: grid; gap: 3px; min-width: 0; }
+.company-detail-title strong { overflow-wrap: anywhere; }
+.company-detail-title small { color: var(--muted); font-size: 11px; }
+.company-detail-title button { flex: 0 0 auto; padding: 5px 7px; font-size: 11px; }
+.company-detail-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.company-detail-stats span { display: grid; gap: 2px; padding: 7px; border-radius: 6px; background: var(--surface-2); color: var(--muted); font-size: 10px; text-transform: uppercase; }
+.company-detail-stats b { color: var(--ink); font-size: 16px; }
+.company-detail-section { display: grid; gap: 7px; }
+.company-detail-section h3 { margin: 0; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.company-detail-section p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.company-relationship-list { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }.company-relationship-list li { display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 5px; border-radius: 6px; background: var(--surface-2); }.company-relationship-list button { min-width: 0; text-align: left; }.relationship-company { display: grid; gap: 1px; padding: 0; border: 0; background: transparent; }.company-relationship-list b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 12px; }.company-relationship-list small { overflow: hidden; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }.relationship-detail { display: inline-flex; align-items: center; gap: 3px; padding: 3px 4px; border: 1px solid var(--line); color: var(--teal); background: #fff; font-size: 10px; white-space: nowrap; }.relationship-detail span { font-size: 13px; }
+.status-accepted { color: #059669; font-weight: 700; }.status-candidate { color: #d97706; font-weight: 700; }
+.product-list { display: flex; flex-wrap: wrap; gap: 5px; }.product-list span { padding: 3px 6px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 10px; }
+.ownership details { color: var(--muted); font-size: 12px; }.ownership summary { cursor: pointer; }.ownership ul { display: grid; gap: 4px; margin: 7px 0 0; padding-left: 16px; }.text-button { padding: 0; border: 0; color: var(--teal); background: transparent; font: inherit; cursor: pointer; }
 .topology-edge-detail > strong { line-height: 1.4; overflow-wrap: anywhere; }
 .topology-edge-detail > strong span { color: var(--teal); }
 .topology-edge-detail dl { display: grid; gap: 7px; margin: 0; }
 .topology-edge-detail dl div { display: grid; grid-template-columns: 90px 1fr; gap: 7px; }
 .topology-edge-detail dt { color: var(--muted); font-size: 12px; }
 .topology-edge-detail dd { margin: 0; overflow-wrap: anywhere; }
+.topology-drilldown { border: 1px solid var(--line); border-radius: 7px; background: var(--surface-2); }
+.topology-drilldown summary { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 8px; color: var(--ink); font-size: 12px; font-weight: 700; cursor: pointer; }
+.topology-drilldown summary small { color: var(--muted); font-weight: 400; }
+.drilldown-body { display: grid; gap: 8px; max-height: 390px; overflow: auto; padding: 0 8px 8px; }
+.drilldown-body > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.evidence-card { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.evidence-card > div { color: var(--muted); font-size: 11px; }.evidence-card > div b { color: var(--ink); }
+.evidence-card p, .evidence-card blockquote { margin: 0; font-size: 12px; line-height: 1.5; }.evidence-card blockquote { padding-left: 8px; border-left: 2px solid var(--teal); color: #334155; }
+.evidence-card footer { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 10px; }.evidence-card footer a { white-space: nowrap; }
+.audit-body blockquote { margin: 0; padding-left: 8px; border-left: 2px solid var(--teal); color: var(--muted); font-size: 12px; }
+.challenge-prompts { display: flex; flex-wrap: wrap; gap: 5px; }.challenge-prompts button { padding: 4px 6px; font-size: 10px; }.relationship-assistant textarea { width: 100%; resize: vertical; font: inherit; font-size: 12px; }.challenge-answer { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: #fff; font-size: 12px; }.challenge-answer p, .challenge-answer blockquote { margin: 0; line-height: 1.45; }.challenge-answer.supported b { color: #047857; }.challenge-answer.concern { border-color: #f59e0b; background: #fffbeb; }.challenge-answer.concern b, .challenge-error { color: #b45309; }.challenge-answer small { color: var(--muted); }
 .topology-legend p { margin: 0; color: var(--muted); line-height: 1.55; }
 .topology-legend b { color: var(--ink); }
 .topology-empty { padding: 42px; }
